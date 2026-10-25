@@ -31,6 +31,16 @@ _Avoid_: Type, character type, class
 Whether a Character plays for Good or Evil. It defaults from the Team, and Travellers have none until the game assigns one.
 _Avoid_: Side, faction
 
+**Reminder Token**:
+A labelled marker associated with a Character that a Storyteller uses to track game information.
+_Avoid_: Night reminder, Night Instructions
+
+**Global Reminder Token**:
+A Reminder Token available even when its associated Character is not in play.
+
+**Jinx**:
+A rule explaining how two particular Characters interact when they appear on the same Script.
+
 ### Nights
 
 **Night Order**:
