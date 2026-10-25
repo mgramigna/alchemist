@@ -7,7 +7,10 @@
     "build": "vite build"
   },
   "dependencies": {
+    "@alchemist/domain": "workspace:*",
+    "@effect/atom-react": "catalog:",
     "@tanstack/react-router": "catalog:",
+    "effect": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:"
   },

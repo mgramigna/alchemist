@@ -1,6 +1,13 @@
 {
   "files": [],
-  "references": [{ "path": "tsconfig.packages.json" }],
+  "references": [
+    {
+      "path": "tsconfig.packages.json"
+    },
+    {
+      "path": "tsconfig.tools.json"
+    }
+  ],
   "compilerOptions": {
     "noEmit": true,
     "skipLibCheck": true

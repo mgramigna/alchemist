@@ -1,7 +1,14 @@
-import { createRootRoute, Link, Outlet, type ErrorComponentProps } from "@tanstack/react-router";
+import {
+  createRootRouteWithContext,
+  Link,
+  Outlet,
+  type ErrorComponentProps,
+} from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 
-export const Route = createRootRoute({
+import type { RouterContext } from "../router.tsx";
+
+export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
   notFoundComponent: NotFound,
   errorComponent: RouteError,
@@ -24,7 +31,7 @@ function RootLayout() {
       <footer className="px-[6vw] py-6 text-sm">
         Alchemist is not affiliated with The Pandemonium Institute.
       </footer>
-      <TanStackRouterDevtools position="bottom-right" />
+      {import.meta.env.DEV && <TanStackRouterDevtools position="bottom-right" />}
     </div>
   );
 }

@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.shared.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": ".tsbuild/tools",
+    "lib": ["ES2024", "DOM"]
+  },
+  "include": ["alchemy.run.ts", "playwright.config.ts", "e2e/**/*.ts"],
+  "references": [
+    {
+      "path": "packages/domain"
+    }
+  ]
+}

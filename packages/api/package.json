@@ -1,0 +1,15 @@
+{
+  "name": "@alchemist/api",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@alchemist/domain": "workspace:*",
+    "@effect/sql-d1": "catalog:",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "catalog:",
+    "@effect/vitest": "catalog:",
+    "vitest": "catalog:"
+  }
+}
