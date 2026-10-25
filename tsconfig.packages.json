@@ -4,7 +4,10 @@
   "include": [],
   "references": [
     {
-      "path": "packages/core"
+      "path": "packages/domain"
+    },
+    {
+      "path": "packages/api"
     },
     {
       "path": "packages/web"

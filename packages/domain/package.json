@@ -1,15 +1,15 @@
 {
-  "name": "@alchemist/core",
+  "name": "@alchemist/domain",
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./rpc": "./src/rpc.ts"
   },
   "dependencies": {
     "effect": "catalog:"
   },
   "devDependencies": {
-    "@effect/vitest": "catalog:",
     "vitest": "catalog:"
   }
 }

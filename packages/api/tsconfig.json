@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.shared.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "lib": ["ES2024", "DOM"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "*.config.ts"],
+  "references": [
+    {
+      "path": "../domain"
+    }
+  ]
+}

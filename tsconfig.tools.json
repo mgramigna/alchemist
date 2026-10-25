@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.shared.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": ".tsbuild/tools",
+    "lib": ["ES2024", "DOM"]
+  },
+  "include": [
+    "alchemy.run.ts",
+    "tools/smoke-public-script.ts",
+    "playwright.config.ts",
+    "tools/browser/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "packages/domain"
+    }
+  ]
+}

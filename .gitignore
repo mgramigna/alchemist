@@ -17,3 +17,9 @@ coverage/
 .DS_Store
 *.pem
 *.log
+
+# local infrastructure state
+.alchemy/
+.wrangler/
+playwright-report/
+test-results/

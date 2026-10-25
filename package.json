@@ -23,7 +23,10 @@
       "tailwindcss": "4.3.3",
       "typescript": "7.0.2",
       "vite": "8.3.5",
-      "vitest": "5.0.5"
+      "vitest": "5.0.5",
+      "@effect/sql-d1": "4.0.6",
+      "@effect/atom-react": "4.0.6",
+      "@cloudflare/workers-types": "5.20261025.1"
     }
   },
   "type": "module",
@@ -38,7 +41,11 @@
     "prepare": "husky && effect-tsgo patch --typescript --oxlint",
     "test": "bun --bun vitest run",
     "test:watch": "bun --bun vitest",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "deploy": "bun run build && node node_modules/alchemy/bin/cli.js deploy",
+    "smoke": "node tools/smoke-public-script.ts",
+    "test:browser": "node node_modules/@playwright/test/cli.js test",
+    "dev:worker": "bun run build && node node_modules/alchemy/bin/cli.js dev"
   },
   "devDependencies": {
     "@effect/tsgo": "catalog:",
@@ -52,7 +59,12 @@
     "oxlint": "1.89.0",
     "oxlint-tsgolint": "7.0.2005",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "@alchemist/domain": "workspace:*",
+    "@alchemy.run/cloudflare": "2.0.0-beta.84",
+    "@effect/platform-node": "catalog:",
+    "@playwright/test": "1.64.1",
+    "alchemy": "2.0.0-beta.84"
   },
   "lint-staged": {
     "*.{json,css,md}": [
@@ -64,7 +76,7 @@
     ]
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=24.11.1"
   },
   "packageManager": "bun@1.4.3",
   "intent": {
