@@ -319,6 +319,92 @@
         gap: 6px;
       }
 
+      /* ---------- Variants D/E: hybrids ---------- */
+      .hs-drop {
+        padding: 14px;
+        gap: 6px;
+      }
+      .hs-looks {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .hs-look {
+        display: grid;
+        justify-items: center;
+        gap: 4px;
+        padding: 6px;
+        width: 104px;
+        font-size: 12px;
+      }
+      .hs-look img {
+        width: 72px;
+        height: 72px;
+        background: #0d0b09;
+        border-radius: 6px;
+      }
+      .hs-badge {
+        color: var(--accent);
+      }
+      .vd {
+        display: grid;
+        grid-template-columns: 1fr 0;
+        transition: grid-template-columns 0.2s;
+      }
+      .vd.open {
+        grid-template-columns: 1fr 320px;
+      }
+      .vd-main {
+        width: 100%;
+      }
+      .vd-drawer {
+        overflow: auto;
+        height: calc(100vh - 24px);
+        position: sticky;
+        top: 0;
+        background: var(--panel);
+        border-left: 1px solid var(--line);
+        padding: 12px;
+        display: grid;
+        align-content: start;
+        gap: 8px;
+      }
+      .vd:not(.open) .vd-drawer {
+        visibility: hidden;
+        padding: 0;
+      }
+      .vd-drawer fieldset {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        margin: 0;
+        padding: 8px 10px;
+        display: grid;
+        gap: 6px;
+      }
+      .vd-drawer legend {
+        color: var(--accent);
+        padding: 0 4px;
+      }
+      .vd-drawer label.ctl {
+        display: grid;
+        grid-template-columns: 1fr 44px;
+        gap: 2px 6px;
+        font-size: 12px;
+      }
+      .vd-drawer label.ctl input[type="range"] {
+        grid-column: 1 / -1;
+      }
+      .vd-cut canvas {
+        max-width: 100%;
+        max-height: 140px;
+        background: var(--checker-light);
+        border-radius: 6px;
+      }
+      .draggable img.big {
+        cursor: grab;
+        outline: 1px dashed #fff3;
+      }
+
       /* ---------- shared prototype chrome ---------- */
       #switcher {
         position: fixed;
@@ -1006,21 +1092,55 @@
         ],
       ];
 
+      const studioControl = ([k, type, a, min, max, step]) => {
+        if (type === "select")
+          return `<select data-k="${k}">${a
+            .map(([v, l]) => `<option value="${v}">${l}</option>`)
+            .join("")}</select>`;
+        if (type === "checkbox")
+          return `<label class="row" style="font-size:12px"><input type="checkbox" data-k="${k}" /> ${a}</label>`;
+        return `<label class="ctl"><span>${a}</span><output data-out="${k}"></output>
+          <input type="range" data-k="${k}" min="${min}" max="${max}" step="${step}" /></label>`;
+      };
+      const studioControlsHtml = () =>
+        B_CONTROLS.map(
+          ([title, ctls]) =>
+            `<fieldset><legend>${title}</legend>${ctls.map(studioControl).join("")}</fieldset>`,
+        ).join("");
+      function bindStudioControls(root, onControl) {
+        root.querySelectorAll("[data-k]").forEach((el) => {
+          el.addEventListener("input", () => {
+            const k = el.dataset.k;
+            state[k] =
+              el.type === "checkbox"
+                ? el.checked
+                : el.type === "range"
+                  ? Number(el.value)
+                  : el.value;
+            onControl(k);
+            scheduleUpdate();
+          });
+        });
+      }
+      function syncStudioControls(root) {
+        root.querySelectorAll("[data-k]").forEach((el) => {
+          const v = state[el.dataset.k];
+          if (el.type === "checkbox") el.checked = v;
+          else if (document.activeElement !== el) el.value = v;
+        });
+        root
+          .querySelectorAll("[data-out]")
+          .forEach((el) => (el.textContent = state[el.dataset.out]));
+      }
+
       const VariantB = {
         key: "B",
         name: "Studio",
         bg: "dark",
+        onControl() {},
+        onReset() {},
+        doneButton: "",
         mount(root) {
-          const ctl = ([k, type, a, min, max, step]) => {
-            if (type === "select")
-              return `<select data-k="${k}">${a
-                .map(([v, l]) => `<option value="${v}">${l}</option>`)
-                .join("")}</select>`;
-            if (type === "checkbox")
-              return `<label class="row" style="font-size:12px"><input type="checkbox" data-k="${k}" /> ${a}</label>`;
-            return `<label class="ctl"><span>${a}</span><output data-out="${k}"></output>
-              <input type="range" data-k="${k}" min="${min}" max="${max}" step="${step}" /></label>`;
-          };
           root.innerHTML = `
             <div class="vb">
               <section class="vb-src">
@@ -1034,10 +1154,7 @@
               <section>
                 <h3>Style</h3>
                 <div style="margin-bottom:10px">${teamPicker()}</div>
-                ${B_CONTROLS.map(
-                  ([title, ctls]) =>
-                    `<fieldset><legend>${title}</legend>${ctls.map(ctl).join("")}</fieldset>`,
-                ).join("")}
+                ${studioControlsHtml()}
                 <button id="vb-reset">Reset to defaults</button>
               </section>
               <section>
@@ -1047,25 +1164,14 @@
                     ${["dark", "light", "checker", "token"]
                       .map((b) => `<button data-bg="${b}">${b}</button>`)
                       .join("")}
-                    <button id="vb-dl">Download PNGs</button></span>
+                    <button id="vb-dl">Download PNGs</button>${this.doneButton}</span>
                 </div>
                 <div class="vb-previews" id="vb-previews"></div>
                 <h3 style="margin-top:20px">At grimoire size</h3>
                 <div class="row" id="vb-small"></div>
               </section>
             </div>`;
-          root.querySelectorAll("[data-k]").forEach((el) => {
-            el.addEventListener("input", () => {
-              const k = el.dataset.k;
-              state[k] =
-                el.type === "checkbox"
-                  ? el.checked
-                  : el.type === "range"
-                    ? Number(el.value)
-                    : el.value;
-              scheduleUpdate();
-            });
-          });
+          bindStudioControls(root, (k) => this.onControl(k));
           root.querySelectorAll("[data-bg]").forEach((b) =>
             b.addEventListener("click", () => {
               this.bg = b.dataset.bg;
@@ -1074,6 +1180,7 @@
           );
           root.querySelector("#vb-reset").onclick = () => {
             Object.assign(state, DEFAULTS, { team: state.team });
+            this.onReset();
             scheduleUpdate();
           };
           root.querySelector("#vb-dl").onclick = () => downloadAll(this.last.outputs);
@@ -1112,14 +1219,7 @@
           );
         },
         update(root) {
-          root.querySelectorAll("[data-k]").forEach((el) => {
-            const v = state[el.dataset.k];
-            if (el.type === "checkbox") el.checked = v;
-            else if (document.activeElement !== el) el.value = v;
-          });
-          root
-            .querySelectorAll("[data-out]")
-            .forEach((el) => (el.textContent = state[el.dataset.out]));
+          syncStudioControls(root);
           root
             .querySelectorAll("[data-bg]")
             .forEach((b) => b.classList.toggle("active", b.dataset.bg === this.bg));
@@ -1267,10 +1367,253 @@
       };
 
       // ===================================================================
+      // Hybrids: Just upload by default, Studio on demand.
+      //   D opens the Studio as a drawer beside the live result.
+      //   E switches to the full Studio screen and returns with Done.
+      // Both share the simple surface: Team, a Look picker (from C), and a
+      // "Customised · Reset to auto" badge once anything is tuned.
+      // ===================================================================
+
+      const LOOKS = {
+        solid: { label: "Solid", color: "silhouette", detail: 0 },
+        shaded: { label: "Shaded", color: "tint", detail: 0 },
+        lines: { label: "Pale lines", color: "tint", detail: 0.9 },
+      };
+      // Solid suits line art; on photos it flattens everything into a blob.
+      const autoLook = (cutMode) => (cutMode === "edge" ? "lines" : "solid");
+      const hybrid = { look: "auto" }; // auto | solid | shaded | lines | custom
+
+      // Writes the chosen look into state so the Studio shows what is rendering.
+      function hybridOpts() {
+        if (hybrid.look !== "custom") {
+          const cut = getCut(state.cutout, state.tolerance);
+          const look = hybrid.look === "auto" ? autoLook(cut.mode) : hybrid.look;
+          state.color = LOOKS[look].color;
+          state.detail = LOOKS[look].detail;
+        }
+        return { ...state };
+      }
+      function customisations() {
+        const changed = Object.keys(DEFAULTS).filter(
+          (k) => !["team", "color", "detail"].includes(k) && state[k] !== DEFAULTS[k],
+        );
+        if (hybrid.look === "custom") changed.push("colour");
+        return changed;
+      }
+      function resetHybrid() {
+        Object.assign(state, DEFAULTS, { team: state.team });
+        hybrid.look = "auto";
+        scheduleUpdate();
+      }
+      const onHybridControl = (k) => {
+        if (k === "color" || k === "detail") hybrid.look = "custom";
+      };
+
+      const simpleSurfaceHtml = (studioButton) => `
+        <div>
+          <h1>Character icon</h1>
+          <div class="muted">Upload artwork. Alchemist makes every alignment version for you.</div>
+        </div>
+        <div class="va-drop hs-drop">
+          <div>Drop an image here, or
+            <label class="link"><input type="file" accept="image/*" data-upload hidden />choose a file</label></div>
+          <div class="row" style="justify-content:center"><span class="muted">Try:</span>${SAMPLES.map(
+            (s) => `<button data-sample="${s.id}">${s.label}</button>`,
+          ).join("")}</div>
+        </div>
+        <div class="row"><span class="muted" style="width:60px">Team</span>${teamPicker()}</div>
+        <div class="row" style="align-items:flex-start"><span class="muted" style="width:60px;padding-top:8px">Look</span>
+          <div class="hs-looks" id="hs-looks"></div></div>
+        <div class="va-out" id="hs-out"></div>
+        <div class="row" style="justify-content:space-between">
+          <span id="hs-note" class="muted"></span>
+          <span class="row">${studioButton}<button id="hs-dl">Download PNGs</button></span>
+        </div>`;
+
+      const lookThumbs = { key: null, html: "" };
+      function updateSimpleSurface(root, holder) {
+        const o = hybridOpts();
+        const set = renderSet(o);
+        holder.last = set;
+        const cut = set.cut;
+
+        // Look thumbnails: the regular icon per look, default finish, re-rendered on new art/team/cutout.
+        const key = `${sourceVersion}|${state.team}|${state.cutout}|${state.tolerance}`;
+        if (key !== lookThumbs.key) {
+          lookThumbs.key = key;
+          lookThumbs.urls = Object.fromEntries(
+            Object.entries(LOOKS).map(([id, l]) => [
+              id,
+              renderSet(
+                {
+                  ...DEFAULTS,
+                  team: state.team,
+                  cutout: state.cutout,
+                  tolerance: state.tolerance,
+                  color: l.color,
+                  detail: l.detail,
+                },
+                1,
+              ).outputs[0].url,
+            ]),
+          );
+        }
+        const auto = autoLook(cut.mode);
+        const tiles = [
+          ["auto", `Auto (${LOOKS[auto].label})`, lookThumbs.urls[auto]],
+          ...Object.entries(LOOKS).map(([id, l]) => [id, l.label, lookThumbs.urls[id]]),
+        ];
+        if (hybrid.look === "custom") tiles.push(["custom", "Custom (Studio)", set.outputs[0].url]);
+        root.querySelector("#hs-looks").innerHTML = tiles
+          .map(
+            ([
+              id,
+              label,
+              url,
+            ]) => `<button class="hs-look${hybrid.look === id ? " active" : ""}" data-look="${id}">
+              <img src="${url}" alt="" /><span>${label}</span></button>`,
+          )
+          .join("");
+
+        root.querySelector("#hs-out").innerHTML = set.outputs
+          .map(
+            (out) => `<figure>
+              <img class="big" src="${out.url}" alt="${out.label}" />
+              ${token(out.url, 72)}
+              <figcaption>${out.label}</figcaption>
+            </figure>`,
+          )
+          .join("");
+
+        const changed = customisations();
+        root.querySelector("#hs-note").innerHTML = changed.length
+          ? `<span class="hs-badge">Customised: ${changed.join(", ")}</span> <span class="link" id="hs-reset">Reset to auto</span>`
+          : `Automatic: we ${CUTOUT_LABEL[cut.mode]}.`;
+        root.querySelector("#hs-reset")?.addEventListener("click", resetHybrid);
+        return { opts: { ...o, look: hybrid.look }, set };
+      }
+
+      function bindSimpleSurface(root, holder) {
+        root.querySelector("#hs-looks").addEventListener("click", (e) => {
+          const b = e.target.closest("[data-look]");
+          if (!b || b.dataset.look === "custom") return;
+          hybrid.look = b.dataset.look;
+          scheduleUpdate();
+        });
+        root.querySelector("#hs-dl").onclick = () => downloadAll(holder.last.outputs);
+      }
+
+      const VariantD = {
+        key: "D",
+        name: "Hybrid: Studio drawer",
+        open: false,
+        mount(root) {
+          root.innerHTML = `
+            <div class="vd">
+              <section class="va vd-main">${simpleSurfaceHtml('<button id="vd-toggle">Customise in Studio</button>')}</section>
+              <aside class="vd-drawer">
+                <div class="row" style="justify-content:space-between">
+                  <h3>Studio</h3><button id="vd-close">Close</button></div>
+                <p class="muted" style="margin:0">After cutout <span id="vd-mode"></span></p>
+                <div id="vd-cut" class="vd-cut"></div>
+                ${studioControlsHtml()}
+                <p class="muted">Drag a big preview to move; scroll on it to resize.</p>
+              </aside>
+            </div>`;
+          bindSimpleSurface(root, this);
+          bindStudioControls(root, onHybridControl);
+          const toggle = () => {
+            this.open = !this.open;
+            scheduleUpdate();
+          };
+          root.querySelector("#vd-toggle").onclick = toggle;
+          root.querySelector("#vd-close").onclick = toggle;
+
+          // Same direct manipulation as the Studio, on the simple surface's previews.
+          const out = root.querySelector("#hs-out");
+          let drag = null;
+          out.addEventListener("pointerdown", (e) => {
+            if (!this.open || !e.target.matches("img.big")) return;
+            e.preventDefault();
+            out.setPointerCapture(e.pointerId);
+            const k = SIZE / e.target.clientWidth;
+            drag = { x: e.clientX, y: e.clientY, ox: state.offsetX, oy: state.offsetY, k };
+          });
+          out.addEventListener("pointermove", (e) => {
+            if (!drag) return;
+            state.offsetX = Math.round(drag.ox + (e.clientX - drag.x) * drag.k);
+            state.offsetY = Math.round(drag.oy + (e.clientY - drag.y) * drag.k);
+            scheduleUpdate();
+          });
+          out.addEventListener("pointerup", () => (drag = null));
+          out.addEventListener(
+            "wheel",
+            (e) => {
+              if (!this.open || !e.target.matches("img.big")) return;
+              e.preventDefault();
+              state.size = Math.min(1, Math.max(0.3, state.size - Math.sign(e.deltaY) * 0.02));
+              scheduleUpdate();
+            },
+            { passive: false },
+          );
+        },
+        update(root) {
+          root.querySelector(".vd").classList.toggle("open", this.open);
+          root.querySelector("#vd-toggle").textContent = this.open
+            ? "Close Studio"
+            : "Customise in Studio";
+          root.querySelector("#hs-out").classList.toggle("draggable", this.open);
+          const result = updateSimpleSurface(root, this);
+          syncStudioControls(root);
+          root.querySelector("#vd-cut").replaceChildren(result.set.cut.canvas);
+          root.querySelector("#vd-mode").textContent =
+            `(${result.set.cut.auto ? "auto: " : ""}${result.set.cut.mode})`;
+          return result;
+        },
+      };
+
+      const VariantE = {
+        key: "E",
+        name: "Hybrid: Studio mode",
+        studio: null,
+        mount(root) {
+          root.innerHTML = `
+            <section class="va" id="ve-simple">${simpleSurfaceHtml('<button id="ve-open">Open Studio</button>')}</section>
+            <div id="ve-studio" class="ve-studio" hidden></div>`;
+          bindSimpleSurface(root, this);
+          const host = root.querySelector("#ve-studio");
+          root.querySelector("#ve-open").onclick = () => {
+            this.studio = Object.create(VariantB);
+            this.studio.onControl = onHybridControl;
+            this.studio.onReset = () => (hybrid.look = "auto");
+            this.studio.doneButton = '<button id="ve-done" class="active">Done</button>';
+            this.studio.mount(host);
+            host.querySelector("#ve-done").onclick = () => {
+              this.studio = null;
+              host.replaceChildren();
+              scheduleUpdate();
+            };
+            scheduleUpdate();
+          };
+        },
+        update(root) {
+          const host = root.querySelector("#ve-studio");
+          host.hidden = !this.studio;
+          root.querySelector("#ve-simple").hidden = !!this.studio;
+          if (this.studio) {
+            hybridOpts();
+            const result = this.studio.update(host);
+            return { opts: { ...result.opts, look: hybrid.look }, set: result.set };
+          }
+          return updateSimpleSurface(root, this);
+        },
+      };
+
+      // ===================================================================
       // Variant switcher and update loop
       // ===================================================================
 
-      const VARIANTS = [VariantA, VariantB, VariantC];
+      const VARIANTS = [VariantA, VariantB, VariantC, VariantD, VariantE];
       const app = document.getElementById("app");
       let current = null;
 
