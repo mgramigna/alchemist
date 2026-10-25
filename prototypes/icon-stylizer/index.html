@@ -1,0 +1,1361 @@
+<!doctype html>
+<!--
+  PROTOTYPE: throwaway, do not ship. Issue #13 (part of map #1).
+  Question: what should the icon stylizer produce from an upload, and which controls does the author get?
+  Plan: three structurally different stylizer UIs on one page, switchable via ?variant=A|B|C,
+  the floating bottom bar, or the ← → keys. All three share one Canvas pipeline:
+  cutout → trim → place on 400×400 → recolour per alignment → texture → pale outline → shadow.
+  Open this file directly in a browser; no build, no network, no persistence.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PROTOTYPE · Icon stylizer (#13)</title>
+    <style>
+      :root {
+        --bg: #14110f;
+        --panel: #1f1a16;
+        --line: #3a3129;
+        --text: #eadfc8;
+        --muted: #a39580;
+        --accent: #c9a44c;
+        --checker: repeating-conic-gradient(#2c2620 0% 25%, #221d18 0% 50%) 0 0 / 20px 20px;
+        --checker-light: repeating-conic-gradient(#f2efe8 0% 25%, #d9d4ca 0% 50%) 0 0 / 16px 16px;
+        --parchment: radial-gradient(circle at 45% 40%, #f3e8cc, #d6c095 70%, #b89c68);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+        padding-bottom: 80px;
+      }
+      h1,
+      h2,
+      h3 {
+        font-family: "Sorts Mill Goudy", Georgia, serif;
+        font-weight: normal;
+        margin: 0 0 8px;
+      }
+      button,
+      select,
+      input {
+        font: inherit;
+        color: inherit;
+      }
+      button {
+        background: #2a231d;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 5px 10px;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--accent);
+      }
+      button.active {
+        background: var(--accent);
+        color: #1a140c;
+        border-color: var(--accent);
+      }
+      select {
+        background: #2a231d;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 4px;
+        width: 100%;
+      }
+      .proto-banner {
+        background: repeating-linear-gradient(45deg, #5a1d14 0 12px, #4a170f 12px 24px);
+        color: #ffd9c9;
+        text-align: center;
+        padding: 4px;
+        font-size: 12px;
+        letter-spacing: 0.04em;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .link {
+        color: var(--accent);
+        text-decoration: underline;
+        cursor: pointer;
+      }
+      .checker {
+        background: var(--checker);
+      }
+      .token {
+        border-radius: 50%;
+        background: var(--parchment);
+        box-shadow:
+          inset 0 0 0 2px #8a6d3b,
+          0 2px 6px #000a;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+      }
+      .token img {
+        width: 84%;
+        height: 84%;
+        margin-top: -8%;
+      }
+      .warn {
+        color: #ffb38a;
+      }
+
+      /* ---------- Variant A: Just upload ---------- */
+      .va {
+        max-width: 860px;
+        margin: 32px auto;
+        padding: 0 16px;
+        display: grid;
+        gap: 18px;
+      }
+      .va-drop {
+        border: 2px dashed var(--line);
+        border-radius: 14px;
+        padding: 28px;
+        text-align: center;
+        display: grid;
+        gap: 10px;
+      }
+      .va-drop.over {
+        border-color: var(--accent);
+      }
+      .va-out {
+        display: flex;
+        gap: 24px;
+        justify-content: center;
+        flex-wrap: wrap;
+        background: #0d0b09;
+        border-radius: 14px;
+        padding: 24px;
+      }
+      .va-out figure {
+        margin: 0;
+        text-align: center;
+        display: grid;
+        gap: 8px;
+        justify-items: center;
+      }
+      .va-out img.big {
+        width: 220px;
+        height: 220px;
+      }
+
+      /* ---------- Variant B: Studio ---------- */
+      .vb {
+        display: grid;
+        grid-template-columns: 260px 300px 1fr;
+        gap: 12px;
+        padding: 12px;
+        height: calc(100vh - 24px - 80px);
+        min-height: 640px;
+      }
+      .vb > section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px;
+        overflow: auto;
+      }
+      .vb-src img,
+      .vb-src canvas {
+        background: var(--checker-light);
+        width: 100%;
+        border-radius: 6px;
+        display: block;
+      }
+      .vb fieldset {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        margin: 0 0 10px;
+        padding: 8px 10px;
+        display: grid;
+        gap: 6px;
+      }
+      .vb legend {
+        color: var(--accent);
+        padding: 0 4px;
+      }
+      .vb label.ctl {
+        display: grid;
+        grid-template-columns: 1fr 44px;
+        gap: 2px 6px;
+        font-size: 12px;
+      }
+      .vb label.ctl input[type="range"] {
+        grid-column: 1 / -1;
+      }
+      .vb-previews {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .vb-previews figure {
+        margin: 0;
+        display: grid;
+        gap: 4px;
+        justify-items: center;
+      }
+      .vb-previews .stage {
+        width: 260px;
+        height: 260px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        cursor: grab;
+        user-select: none;
+        position: relative;
+      }
+      .vb-previews .stage.dark {
+        background: #0d0b09;
+      }
+      .vb-previews .stage.light {
+        background: #f4f0e6;
+      }
+      .vb-previews .stage.checker {
+        background: var(--checker);
+      }
+      .vb-previews .stage.token {
+        border-radius: 50%;
+      }
+      .vb-previews .stage img {
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+      .vb-previews .stage.token img {
+        width: 84%;
+        height: 84%;
+      }
+      .vb-previews .stage .guide {
+        position: absolute;
+        inset: 0;
+        border: 1px dashed #fff3;
+        pointer-events: none;
+      }
+
+      /* ---------- Variant C: Pick a look ---------- */
+      .vc {
+        max-width: 1280px;
+        margin: 20px auto;
+        padding: 0 16px;
+        display: grid;
+        gap: 14px;
+      }
+      .vc-bar {
+        display: flex;
+        gap: 18px;
+        flex-wrap: wrap;
+        align-items: center;
+        background: var(--panel);
+        padding: 10px 14px;
+        border-radius: 10px;
+      }
+      .vc-grid {
+        display: grid;
+        grid-template-columns: 110px repeat(4, 130px);
+        gap: 8px;
+        align-items: center;
+      }
+      .vc-grid .colhead,
+      .vc-grid .rowhead {
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
+      }
+      .vc-grid .rowhead {
+        text-align: right;
+        padding-right: 8px;
+      }
+      .vc-tile {
+        aspect-ratio: 1;
+        border-radius: 10px;
+        background: #0d0b09;
+        border: 2px solid transparent;
+        cursor: pointer;
+        padding: 6px;
+      }
+      .vc-tile img {
+        width: 100%;
+        height: 100%;
+      }
+      .vc-tile.selected {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px #c9a44c44;
+      }
+      .vc-main {
+        display: flex;
+        gap: 20px;
+        align-items: flex-start;
+      }
+      .vc-chosen {
+        display: grid;
+        gap: 16px;
+        flex: 1;
+        position: sticky;
+        top: 12px;
+        background: var(--panel);
+        border-radius: 10px;
+        padding: 16px;
+      }
+      .vc-chosen figure {
+        margin: 0;
+        display: grid;
+        justify-items: center;
+        gap: 6px;
+      }
+
+      /* ---------- shared prototype chrome ---------- */
+      #switcher {
+        position: fixed;
+        bottom: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: #fff;
+        color: #111;
+        border-radius: 999px;
+        padding: 6px 10px;
+        box-shadow: 0 6px 24px #000c;
+        font: 600 13px system-ui;
+        z-index: 10;
+      }
+      #switcher button {
+        background: #111;
+        color: #fff;
+        border: 0;
+        border-radius: 999px;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+      }
+      #state-panel {
+        position: fixed;
+        bottom: 16px;
+        left: 16px;
+        max-width: 380px;
+        max-height: 60vh;
+        overflow: auto;
+        background: #000d;
+        border: 1px solid #fff3;
+        border-radius: 8px;
+        padding: 6px 10px;
+        font:
+          11px/1.35 ui-monospace,
+          monospace;
+        z-index: 10;
+      }
+      #state-panel pre {
+        margin: 4px 0 0;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="proto-banner">
+      PROTOTYPE: throwaway stylizer for issue #13. Flip variants with the bottom bar or ← →. Drop an
+      image anywhere to upload.
+    </div>
+    <main id="app"></main>
+    <details id="state-panel">
+      <summary>state</summary>
+      <pre id="state"></pre>
+    </details>
+    <nav id="switcher">
+      <button id="prev" title="Previous variant">←</button>
+      <span id="variant-label"></span>
+      <button id="next" title="Next variant">→</button>
+    </nav>
+
+    <script>
+      "use strict";
+
+      // ===================================================================
+      // Pipeline (shared by every variant)
+      // ===================================================================
+
+      const SIZE = 400; // matches the sampled official 400×400 WebP icons
+      const N = SIZE * SIZE;
+      const CREAM = [243, 233, 207];
+
+      // Light → mid → dark, painted top → bottom across the icon's bounding box.
+      const PALETTES = {
+        good: ["#bfe6ff", "#3f8fe6", "#0f357a"],
+        evil: ["#ffc39a", "#e24a2c", "#6e0d0d"],
+        gold: ["#fbecc0", "#cf9f45", "#6a4612"],
+        outsider: ["#c4f6ff", "#2fb6cc", "#0b4a5e"],
+        minion: ["#ffe0a3", "#ee8a26", "#73300a"],
+      };
+
+      const TEAMS = ["townsfolk", "outsider", "minion", "demon", "traveller"];
+
+      const DEFAULTS = {
+        team: "townsfolk",
+        cutout: "auto",
+        tolerance: 0.08,
+        color: "silhouette",
+        teamShades: false,
+        detail: 0,
+        texture: 0.5,
+        outline: 3,
+        shadow: 0.55,
+        shadowBlur: 10,
+        shadowY: 6,
+        size: 0.8,
+        offsetX: 0,
+        offsetY: 0,
+      };
+
+      // Export order follows script-schema.json: [regular, flipped] or [unaligned, good, evil].
+      function variantSpecs(team, teamShades) {
+        const goodP = teamShades && team === "outsider" ? "outsider" : "good";
+        const evilP = teamShades && team === "minion" ? "minion" : "evil";
+        if (team === "traveller") {
+          return [
+            { key: "unaligned", label: "Unaligned", left: "good", right: "evil" },
+            { key: "good", label: "Good", left: "good", right: "gold" },
+            { key: "evil", label: "Evil", left: "gold", right: "evil" },
+          ];
+        }
+        if (team === "minion" || team === "demon") {
+          return [
+            { key: "regular", label: "Regular · Evil", left: evilP },
+            { key: "flipped", label: "Flipped · Good", left: "good" },
+          ];
+        }
+        return [
+          { key: "regular", label: "Regular · Good", left: goodP },
+          { key: "flipped", label: "Flipped · Evil", left: "evil" },
+        ];
+      }
+
+      const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+      const lum = (d, i) => (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255;
+      function makeCanvas(w, h) {
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        return c;
+      }
+      const ctx2d = (c) => c.getContext("2d", { willReadFrequently: true });
+
+      // Procedural mottling: avoids Bloodstar's texture asset, whose licence is unconfirmed.
+      const NOISE = (() => {
+        const out = new Float32Array(N);
+        let seed = 7;
+        const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+        const smooth = (t) => t * t * (3 - 2 * t);
+        for (const [g, weight] of [
+          [5, 0.35],
+          [11, 0.3],
+          [23, 0.2],
+          [53, 0.15],
+        ]) {
+          const grid = Array.from({ length: (g + 1) * (g + 1) }, rnd);
+          for (let y = 0; y < SIZE; y++) {
+            const fy = (y / SIZE) * g;
+            const iy = Math.floor(fy);
+            const ty = smooth(fy - iy);
+            for (let x = 0; x < SIZE; x++) {
+              const fx = (x / SIZE) * g;
+              const ix = Math.floor(fx);
+              const tx = smooth(fx - ix);
+              const a = grid[iy * (g + 1) + ix];
+              const b = grid[iy * (g + 1) + ix + 1];
+              const c = grid[(iy + 1) * (g + 1) + ix];
+              const e = grid[(iy + 1) * (g + 1) + ix + 1];
+              out[y * SIZE + x] +=
+                weight * (a + (b - a) * tx + (c - a + (a - b - c + e) * tx) * ty);
+            }
+          }
+        }
+        for (let p = 0; p < N; p++) out[p] = clamp01((out[p] - 0.5) * 2.2 + 0.5);
+        return out;
+      })();
+
+      // ---- source -------------------------------------------------------
+
+      let source = null; // { id, name, url, canvas }
+      let sourceVersion = 0;
+      const cutCache = new Map();
+
+      function loadSource(url, name, id) {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, 600 / Math.max(img.naturalWidth, img.naturalHeight));
+          const c = makeCanvas(
+            Math.max(1, Math.round(img.naturalWidth * scale)),
+            Math.max(1, Math.round(img.naturalHeight * scale)),
+          );
+          const cx = ctx2d(c);
+          cx.imageSmoothingQuality = "high";
+          cx.drawImage(img, 0, 0, c.width, c.height);
+          source = { id, name, url, canvas: c };
+          sourceVersion++;
+          cutCache.clear();
+          if (current?.onSource) current.onSource();
+          scheduleUpdate();
+        };
+        img.onerror = () => alert("Could not decode that image.");
+        img.src = url;
+      }
+      function loadFile(file) {
+        if (!file || !file.type.startsWith("image/")) return;
+        loadSource(URL.createObjectURL(file), file.name, "upload");
+      }
+
+      // ---- cutout -------------------------------------------------------
+
+      function getCut(mode, tolerance) {
+        const key = `${sourceVersion}|${mode}|${tolerance}`;
+        if (cutCache.has(key)) return cutCache.get(key);
+        const { canvas } = source;
+        const w = canvas.width;
+        const h = canvas.height;
+        const img = ctx2d(canvas).getImageData(0, 0, w, h);
+        const d = img.data;
+        const resolved = mode === "auto" ? detectCutout(d, w, h) : mode;
+        if (resolved === "light") lightKey(d, tolerance);
+        else if (resolved === "edge") edgeFlood(d, w, h, tolerance);
+        const result = { canvas: trim(img, w, h), mode: resolved, auto: mode === "auto" };
+        cutCache.set(key, result);
+        return result;
+      }
+
+      function borderIndices(w, h) {
+        const out = [];
+        for (let x = 0; x < w; x++) out.push(x, (h - 1) * w + x);
+        for (let y = 1; y < h - 1; y++) out.push(y * w, y * w + w - 1);
+        return out;
+      }
+
+      function detectCutout(d, w, h) {
+        let transparent = 0;
+        for (let i = 3; i < d.length; i += 4) if (d[i] < 250) transparent++;
+        if (transparent > w * h * 0.01) return "alpha";
+        let n = 0;
+        let s = 0;
+        let s2 = 0;
+        for (const p of borderIndices(w, h)) {
+          const l = lum(d, p * 4);
+          s += l;
+          s2 += l * l;
+          n++;
+        }
+        const mean = s / n;
+        const sd = Math.sqrt(Math.max(0, s2 / n - mean * mean));
+        let sat = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          const mx = Math.max(d[i], d[i + 1], d[i + 2]);
+          const mn = Math.min(d[i], d[i + 1], d[i + 2]);
+          sat += mx === 0 ? 0 : (mx - mn) / mx;
+        }
+        sat /= w * h;
+        // Light, flat border and a mostly colourless image → an ink drawing on paper.
+        if (mean > 0.8 && sd < 0.08 && sat < 0.12) return "light";
+        return "edge";
+      }
+
+      // Ink drawing on paper: light pixels become transparent, so enclosed paper becomes holes.
+      function lightKey(d, tol) {
+        const cut = 1 - tol * 2;
+        for (let i = 0; i < d.length; i += 4) {
+          d[i + 3] = Math.round(d[i + 3] * clamp01((cut - lum(d, i)) / 0.2));
+        }
+      }
+
+      // Backdrop removal: grow a region from the image border through similar neighbours.
+      function edgeFlood(d, w, h, tol) {
+        const dist = (i, j) =>
+          Math.hypot(d[i] - d[j], d[i + 1] - d[j + 1], d[i + 2] - d[j + 2], d[i + 3] - d[j + 3]) /
+          510;
+        const border = borderIndices(w, h);
+        const mean = [0, 0, 0, 0];
+        for (const p of border) for (let k = 0; k < 4; k++) mean[k] += d[p * 4 + k] / border.length;
+        const distMean = (i) =>
+          Math.hypot(d[i] - mean[0], d[i + 1] - mean[1], d[i + 2] - mean[2], d[i + 3] - mean[3]) /
+          510;
+        const guard = Math.max(0.2, tol * 4);
+        const bg = new Uint8Array(w * h);
+        const queue = new Int32Array(w * h);
+        let head = 0;
+        let tail = 0;
+        for (const p of border) {
+          if (!bg[p] && distMean(p * 4) < guard) {
+            bg[p] = 1;
+            queue[tail++] = p;
+          }
+        }
+        while (head < tail) {
+          const p = queue[head++];
+          const x = p % w;
+          const y = (p / w) | 0;
+          const visit = (q) => {
+            if (!bg[q] && dist(p * 4, q * 4) < tol && distMean(q * 4) < guard) {
+              bg[q] = 1;
+              queue[tail++] = q;
+            }
+          };
+          if (x > 0) visit(p - 1);
+          if (x < w - 1) visit(p + 1);
+          if (y > 0) visit(p - w);
+          if (y < h - 1) visit(p + w);
+        }
+        // Feather by the share of background in each 3×3 neighbourhood.
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const p = y * w + x;
+            if (bg[p]) {
+              d[p * 4 + 3] = 0;
+              continue;
+            }
+            let count = 0;
+            for (let dy = -1; dy <= 1; dy++)
+              for (let dx = -1; dx <= 1; dx++) {
+                const xx = x + dx;
+                const yy = y + dy;
+                if (xx >= 0 && yy >= 0 && xx < w && yy < h && bg[yy * w + xx]) count++;
+              }
+            if (count) d[p * 4 + 3] = Math.round(d[p * 4 + 3] * (1 - count / 12));
+          }
+        }
+      }
+
+      function trim(img, w, h) {
+        const d = img.data;
+        let x0 = w;
+        let y0 = h;
+        let x1 = -1;
+        let y1 = -1;
+        for (let y = 0; y < h; y++)
+          for (let x = 0; x < w; x++)
+            if (d[(y * w + x) * 4 + 3] > 12) {
+              if (x < x0) x0 = x;
+              if (x > x1) x1 = x;
+              if (y < y0) y0 = y;
+              if (y > y1) y1 = y;
+            }
+        if (x1 < 0) return makeCanvas(1, 1);
+        const c = makeCanvas(x1 - x0 + 1, y1 - y0 + 1);
+        ctx2d(c).putImageData(img, -x0, -y0);
+        return c;
+      }
+
+      // ---- styling ------------------------------------------------------
+
+      function paintGradient(cx, stops, top, bottom) {
+        const g = cx.createLinearGradient(0, top, 0, bottom);
+        stops.forEach((s, i) => g.addColorStop(i / (stops.length - 1), s));
+        cx.fillStyle = g;
+        cx.fillRect(0, 0, SIZE, SIZE);
+      }
+
+      function fillData(spec, box) {
+        const c = makeCanvas(SIZE, SIZE);
+        const cx = ctx2d(c);
+        paintGradient(cx, PALETTES[spec.left], box.y, box.y + box.h);
+        if (spec.right) {
+          const seam = box.x + box.w / 2;
+          const r = makeCanvas(SIZE, SIZE);
+          const rx = ctx2d(r);
+          paintGradient(rx, PALETTES[spec.right], box.y, box.y + box.h);
+          rx.globalCompositeOperation = "destination-in";
+          const m = rx.createLinearGradient(seam - 3, 0, seam + 3, 0);
+          m.addColorStop(0, "rgba(0,0,0,0)");
+          m.addColorStop(1, "#000");
+          rx.fillStyle = m;
+          rx.fillRect(0, 0, SIZE, SIZE);
+          cx.drawImage(r, 0, 0);
+        }
+        return cx.getImageData(0, 0, SIZE, SIZE).data;
+      }
+
+      // Luminance edges inside the silhouette, painted cream: mimics official pale detail lines.
+      function sobel(L, d) {
+        const M = new Float32Array(N);
+        for (let y = 1; y < SIZE - 1; y++)
+          for (let x = 1; x < SIZE - 1; x++) {
+            const p = y * SIZE + x;
+            if (d[p * 4 + 3] < 128) continue;
+            const at = (dx, dy) => {
+              const q = p + dy * SIZE + dx;
+              return d[q * 4 + 3] >= 128 ? L[q] : L[p];
+            };
+            const gx = at(1, -1) + 2 * at(1, 0) + at(1, 1) - at(-1, -1) - 2 * at(-1, 0) - at(-1, 1);
+            const gy = at(-1, 1) + 2 * at(0, 1) + at(1, 1) - at(-1, -1) - 2 * at(0, -1) - at(1, -1);
+            M[p] = clamp01((Math.hypot(gx, gy) / 4 - 0.1) * 5);
+          }
+        return M;
+      }
+
+      function renderIcon(cut, o, spec) {
+        const src = cut.canvas;
+        const s = (o.size * SIZE) / Math.max(src.width, src.height);
+        const box = { w: src.width * s, h: src.height * s };
+        box.x = (SIZE - box.w) / 2 + o.offsetX;
+        box.y = (SIZE - box.h) / 2 + o.offsetY;
+
+        const placed = makeCanvas(SIZE, SIZE);
+        const pc = ctx2d(placed);
+        pc.imageSmoothingQuality = "high";
+        pc.drawImage(src, box.x, box.y, box.w, box.h);
+        const img = pc.getImageData(0, 0, SIZE, SIZE);
+        const d = img.data;
+        const fill = fillData(spec, box);
+
+        const L = new Float32Array(N);
+        for (let p = 0; p < N; p++) L[p] = lum(d, p * 4);
+
+        let lo = 0;
+        let hi = 1;
+        if (o.color === "tint") {
+          const hist = new Uint32Array(256);
+          let count = 0;
+          for (let p = 0; p < N; p++)
+            if (d[p * 4 + 3] > 128) {
+              hist[Math.round(L[p] * 255)]++;
+              count++;
+            }
+          let acc = 0;
+          lo = -1;
+          for (let b = 0; b < 256; b++) {
+            acc += hist[b];
+            if (lo < 0 && acc >= count * 0.05) lo = b / 255;
+            if (acc >= count * 0.95) {
+              hi = b / 255;
+              break;
+            }
+          }
+          if (hi - lo < 0.1) {
+            lo = 0;
+            hi = 1;
+          }
+        }
+        const edges = o.detail > 0 ? sobel(L, d) : null;
+
+        for (let p = 0; p < N; p++) {
+          const i = p * 4;
+          if (d[i + 3] === 0) continue;
+          let r;
+          let g;
+          let b;
+          if (o.color === "original") {
+            r = d[i];
+            g = d[i + 1];
+            b = d[i + 2];
+          } else {
+            const k = o.color === "tint" ? 0.45 + 0.9 * clamp01((L[p] - lo) / (hi - lo)) : 1;
+            r = fill[i] * k;
+            g = fill[i + 1] * k;
+            b = fill[i + 2] * k;
+          }
+          if (edges) {
+            const t = edges[p] * o.detail;
+            r += (CREAM[0] - r) * t;
+            g += (CREAM[1] - g) * t;
+            b += (CREAM[2] - b) * t;
+          }
+          const m = 1 - o.texture * 0.75 * (1 - NOISE[p]);
+          d[i] = r * m;
+          d[i + 1] = g * m;
+          d[i + 2] = b * m;
+        }
+        pc.putImageData(img, 0, 0);
+
+        const comp = makeCanvas(SIZE, SIZE);
+        const cc = ctx2d(comp);
+        if (o.outline > 0) {
+          const ring = makeCanvas(SIZE, SIZE);
+          const rc = ctx2d(ring);
+          for (const radius of [o.outline, o.outline / 2]) {
+            for (let k = 0; k < 24; k++) {
+              const a = (k / 24) * Math.PI * 2;
+              rc.drawImage(placed, Math.cos(a) * radius, Math.sin(a) * radius);
+            }
+          }
+          rc.globalCompositeOperation = "source-in";
+          rc.fillStyle = `rgb(${CREAM.join(",")})`;
+          rc.fillRect(0, 0, SIZE, SIZE);
+          cc.drawImage(ring, 0, 0);
+        }
+        cc.drawImage(placed, 0, 0);
+
+        const out = makeCanvas(SIZE, SIZE);
+        const oc = ctx2d(out);
+        oc.shadowColor = `rgba(0,0,0,${o.shadow})`;
+        oc.shadowBlur = o.shadowBlur;
+        oc.shadowOffsetY = o.shadowY;
+        oc.drawImage(comp, 0, 0);
+        return out;
+      }
+
+      function renderSet(o, only) {
+        const cut = getCut(o.cutout, o.tolerance);
+        let specs = variantSpecs(o.team, o.teamShades);
+        if (only) specs = specs.slice(0, only);
+        const outputs = specs.map((spec) => {
+          const canvas = renderIcon(cut, o, spec);
+          return { ...spec, canvas, url: canvas.toDataURL("image/png") };
+        });
+        return { cut, outputs };
+      }
+
+      // ===================================================================
+      // Shared UI bits
+      // ===================================================================
+
+      const SAMPLES = [
+        { id: "lineart", label: "Line art (transparent)", svg: chalice(false) },
+        { id: "ink", label: "Ink drawing on paper", svg: chalice(true) },
+        { id: "photo", label: "Photo on a backdrop", svg: apple() },
+      ];
+      function chalice(paper) {
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 200 200">${
+          paper
+            ? '<rect width="200" height="200" fill="#f5f0e1"/><circle cx="36" cy="160" r="18" fill="#ebe3cf"/><circle cx="168" cy="38" r="12" fill="#ece5d2"/>'
+            : ""
+        }<g fill="#1f1b18"><path fill-rule="evenodd" d="M50 42 H150 Q150 112 100 122 Q50 112 50 42 Z M100 64 L114 84 L100 104 L86 84 Z"/><rect x="92" y="120" width="16" height="42"/><path d="M58 182 Q60 160 100 158 Q140 160 142 182 Z"/><circle cx="100" cy="24" r="9"/></g><g stroke="#cfc6b0" stroke-width="3" fill="none"><path d="M57 54 H143"/><path d="M66 176 Q100 166 134 176"/><path d="M62 70 Q66 98 90 110"/></g></svg>`;
+      }
+      function apple() {
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 200 200"><defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dfe7ee"/><stop offset="1" stop-color="#aab8c4"/></linearGradient><radialGradient id="ap" cx=".35" cy=".35" r=".75"><stop offset="0" stop-color="#ff8a80"/><stop offset=".5" stop-color="#d32f2f"/><stop offset="1" stop-color="#5d0f0f"/></radialGradient></defs><rect width="200" height="200" fill="url(#bg)"/><ellipse cx="100" cy="182" rx="60" ry="8" fill="#8e9ba6" opacity=".6"/><ellipse cx="100" cy="118" rx="58" ry="55" fill="url(#ap)"/><path d="M100 66 q4 -22 14 -30" stroke="#4e342e" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M108 54 q30 -20 46 -6 q-22 22 -46 6z" fill="#4caf50"/><ellipse cx="80" cy="96" rx="10" ry="16" fill="#fff" opacity=".5"/></svg>`;
+      }
+      const sampleUrl = (s) => "data:image/svg+xml;charset=utf-8," + encodeURIComponent(s.svg);
+
+      const sourcePicker = () =>
+        `<span class="row">${SAMPLES.map(
+          (s) => `<button data-sample="${s.id}">${s.label}</button>`,
+        ).join(
+          "",
+        )}<label class="link"><input type="file" accept="image/*" data-upload hidden />Upload…</label></span>`;
+      const teamPicker = () =>
+        `<span class="row">${TEAMS.map(
+          (t) => `<button data-team="${t}">${t[0].toUpperCase() + t.slice(1)}</button>`,
+        ).join("")}</span>`;
+      const token = (url, px) =>
+        `<div class="token" style="width:${px}px;height:${px}px"><img src="${url}" alt="" /></div>`;
+      const CUTOUT_LABEL = {
+        alpha: "used the image's own transparency",
+        edge: "removed the backdrop by flooding in from the edges",
+        light: "removed light paper (treated as an ink drawing)",
+      };
+
+      function downloadAll(outputs) {
+        for (const o of outputs) {
+          const a = document.createElement("a");
+          a.href = o.url;
+          a.download = `icon-${o.key}.png`;
+          a.click();
+        }
+      }
+
+      function syncActive() {
+        document
+          .querySelectorAll("[data-team]")
+          .forEach((b) => b.classList.toggle("active", b.dataset.team === state.team));
+        document
+          .querySelectorAll("[data-sample]")
+          .forEach((b) => b.classList.toggle("active", b.dataset.sample === source?.id));
+      }
+
+      // One settings object shared across variants, so flipping compares UIs, not inputs.
+      const state = { ...DEFAULTS };
+      let report = {};
+
+      // ===================================================================
+      // Variant A: Just upload. Team + one toggle; everything else automatic.
+      // ===================================================================
+
+      const VariantA = {
+        key: "A",
+        name: "Just upload",
+        mount(root) {
+          root.innerHTML = `
+            <section class="va">
+              <div>
+                <h1>Character icon</h1>
+                <div class="muted">Upload artwork. Alchemist makes every alignment version for you.</div>
+              </div>
+              <div class="va-drop" id="va-drop">
+                <div style="font-size:16px">Drop an image here, or
+                  <label class="link"><input type="file" accept="image/*" data-upload hidden />choose a file</label></div>
+                <div class="muted">Best results: a dark drawing on a transparent or plain light background.</div>
+                <div class="row" style="justify-content:center"><span class="muted">No art handy? Try:</span>${SAMPLES.map(
+                  (s) => `<button data-sample="${s.id}">${s.label}</button>`,
+                ).join("")}</div>
+              </div>
+              <div class="row"><span class="muted" style="width:60px">Team</span>${teamPicker()}</div>
+              <div class="row"><span class="muted" style="width:60px">Colour</span>
+                <button data-a-color="silhouette">Alignment colours</button>
+                <button data-a-color="original">Keep my colours</button>
+              </div>
+              <div class="va-out" id="va-out"></div>
+              <div class="row" style="justify-content:space-between">
+                <span class="muted" id="va-note"></span>
+                <button id="va-dl">Download PNGs</button>
+              </div>
+            </section>`;
+          const drop = root.querySelector("#va-drop");
+          drop.addEventListener("dragenter", () => drop.classList.add("over"));
+          drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+          drop.addEventListener("drop", () => drop.classList.remove("over"));
+          root.querySelectorAll("[data-a-color]").forEach((b) =>
+            b.addEventListener("click", () => {
+              state.color = b.dataset.aColor;
+              scheduleUpdate();
+            }),
+          );
+          root.querySelector("#va-dl").onclick = () => downloadAll(this.last.outputs);
+        },
+        update(root) {
+          // A ignores every Studio setting except team and the colour toggle.
+          const color = state.color === "original" ? "original" : "silhouette";
+          const o = { ...DEFAULTS, team: state.team, color };
+          const set = renderSet(o);
+          this.last = set;
+          root
+            .querySelectorAll("[data-a-color]")
+            .forEach((b) => b.classList.toggle("active", b.dataset.aColor === color));
+          root.querySelector("#va-out").innerHTML = set.outputs
+            .map(
+              (out) => `<figure>
+                <img class="big" src="${out.url}" alt="${out.label}" />
+                ${token(out.url, 72)}
+                <figcaption>${out.label}</figcaption>
+              </figure>`,
+            )
+            .join("");
+          root.querySelector("#va-note").innerHTML =
+            `We ${CUTOUT_LABEL[set.cut.mode]}.` +
+            (color === "original"
+              ? ' <span class="warn">With your own colours, every alignment version looks identical.</span>'
+              : "");
+          return { opts: o, set };
+        },
+      };
+
+      // ===================================================================
+      // Variant B: Studio. Bloodstar-style panel exposing every knob, live.
+      // ===================================================================
+
+      const B_CONTROLS = [
+        [
+          "Cutout",
+          [
+            [
+              "cutout",
+              "select",
+              [
+                ["auto", "Auto-detect"],
+                ["alpha", "Use transparency as-is"],
+                ["edge", "Remove backdrop (from edges)"],
+                ["light", "Remove light paper (ink drawing)"],
+              ],
+            ],
+            ["tolerance", "range", "Tolerance", 0, 0.3, 0.01],
+          ],
+        ],
+        [
+          "Colour",
+          [
+            [
+              "color",
+              "select",
+              [
+                ["silhouette", "Solid fill (Bloodstar)"],
+                ["tint", "Shaded (keeps light/dark)"],
+                ["original", "Original colours"],
+              ],
+            ],
+            ["detail", "range", "Pale interior lines", 0, 1, 0.05],
+            ["teamShades", "checkbox", "Outsider cyan / Minion orange"],
+          ],
+        ],
+        [
+          "Finish",
+          [
+            ["texture", "range", "Texture", 0, 1, 0.05],
+            ["outline", "range", "Pale outline (px)", 0, 10, 0.5],
+            ["shadow", "range", "Shadow opacity", 0, 1, 0.05],
+            ["shadowBlur", "range", "Shadow blur", 0, 30, 1],
+            ["shadowY", "range", "Shadow offset", -20, 30, 1],
+          ],
+        ],
+        [
+          "Placement (or drag / scroll a preview)",
+          [
+            ["size", "range", "Size", 0.3, 1, 0.01],
+            ["offsetX", "range", "X", -120, 120, 1],
+            ["offsetY", "range", "Y", -120, 120, 1],
+          ],
+        ],
+      ];
+
+      const VariantB = {
+        key: "B",
+        name: "Studio",
+        bg: "dark",
+        mount(root) {
+          const ctl = ([k, type, a, min, max, step]) => {
+            if (type === "select")
+              return `<select data-k="${k}">${a
+                .map(([v, l]) => `<option value="${v}">${l}</option>`)
+                .join("")}</select>`;
+            if (type === "checkbox")
+              return `<label class="row" style="font-size:12px"><input type="checkbox" data-k="${k}" /> ${a}</label>`;
+            return `<label class="ctl"><span>${a}</span><output data-out="${k}"></output>
+              <input type="range" data-k="${k}" min="${min}" max="${max}" step="${step}" /></label>`;
+          };
+          root.innerHTML = `
+            <div class="vb">
+              <section class="vb-src">
+                <h3>Source</h3>
+                ${sourcePicker()}
+                <p class="muted">Original</p>
+                <img id="vb-orig" alt="" />
+                <p class="muted">After cutout <span id="vb-mode"></span></p>
+                <div id="vb-cut"></div>
+              </section>
+              <section>
+                <h3>Style</h3>
+                <div style="margin-bottom:10px">${teamPicker()}</div>
+                ${B_CONTROLS.map(
+                  ([title, ctls]) =>
+                    `<fieldset><legend>${title}</legend>${ctls.map(ctl).join("")}</fieldset>`,
+                ).join("")}
+                <button id="vb-reset">Reset to defaults</button>
+              </section>
+              <section>
+                <div class="row" style="justify-content:space-between">
+                  <h3>Output</h3>
+                  <span class="row"><span class="muted">Preview on</span>
+                    ${["dark", "light", "checker", "token"]
+                      .map((b) => `<button data-bg="${b}">${b}</button>`)
+                      .join("")}
+                    <button id="vb-dl">Download PNGs</button></span>
+                </div>
+                <div class="vb-previews" id="vb-previews"></div>
+                <h3 style="margin-top:20px">At grimoire size</h3>
+                <div class="row" id="vb-small"></div>
+              </section>
+            </div>`;
+          root.querySelectorAll("[data-k]").forEach((el) => {
+            el.addEventListener("input", () => {
+              const k = el.dataset.k;
+              state[k] =
+                el.type === "checkbox"
+                  ? el.checked
+                  : el.type === "range"
+                    ? Number(el.value)
+                    : el.value;
+              scheduleUpdate();
+            });
+          });
+          root.querySelectorAll("[data-bg]").forEach((b) =>
+            b.addEventListener("click", () => {
+              this.bg = b.dataset.bg;
+              scheduleUpdate();
+            }),
+          );
+          root.querySelector("#vb-reset").onclick = () => {
+            Object.assign(state, DEFAULTS, { team: state.team });
+            scheduleUpdate();
+          };
+          root.querySelector("#vb-dl").onclick = () => downloadAll(this.last.outputs);
+
+          // Drag to move, wheel to scale, directly on the previews.
+          const previews = root.querySelector("#vb-previews");
+          let drag = null;
+          previews.addEventListener("pointerdown", (e) => {
+            const stage = e.target.closest(".stage");
+            if (!stage) return;
+            stage.setPointerCapture(e.pointerId);
+            drag = {
+              x: e.clientX,
+              y: e.clientY,
+              ox: state.offsetX,
+              oy: state.offsetY,
+              k: SIZE / stage.clientWidth,
+            };
+          });
+          previews.addEventListener("pointermove", (e) => {
+            if (!drag) return;
+            state.offsetX = Math.round(drag.ox + (e.clientX - drag.x) * drag.k);
+            state.offsetY = Math.round(drag.oy + (e.clientY - drag.y) * drag.k);
+            scheduleUpdate();
+          });
+          previews.addEventListener("pointerup", () => (drag = null));
+          previews.addEventListener(
+            "wheel",
+            (e) => {
+              if (!e.target.closest(".stage")) return;
+              e.preventDefault();
+              state.size = Math.min(1, Math.max(0.3, state.size - Math.sign(e.deltaY) * 0.02));
+              scheduleUpdate();
+            },
+            { passive: false },
+          );
+        },
+        update(root) {
+          root.querySelectorAll("[data-k]").forEach((el) => {
+            const v = state[el.dataset.k];
+            if (el.type === "checkbox") el.checked = v;
+            else if (document.activeElement !== el) el.value = v;
+          });
+          root
+            .querySelectorAll("[data-out]")
+            .forEach((el) => (el.textContent = state[el.dataset.out]));
+          root
+            .querySelectorAll("[data-bg]")
+            .forEach((b) => b.classList.toggle("active", b.dataset.bg === this.bg));
+
+          const o = { ...state };
+          const set = renderSet(o);
+          this.last = set;
+          root.querySelector("#vb-orig").src = source.url;
+          const cutHost = root.querySelector("#vb-cut");
+          cutHost.replaceChildren(set.cut.canvas);
+          root.querySelector("#vb-mode").textContent =
+            `(${set.cut.auto ? "auto: " : ""}${set.cut.mode})`;
+          root.querySelector("#vb-previews").innerHTML = set.outputs
+            .map(
+              (out) => `<figure>
+                <div class="stage ${this.bg}${this.bg === "token" ? " token" : ""}">
+                  <img src="${out.url}" alt="" /><div class="guide"></div></div>
+                <figcaption>${out.label}</figcaption></figure>`,
+            )
+            .join("");
+          root.querySelector("#vb-small").innerHTML = set.outputs
+            .map((out) => token(out.url, 56))
+            .join("");
+          return { opts: o, set };
+        },
+      };
+
+      // ===================================================================
+      // Variant C: Pick a look. A grid of cutout × colour treatments; click one.
+      // ===================================================================
+
+      const C_ROWS = [
+        ["alpha", "Use as-is"],
+        ["edge", "Remove backdrop"],
+        ["light", "Remove light paper"],
+      ];
+      const C_COLS = [
+        ["Solid fill", { color: "silhouette", detail: 0 }],
+        ["Shaded", { color: "tint", detail: 0 }],
+        ["Shaded + pale lines", { color: "tint", detail: 0.9 }],
+        ["Original colours", { color: "original", detail: 0 }],
+      ];
+
+      const VariantC = {
+        key: "C",
+        name: "Pick a look",
+        pick: null,
+        intensity: 0.5,
+        tilesKey: null,
+        optsFor(row, col) {
+          const i = this.intensity;
+          return {
+            ...DEFAULTS,
+            team: state.team,
+            cutout: C_ROWS[row][0],
+            ...C_COLS[col][1],
+            texture: i,
+            outline: 1 + i * 4,
+            shadow: 0.2 + i * 0.6,
+            shadowBlur: 4 + i * 12,
+          };
+        },
+        onSource() {
+          this.pick = null;
+        },
+        mount(root) {
+          root.innerHTML = `
+            <section class="vc">
+              <div class="vc-bar">
+                <div><div class="muted">Artwork</div>${sourcePicker()}</div>
+                <div><div class="muted">Team</div>${teamPicker()}</div>
+              </div>
+              <div>
+                <h2>Pick the look that suits your art</h2>
+                <div class="muted">Each tile is your upload through a different cutout and colour treatment.</div>
+              </div>
+              <div class="vc-main">
+              <div class="vc-grid" id="vc-grid"></div>
+              <div class="vc-chosen">
+                <div style="display:grid;gap:8px;min-width:200px">
+                  <h3 id="vc-title"></h3>
+                  <label class="muted">Intensity (texture, outline, shadow)
+                    <input type="range" id="vc-int" min="0" max="1" step="0.05" style="width:100%" /></label>
+                  <button id="vc-dl">Download PNGs</button>
+                </div>
+                <div class="row" id="vc-set" style="gap:24px"></div>
+              </div>
+              </div>
+            </section>`;
+          const int = root.querySelector("#vc-int");
+          int.value = this.intensity;
+          int.addEventListener("input", () => {
+            this.intensity = Number(int.value);
+            scheduleUpdate();
+          });
+          root.querySelector("#vc-grid").addEventListener("click", (e) => {
+            const tile = e.target.closest("[data-tile]");
+            if (!tile) return;
+            this.pick = tile.dataset.tile.split(",").map(Number);
+            scheduleUpdate();
+          });
+          root.querySelector("#vc-dl").onclick = () => downloadAll(this.last.outputs);
+          this.tilesKey = null;
+        },
+        update(root) {
+          if (!this.pick) {
+            // Default selection mirrors Auto-detect's choice for this upload.
+            const mode = getCut("auto", DEFAULTS.tolerance).mode;
+            this.pick = [C_ROWS.findIndex(([m]) => m === mode), 0];
+          }
+          const tilesKey = `${sourceVersion}|${state.team}|${this.intensity}`;
+          const grid = root.querySelector("#vc-grid");
+          if (tilesKey !== this.tilesKey) {
+            this.tilesKey = tilesKey;
+            let html =
+              "<div></div>" +
+              C_COLS.map(([label]) => `<div class="colhead">${label}</div>`).join("");
+            C_ROWS.forEach(([, rowLabel], r) => {
+              html += `<div class="rowhead">${rowLabel}</div>`;
+              C_COLS.forEach((_, c) => {
+                const url = renderSet(this.optsFor(r, c), 1).outputs[0].url;
+                html += `<div class="vc-tile" data-tile="${r},${c}"><img src="${url}" alt="" /></div>`;
+              });
+            });
+            grid.innerHTML = html;
+          }
+          grid
+            .querySelectorAll("[data-tile]")
+            .forEach((t) => t.classList.toggle("selected", t.dataset.tile === this.pick.join(",")));
+          const [r, c] = this.pick;
+          const o = this.optsFor(r, c);
+          const set = renderSet(o);
+          this.last = set;
+          root.querySelector("#vc-title").textContent = `${C_ROWS[r][1]} · ${C_COLS[c][0]}`;
+          root.querySelector("#vc-set").innerHTML = set.outputs
+            .map(
+              (out) => `<figure>
+                <img src="${out.url}" alt="" style="width:150px;height:150px;background:#0d0b09;border-radius:10px" />
+                ${token(out.url, 64)}
+                <figcaption>${out.label}</figcaption></figure>`,
+            )
+            .join("");
+          return { opts: o, set };
+        },
+      };
+
+      // ===================================================================
+      // Variant switcher and update loop
+      // ===================================================================
+
+      const VARIANTS = [VariantA, VariantB, VariantC];
+      const app = document.getElementById("app");
+      let current = null;
+
+      function variantFromUrl() {
+        const v = new URLSearchParams(location.search).get("variant");
+        return VARIANTS.find((x) => x.key === v) ?? VARIANTS[0];
+      }
+
+      function show(variant) {
+        current = variant;
+        try {
+          const u = new URL(location.href);
+          u.searchParams.set("variant", variant.key);
+          history.replaceState(null, "", u);
+        } catch {
+          // Some browsers refuse replaceState on file:// URLs; the in-memory variant still works.
+        }
+        document.getElementById("variant-label").textContent = `${variant.key} (${variant.name})`;
+        variant.mount(app);
+        scheduleUpdate();
+      }
+
+      function cycle(step) {
+        const i = VARIANTS.indexOf(current);
+        show(VARIANTS[(i + step + VARIANTS.length) % VARIANTS.length]);
+      }
+
+      let pending = false;
+      function scheduleUpdate() {
+        if (pending) return;
+        pending = true;
+        requestAnimationFrame(() => {
+          pending = false;
+          if (!source) return;
+          syncActive();
+          const t0 = performance.now();
+          const { opts, set } = current.update(app);
+          report = {
+            variant: `${current.key} (${current.name})`,
+            source: source.name,
+            cutout: `${set.cut.auto ? "auto → " : ""}${set.cut.mode}`,
+            exportOrder: set.outputs.map((o) => `${o.key}: ${o.label}`),
+            renderMs: Math.round(performance.now() - t0),
+            settings: opts,
+          };
+          document.getElementById("state").textContent = JSON.stringify(report, null, 2);
+        });
+      }
+
+      document.getElementById("prev").onclick = () => cycle(-1);
+      document.getElementById("next").onclick = () => cycle(1);
+      document.addEventListener("keydown", (e) => {
+        const t = e.target;
+        if (t.closest?.("input, textarea, select, [contenteditable]")) return;
+        if (e.key === "ArrowLeft") cycle(-1);
+        if (e.key === "ArrowRight") cycle(1);
+      });
+
+      document.addEventListener("click", (e) => {
+        const sample = e.target.closest("[data-sample]");
+        if (sample) {
+          const s = SAMPLES.find((x) => x.id === sample.dataset.sample);
+          loadSource(sampleUrl(s), s.label, s.id);
+        }
+        const team = e.target.closest("[data-team]");
+        if (team) {
+          state.team = team.dataset.team;
+          scheduleUpdate();
+        }
+      });
+      document.addEventListener("change", (e) => {
+        if (e.target.matches("[data-upload]")) loadFile(e.target.files[0]);
+      });
+      window.addEventListener("dragover", (e) => e.preventDefault());
+      window.addEventListener("drop", (e) => {
+        e.preventDefault();
+        loadFile(e.dataTransfer.files[0]);
+      });
+
+      // ?sample=lineart|ink|photo and ?team=… make a specific case shareable.
+      const params = new URLSearchParams(location.search);
+      if (TEAMS.includes(params.get("team"))) state.team = params.get("team");
+      const first = SAMPLES.find((x) => x.id === params.get("sample")) ?? SAMPLES[0];
+      show(variantFromUrl());
+      loadSource(sampleUrl(first), first.label, first.id);
+    </script>
+  </body>
+</html>
