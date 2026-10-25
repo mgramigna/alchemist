@@ -15,12 +15,13 @@ const { values: args } = parseArgs({
     native: { type: "boolean", default: false },
     geo: { type: "string", default: "0" },
     dsf: { type: "string", default: "1" },
+    engine: { type: "string", default: "html-to-image" },
     variants: { type: "string", default: "A,B,C" },
     scripts: { type: "string", default: "full,teensy" },
   },
 });
 
-const suffix = `${args.icons === "cross" ? "-cross" : ""}${args.geo === "1" ? "-geo" : ""}${args.dsf !== "1" ? `-dsf${args.dsf}` : ""}`;
+const suffix = `${args.icons === "cross" ? "-cross" : ""}${args.geo === "1" ? "-geo" : ""}${args.dsf !== "1" ? `-dsf${args.dsf}` : ""}${args.engine !== "html-to-image" ? `-${args.engine}` : ""}`;
 const outDir = new URL(`./out/${args.browser}${suffix}/`, import.meta.url);
 await mkdir(outDir, { recursive: true });
 
@@ -30,7 +31,7 @@ page.on("pageerror", (e) => console.error("pageerror:", e.message));
 
 for (const script of args.scripts.split(",")) {
   for (const variant of args.variants.split(",")) {
-    const qs = new URLSearchParams({ variant, script, page: args.page, icons: args.icons, geo: args.geo });
+    const qs = new URLSearchParams({ variant, script, page: args.page, icons: args.icons, geo: args.geo, engine: args.engine });
     await page.goto(`http://localhost:4173/?${qs}`);
     const overflow = await page.evaluate(() => window.__ready);
     const state = await page.locator("#state").innerText();

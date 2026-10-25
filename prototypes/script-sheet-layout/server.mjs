@@ -87,6 +87,9 @@ const handler = (cors) => async (req, res) => {
   }
 };
 
-createServer(handler(false)).listen(port);
-createServer(handler(true)).listen(port + 1);
+// Reuse an already-running server (render.mjs imports this file).
+const listen = (server, p) =>
+  server.on("error", (e) => e.code !== "EADDRINUSE" && console.error(e)).listen(p);
+listen(createServer(handler(false)), port);
+listen(createServer(handler(true)), port + 1);
 console.log(`Script sheet prototype: http://localhost:${port}/?variant=A`);

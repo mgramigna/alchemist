@@ -7,7 +7,9 @@
     "render": "node render.mjs"
   },
   "dependencies": {
+    "@zumer/snapdom": "^3.4.0",
     "html-to-image": "1.11.13",
+    "modern-screenshot": "^4.7.0",
     "playwright": "^1.64.1"
   }
 }

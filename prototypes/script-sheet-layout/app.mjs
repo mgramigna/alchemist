@@ -1,5 +1,7 @@
 // PROTOTYPE — throwaway renderer for the script sheet layout question (#14).
 import { scripts, standardSteps, teams } from "./data.mjs";
+import { domToPng } from "./node_modules/modern-screenshot/dist/index.mjs";
+import { snapdom } from "./node_modules/@zumer/snapdom/dist/snapdom.mjs";
 
 const params = new URLSearchParams(location.search);
 const opts = {
@@ -8,6 +10,7 @@ const opts = {
   page: params.get("page") ?? "letter",
   icons: params.get("icons") ?? "same",
   geo: params.get("geo") ?? "0",
+  engine: params.get("engine") ?? "html-to-image",
 };
 
 const pages = { letter: [816, 1056], a4: [794, 1123] };
@@ -315,7 +318,13 @@ const capture = async (sheet) => {
   await ready;
   const node = document.querySelector(`[data-sheet="${sheet}"]`);
   const t0 = performance.now();
-  const dataUrl = await htmlToImage.toPng(node, { pixelRatio: DPI / 96, width: pw, height: ph });
+  const scale = DPI / 96;
+  const dataUrl =
+    opts.engine === "modern-screenshot"
+      ? await domToPng(node, { scale, width: pw, height: ph })
+      : opts.engine === "snapdom"
+        ? (await snapdom.toPng(node, { scale, embedFonts: true })).src
+        : await htmlToImage.toPng(node, { pixelRatio: scale, width: pw, height: ph });
   const ms = Math.round(performance.now() - t0);
   return { dataUrl, ms };
 };

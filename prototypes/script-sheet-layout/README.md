@@ -20,3 +20,15 @@ node contact.mjs       # out/chromium/contact.jpg
 - C, Token poster: print-economy, centred token cells, player-count setup table; night sheet is two numbered tables.
 
 Sample Characters are original. Fonts are OFL (licences in `fonts/`). Icons are generated placeholder sigils.
+
+## Capture engine comparison (#17)
+
+`?engine=html-to-image|modern-screenshot|snapdom` switches the capture library; `render.mjs --engine <name>` renders with it.
+`diff-engines.mjs <variant>` pixel-diffs each engine against a native Chromium screenshot at 300dpi
+(`render.mjs --native --dsf 3.125`, a stand-in for Cloudflare Browser Rendering); `compare-engines.mjs x,y,w,h <sheet> <name>` crops side by side.
+
+- modern-screenshot 4.7.0: matches native (≤0.15% strong-diff pixels, none forming layout bands); works in Chromium, Firefox, WebKit. **Chosen.**
+- html-to-image 1.11.13: text wraps narrower than the live layout while box sizes stay fixed, leaving stray gaps.
+- SnapDOM 3.4.0: breaks the night-sheet step bands (step name overlaps its text).
+
+The native reference screenshots include the prototype's floating switcher bar near the bottom; ignore that band in diffs.
