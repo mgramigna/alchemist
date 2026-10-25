@@ -10,6 +10,14 @@ A tool for designing homebrew Scripts for Blood on the Clocktower, made up of Cu
 A named, authored collection of Characters that a group plays Blood on the Clocktower with.
 _Avoid_: Edition, set, project
 
+**Script Owner**:
+The Alchemist user who owns a Script and alone can edit it. Ownership is independent of the Script's Author Credit.
+_Avoid_: Author (when referring to editing rights)
+
+**Author Credit**:
+The editable attribution on a Script, shown on shared pages and included in exports. It starts with the Script Owner's display name and remains independent of later display name changes.
+_Avoid_: Owner (when referring to attribution)
+
 ### Characters
 
 **Character**:
