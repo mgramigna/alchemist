@@ -26,14 +26,15 @@
       "vitest": "5.0.5",
       "@effect/sql-d1": "4.0.6",
       "@effect/atom-react": "4.0.6",
-      "@cloudflare/workers-types": "5.20261025.1"
+      "@cloudflare/workers-types": "5.20261025.1",
+      "@effect/platform-bun": "4.0.6"
     }
   },
   "type": "module",
   "scripts": {
     "build": "bun run --filter @alchemist/web build",
     "check": "bun run fmt:check && bun run lint && bun run typecheck && bun run test",
-    "dev": "bun run --filter @alchemist/web dev",
+    "dev": "bun run build && bun run --no-orphans --parallel dev:api dev:web",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
     "lint": "oxlint",
@@ -42,16 +43,22 @@
     "test": "bun --bun vitest run",
     "test:watch": "bun --bun vitest",
     "typecheck": "tsc -b",
-    "deploy": "bun run build && node node_modules/alchemy/bin/cli.js deploy",
-    "smoke": "node tools/smoke-public-script.ts",
-    "test:browser": "node node_modules/@playwright/test/cli.js test",
-    "dev:worker": "bun run build && node node_modules/alchemy/bin/cli.js dev"
+    "deploy": "bun run build && bun alchemy deploy",
+    "dev:worker": "bun run build && bun alchemy dev",
+    "dev:api": "bun alchemy dev --stage local",
+    "dev:web": "bun run --filter @alchemist/web dev",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@alchemist/domain": "workspace:*",
+    "@alchemy.run/cloudflare": "2.0.0-beta.84",
+    "@effect/platform-bun": "catalog:",
     "@effect/tsgo": "catalog:",
     "@oxlint/plugins": "1.89.0",
+    "@playwright/test": "1.64.1",
     "@tanstack/intent": "0.5.6",
     "@types/node": "catalog:",
+    "alchemy": "2.0.0-beta.84",
     "effect": "catalog:",
     "husky": "9.1.7",
     "lint-staged": "17.6.0",
@@ -59,12 +66,7 @@
     "oxlint": "1.89.0",
     "oxlint-tsgolint": "7.0.2005",
     "typescript": "catalog:",
-    "vitest": "catalog:",
-    "@alchemist/domain": "workspace:*",
-    "@alchemy.run/cloudflare": "2.0.0-beta.84",
-    "@effect/platform-node": "catalog:",
-    "@playwright/test": "1.64.1",
-    "alchemy": "2.0.0-beta.84"
+    "vitest": "catalog:"
   },
   "lint-staged": {
     "*.{json,css,md}": [

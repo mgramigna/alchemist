@@ -3,16 +3,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node ../../node_modules/vite/bin/vite.js",
-    "build": "node ../../node_modules/vite/bin/vite.js build"
+    "dev": "vite",
+    "build": "vite build"
   },
   "dependencies": {
-    "@tanstack/react-router": "catalog:",
-    "react": "catalog:",
-    "react-dom": "catalog:",
     "@alchemist/domain": "workspace:*",
     "@effect/atom-react": "catalog:",
-    "effect": "catalog:"
+    "@tanstack/react-router": "catalog:",
+    "effect": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
   },
   "devDependencies": {
     "@tailwindcss/vite": "catalog:",

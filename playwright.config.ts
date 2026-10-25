@@ -1,7 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
-  testDir: "./tools/browser",
+  testDir: "./e2e",
   use: {
     baseURL: process.env.ALCHEMIST_ORIGIN ?? "http://localhost:1337",
     browserName: "chromium",

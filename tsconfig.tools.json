@@ -5,12 +5,7 @@
     "outDir": ".tsbuild/tools",
     "lib": ["ES2024", "DOM"]
   },
-  "include": [
-    "alchemy.run.ts",
-    "tools/smoke-public-script.ts",
-    "playwright.config.ts",
-    "tools/browser/**/*.ts"
-  ],
+  "include": ["alchemy.run.ts", "playwright.config.ts", "e2e/**/*.ts"],
   "references": [
     {
       "path": "packages/domain"

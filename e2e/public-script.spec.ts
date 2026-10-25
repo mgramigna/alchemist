@@ -12,7 +12,7 @@ test("public persisted Script opens directly, refreshes, and fits a narrow scree
   await expect(page.getByText("This Script has no Characters yet.")).toBeVisible();
   await expect(page.getByText("Fixture Owner")).toHaveCount(0);
   await page.keyboard.press("Tab");
-  await expect(page.getByRole("link", { name: "Skip to Script" })).toBeFocused();
+  await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
@@ -56,4 +56,41 @@ test("a transport failure offers a keyboard-accessible retry that recovers", asy
   await retry.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "The Midnight Alchemist" })).toBeVisible();
+});
+
+test("typed home navigation and browser Back restore the public Script without a document reload", async ({
+  page,
+}) => {
+  await page.goto(path);
+  await expect(page.getByRole("heading", { name: "The Midnight Alchemist" })).toBeVisible();
+  await page.evaluate(() => {
+    document.documentElement.dataset.navigationMarker = "same-document";
+  });
+  await page.getByRole("link", { name: "Alchemist home" }).click();
+  await expect(page).toHaveURL("/");
+  await expect(
+    page.getByRole("heading", { name: "Every story starts with a little alchemy." }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.dataset.navigationMarker)).toBe(
+    "same-document",
+  );
+  await page.goBack();
+  await expect(page).toHaveURL(path);
+  await expect(page.getByRole("heading", { name: "The Midnight Alchemist" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.dataset.navigationMarker)).toBe(
+    "same-document",
+  );
+});
+
+test("the Script not-found boundary can navigate home and return through history", async ({
+  page,
+}) => {
+  await page.goto("/scripts/00000000000000000000000000");
+  await expect(page.getByRole("heading", { name: "Script not found" })).toBeVisible();
+  await page.getByRole("link", { name: "Go home" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Every story starts with a little alchemy." }),
+  ).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Script not found" })).toBeVisible();
 });
