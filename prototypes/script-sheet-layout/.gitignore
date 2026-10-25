@@ -1,0 +1,3 @@
+out/**
+!out/chromium/
+!out/chromium/contact.jpg

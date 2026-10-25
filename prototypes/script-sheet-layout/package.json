@@ -1,0 +1,13 @@
+{
+  "name": "prototype-script-sheet-layout",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "html-to-image": "1.11.13",
+    "playwright": "^1.64.1"
+  }
+}

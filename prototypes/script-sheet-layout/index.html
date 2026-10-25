@@ -1,0 +1,21 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway. Question (issue #14): what should the rendered
+  character sheet and night sheet look like?
+  Three structurally different variants, each rendering both sheets, switchable
+  via ?variant=A|B|C, exported to PNG with html-to-image (DOM capture, #5).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>PROTOTYPE · Script sheet layout</title>
+    <link rel="stylesheet" href="sheet.css" />
+    <script src="vendor/html-to-image.js"></script>
+    <script type="module" src="app.mjs"></script>
+  </head>
+  <body>
+    <main id="stage"></main>
+    <aside id="state"></aside>
+    <nav id="switcher"></nav>
+  </body>
+</html>
