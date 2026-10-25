@@ -23,6 +23,7 @@
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "prepare": "husky && effect-tsgo patch --typescript --oxlint",
+    "prototype:script-editor": "bun install --cwd prototypes/script-editor && bun run --cwd prototypes/script-editor dev",
     "test": "bun --bun vitest run",
     "test:watch": "bun --bun vitest",
     "typecheck": "tsc -b"
