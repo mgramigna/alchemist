@@ -1,4 +1,12 @@
 // Sheet Scripts served anonymously through the public read, shared by the sheet specs.
+import {
+  Character,
+  NightOrders,
+  ScriptExportInvalid,
+  botcDocument,
+  scriptExportProblems,
+} from "@alchemist/domain";
+import { Schema } from "effect";
 import { expect, type Page } from "@playwright/test";
 
 const rpc = /\/api\/rpc\/?$/;
@@ -51,6 +59,35 @@ export const sheetScript = (
 export const serve = async (page: Page, script: ReturnType<typeof sheetScript>) => {
   await page.route(rpc, async (route) => {
     const body = route.request().postDataJSON();
+
+    if (body.tag === "Script.exportPublic") {
+      const source = {
+        script,
+        characters: script.characters.map((c) =>
+          Schema.decodeUnknownSync(Character)({
+            ...c,
+            reminders: [],
+            remindersGlobal: [],
+            setup: false,
+            flavor: "",
+          }),
+        ),
+        nightOrders: Schema.decodeSync(NightOrders)(script.nightOrders),
+        jinxes: [],
+      };
+
+      const problems = scriptExportProblems(source);
+
+      // Deliberate NDJSON wire fixtures, matching the RPC transport.
+      const exit = problems.length
+        ? `{"_tag":"Failure","cause":[{"_tag":"Fail","error":${JSON.stringify(new ScriptExportInvalid({ problems }))}}]}`
+        : `{"_tag":"Success","value":${JSON.stringify({ filename: "fixture.json", json: JSON.stringify(botcDocument(source, "https://alchemist.example")) })}}`;
+
+      return route.fulfill({
+        contentType: "application/x-ndjson",
+        body: `{"_tag":"Exit","requestId":${JSON.stringify(body.id)},"exit":${exit}}\n`,
+      });
+    }
 
     return body.tag === "Script.readPublic"
       ? route.fulfill({

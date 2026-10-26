@@ -536,6 +536,15 @@ test("D1 imports reused IDs atomically, keeps integration data across edits, and
       expect(yield* scripts.listJinxes("alice", first.id)).toEqual(draft.jinxes);
       expect(yield* scripts.readImported("bob", first.id)).toBeNull();
       expect(yield* scripts.readImported("alice", first.id)).toEqual(draft.imported);
+      const snapshot = Option.getOrThrow(yield* scripts.findExport(first.id));
+      expect(snapshot).toEqual({
+        script: { name: first.name, authorCredit: first.authorCredit },
+        characters: [...draft.characters].sort((a, b) => a.id.localeCompare(b.id)),
+        nightOrders: draft.nightOrders,
+        jinxes: draft.jinxes,
+        imported: draft.imported,
+      });
+      expect(Option.isNone(yield* scripts.findExport(ScriptId.make("missing")))).toBe(true);
       expect(
         yield* scripts.useGenericArtwork("bob", first.id, "image", CharacterId.make("seer"), 20),
       ).toBe(false);

@@ -34,6 +34,12 @@ export const Handlers = Rpcs.toLayer(
 
     return {
       "Script.readPublic": ({ id }) => scripts.readPublic(id),
+      "Script.exportPublic": ({ id }) =>
+        Effect.gen(function* () {
+          const config = yield* ExportOrigin;
+
+          return yield* scripts.exportPublicJson(id, config.origin);
+        }),
       "Script.export": ({ id }) =>
         Effect.gen(function* () {
           const config = yield* ExportOrigin;

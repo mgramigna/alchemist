@@ -1,4 +1,5 @@
 import { botcSchemaProblems, ScriptNotFound, type User } from "@alchemist/domain";
+import { readFile } from "node:fs/promises";
 import { CurrentUser } from "@alchemist/domain/rpc";
 import { assert, it } from "@effect/vitest";
 import { Effect, Predicate } from "effect";
@@ -49,6 +50,11 @@ it.effect(
         const pair = { first: b.id, second: a.id, explanation: "They interact." };
         yield* scripts.updateJinx(script.id, pair);
         const result = yield* scripts.exportJson(script.id, "https://alchemist.example");
+
+        assert.deepStrictEqual(
+          yield* scripts.exportPublicJson(script.id, "https://alchemist.example"),
+          result,
+        );
 
         const expected = [
           {
@@ -145,5 +151,42 @@ it.effect(
 
         assert.strictEqual(metaInvalid._tag, "ScriptExportInvalid");
       }).pipe(Effect.provide(fixture.layer), Effect.provideService(CurrentUser, alice));
+    }),
+);
+
+it.effect(
+  "anonymous exports preserve supported import data and omit private artwork repair URLs",
+  () =>
+    Effect.gen(function* () {
+      const fixture = yield* scriptsFixture;
+
+      const json = yield* Effect.promise(() =>
+        readFile(new URL("../../domain/test/fixtures/import-script.json", import.meta.url), "utf8"),
+      );
+
+      yield* Effect.gen(function* () {
+        const scripts = yield* Scripts;
+
+        const script = yield* scripts
+          .importJson(json, true)
+          .pipe(Effect.provideService(CurrentUser, alice));
+
+        const exported = yield* scripts.exportPublicJson(script.id, "https://alchemist.example");
+        const document = JSON.parse(exported.json);
+        assert.deepStrictEqual(botcSchemaProblems(document), []);
+        assert.strictEqual(
+          document.find((c: { id: string }) => c.id === "seer").edition,
+          "borrowedmoon",
+        );
+        assert.notInclude(exported.json, "https://example.org/seer.png");
+        assert.notInclude(exported.json, "https://example.org/logo.png");
+        assert.notInclude(exported.json, '"source"');
+        assert.notInclude(exported.json, '"artwork"');
+        fixture.rows.delete(script.id);
+        assert.instanceOf(
+          yield* scripts.exportPublicJson(script.id, "https://alchemist.example").pipe(Effect.flip),
+          ScriptNotFound,
+        );
+      }).pipe(Effect.provide(fixture.layer));
     }),
 );

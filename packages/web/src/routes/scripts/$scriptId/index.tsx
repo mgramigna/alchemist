@@ -3,7 +3,8 @@ import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-rout
 import { Effect, Option, Schema } from "effect";
 import { useState } from "react";
 import { AtomRegistry } from "effect/reactivity";
-import { publicScript } from "../../../api.ts";
+import { publicScript, publicScriptExport } from "../../../api.ts";
+import { PublicJsonDownload } from "../../../components/public-json-download.tsx";
 import { SheetPreview } from "../../../components/sheet-preview.tsx";
 import type { SheetView } from "../../../lib/sheets.ts";
 import { Button, buttonVariants } from "../../../components/ui/button.tsx";
@@ -17,6 +18,7 @@ export const Route = createFileRoute("/scripts/$scriptId/")({
     const query = publicScript(id.value);
     // The route owns freshness, including retry after an atom's cached failure.
     context.registry.refresh(query);
+    context.registry.refresh(publicScriptExport(id.value));
 
     return Effect.runPromise(
       AtomRegistry.getResult(context.registry, query, { suspendOnWaiting: true }).pipe(
@@ -82,6 +84,10 @@ function PublicScript() {
         <h1 className="text-3xl font-semibold wrap-anywhere">{script.name || "Untitled Script"}</h1>
         <p className="wrap-anywhere">By {script.authorCredit || "Uncredited"}</p>
       </header>
+      <p className="text-sm text-muted-foreground">
+        This link shows the latest saved Script. Reload to see new changes from the Script Owner.
+      </p>
+      <PublicJsonDownload key={script.id} script={script} />
       {script.characters.length === 0 ? (
         <section
           aria-label="Sheets"
