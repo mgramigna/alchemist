@@ -108,6 +108,7 @@ test("D1 owner queries are scoped by owner, ordered by last change, and updates 
         name: "Renamed",
         authorCredit: "Credit",
         characters: [],
+        nightOrders: defaultNightOrders,
         jinxes: [],
       });
       // The development fixture is readable with the initial schema.
@@ -280,6 +281,21 @@ test("D1 Night Orders default on creation, replace atomically, refuse other Scri
         otherNight: joined.otherNight,
       });
       expect(Option.getOrNull(yield* scripts.findOwned("alice", mine.id))?.updatedAt).toBe(30);
+
+      // The share link reads the same orders and instructions the sheets render.
+      const shared = Option.getOrThrow(yield* scripts.findPublic(mine.id));
+
+      expect(shared.nightOrders).toEqual(Option.getOrNull(reordered));
+      expect(shared.characters).toEqual([
+        {
+          id: chef.id,
+          name: "Chef",
+          ability: "You start knowing a number.",
+          team: "townsfolk",
+          firstNightInstructions: "Show the number.",
+          otherNightInstructions: "",
+        },
+      ]);
 
       // The foreign key refuses another Script's Character and rolls back the whole write.
       const crossScript = yield* Effect.flip(

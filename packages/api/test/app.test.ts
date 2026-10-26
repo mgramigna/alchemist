@@ -1,5 +1,5 @@
 import { scriptsFixture } from "./support/scripts.ts";
-import { ScriptId } from "@alchemist/domain";
+import { ScriptId, defaultNightOrders } from "@alchemist/domain";
 import { assert, it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { AppConfig, handleRequest } from "../src/app.ts";
@@ -171,6 +171,7 @@ it.effect("public reads stay anonymous through the shared RPC endpoint", () =>
       name: "Public",
       authorCredit: "Credit",
       characters: [],
+      nightOrders: defaultNightOrders,
       jinxes: [],
     });
   }).pipe(
@@ -184,6 +185,7 @@ it.effect("public reads stay anonymous through the shared RPC endpoint", () =>
             name: "Public",
             authorCredit: "Credit",
             characters: [],
+            nightOrders: defaultNightOrders,
             jinxes: [],
           }),
       }),

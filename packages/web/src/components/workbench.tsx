@@ -59,15 +59,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./ui/alert-dialog.tsx";
-import {
-  CharacterForm,
-  CharacterNavigator,
-  ExportBlockerList,
-  SheetPreview,
-} from "./characters.tsx";
-import { NightOrderEditor, NightSheetPreview } from "./night-orders.tsx";
+import { CharacterForm, CharacterNavigator, ExportBlockerList } from "./characters.tsx";
+import { NightOrderEditor } from "./night-orders.tsx";
+import { SheetPreview } from "./sheet-preview.tsx";
+import { sheetShowing, type SheetView } from "../lib/sheets.ts";
 import { Button, buttonVariants } from "./ui/button.tsx";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx";
 import { Input } from "./ui/input.tsx";
 import { Spinner } from "./ui/spinner.tsx";
 
@@ -84,11 +80,6 @@ type Page =
   | { readonly kind: "script" }
   | { readonly kind: "character"; readonly id: CharacterId }
   | { readonly kind: "night"; readonly night: Night };
-
-type PreviewSheet = "characters" | Night;
-
-const isPreviewSheet = (value: unknown): value is PreviewSheet =>
-  value === "characters" || NIGHTS.some((night) => night === value);
 
 /** The owner's editor: navigator, focused form and live preview. */
 export function Workbench({
@@ -145,12 +136,15 @@ export function Workbench({
     );
 
   const [page, setPage] = useState<Page>({ kind: "script" });
-  const [preview, setPreview] = useState<PreviewSheet>("characters");
+  const [preview, setPreview] = useState<SheetView>("characters");
   const selectedId = page.kind === "character" ? page.id : null;
 
-  // null selects the Script details.
-  const setSelectedId = (id: CharacterId | null) =>
+  // null selects the Script details. The preview turns to a sheet showing the Character.
+  const setSelectedId = (id: CharacterId | null) => {
     setPage(id === null ? { kind: "script" } : { kind: "character", id });
+
+    if (id !== null) setPreview((current) => sheetShowing(current, id, nights.orders));
+  };
 
   // Opening a night also shows its sheet in the preview.
   const openNight = (night: Night) => {
@@ -495,47 +489,29 @@ export function Workbench({
         )}
         <aside
           aria-labelledby="preview-title"
-          className="flex min-w-0 flex-col gap-3 lg:col-span-4"
+          className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-4 lg:col-span-4 lg:self-start"
         >
           <h2 id="preview-title" className="text-sm font-medium text-muted-foreground">
             Preview
           </h2>
-          <Tabs
-            value={preview}
-            onValueChange={(value) => {
-              if (isPreviewSheet(value)) setPreview(value);
+          {characters.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              Characters you add will appear on the sheets.
+            </p>
+          )}
+          <SheetPreview
+            content={{
+              name: values.name,
+              authorCredit: values.authorCredit,
+              characters,
+              nightOrders: nights.orders,
+              jinxes: relationships.jinxes,
             }}
-          >
-            <TabsList aria-label="Preview sheet" className="w-full">
-              <TabsTrigger value="characters">Characters</TabsTrigger>
-              {NIGHTS.map((night) => (
-                <TabsTrigger key={night} value={night}>
-                  {NIGHT_LABELS[night]}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-            <TabsContent value="characters">
-              <SheetPreview
-                name={values.name}
-                authorCredit={values.authorCredit}
-                characters={characters}
-                jinxes={relationships.jinxes}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-              />
-            </TabsContent>
-            {NIGHTS.map((night) => (
-              <TabsContent key={night} value={night}>
-                <NightSheetPreview
-                  night={night}
-                  order={nights.orders[night]}
-                  characters={characters}
-                  selectedId={selectedId}
-                  onSelect={setSelectedId}
-                />
-              </TabsContent>
-            ))}
-          </Tabs>
+            view={preview}
+            onViewChange={setPreview}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+          />
         </aside>
       </div>
       <DeleteCharacterDialog

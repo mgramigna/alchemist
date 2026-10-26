@@ -1,4 +1,4 @@
-import { ScriptId, ScriptNotFound } from "@alchemist/domain";
+import { ScriptId, ScriptNotFound, defaultNightOrders } from "@alchemist/domain";
 import { Rpcs } from "@alchemist/domain/rpc";
 import { expect, test } from "@playwright/test";
 import { Effect, Layer } from "effect";
@@ -34,6 +34,7 @@ test("public RPC reads persisted data, exposes only public fields, and reports t
           expect(script.name).toBe("The Midnight Alchemist");
           expect(script.authorCredit).toBe("The Clocktower Collective");
           expect(script.characters).toEqual([]);
+          expect(script.nightOrders).toEqual(defaultNightOrders);
         }
 
         const missing = yield* client["Script.readPublic"]({
@@ -60,6 +61,7 @@ test("public RPC reads persisted data, exposes only public fields, and reports t
     "id",
     "jinxes",
     "name",
+    "nightOrders",
   ]);
   expect(message.exit.value.id).toBe(scriptId);
 });

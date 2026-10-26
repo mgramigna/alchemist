@@ -1,0 +1,371 @@
+/*
+ * Printable sheets (Variant B from #14). Sizes are natural page pixels and
+ * fixed colours, independent of the app theme, so the preview and the PNG
+ * capture match. Every size multiplies --u, which shrinks when a sheet must
+ * fit one page.
+ */
+@import "@fontsource-variable/cinzel";
+@import "@fontsource/sorts-mill-goudy/400-italic.css";
+@import "@fontsource-variable/libre-franklin/wght-italic.css";
+
+[data-slot="sheet"] {
+  --fit: 1;
+  --u: calc(1px * var(--fit));
+  --sheet-good: #1d5fae;
+  --sheet-evil: #a3171d;
+  --sheet-ink: #1d1a16;
+  --sheet-paper: #fbf8f1;
+  --sheet-band: #1c1a22;
+  --sheet-band-ink: #f4ead2;
+  --sheet-rule: #ebe5d8;
+  --sheet-selected: #7a3fb5;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: var(--page-w);
+  height: var(--page-h);
+  overflow: hidden;
+  background: var(--sheet-paper);
+  color: var(--sheet-ink);
+  font-family: "Libre Franklin Variable", sans-serif;
+  font-size: calc(10 * var(--u));
+  line-height: 1.28;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+[data-slot="sheet"] *,
+[data-slot="sheet"] *::before,
+[data-slot="sheet"] *::after {
+  box-sizing: border-box;
+}
+
+[data-slot="sheet"] img {
+  flex-shrink: 0;
+  width: calc(38 * var(--u));
+  height: calc(38 * var(--u));
+  object-fit: contain;
+}
+
+/* Interactive rows in the Workbench preview; plain rows everywhere else. */
+[data-slot="sheet-row"] {
+  display: flex;
+  gap: calc(8 * var(--u));
+  align-items: flex-start;
+  width: 100%;
+  border-radius: calc(3 * var(--u));
+}
+
+button[data-slot="sheet-row"] {
+  appearance: none;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+button[data-slot="sheet-row"]:hover {
+  background: rgb(122 63 181 / 0.08);
+}
+
+button[data-slot="sheet-row"]:focus-visible {
+  outline: 2px solid var(--sheet-selected);
+  outline-offset: 1px;
+}
+
+[data-slot="sheet-row"][aria-pressed="true"] {
+  background: rgb(122 63 181 / 0.14);
+  box-shadow: inset 0 0 0 2px var(--sheet-selected);
+}
+
+[data-slot="sheet-blank"] {
+  font-style: italic;
+  opacity: 0.45;
+}
+
+[data-slot="sheet-footer"] {
+  flex-shrink: 0;
+  padding: calc(4 * var(--u)) 0 calc(8 * var(--u));
+  color: #888;
+  font-size: calc(8.5 * var(--u));
+  text-align: center;
+}
+
+/* ── Character sheet ─────────────────────────────────────────────────── */
+
+[data-slot="sheet-title"] {
+  flex-shrink: 0;
+  padding: calc(20 * var(--u)) calc(32 * var(--u)) calc(16 * var(--u));
+  background: var(--sheet-band);
+  color: var(--sheet-band-ink);
+  text-align: center;
+}
+
+[data-slot="sheet-title-name"] {
+  font:
+    700 calc(34 * var(--u)) / 1.05 "Cinzel Variable",
+    serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+[data-slot="sheet-title-author"] {
+  margin-top: calc(6 * var(--u));
+  font:
+    italic calc(14 * var(--u)) "Sorts Mill Goudy",
+    serif;
+  opacity: 0.8;
+}
+
+[data-slot="sheet-columns"] {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 1fr 1fr;
+  gap: calc(18 * var(--u));
+  min-height: 0;
+  padding: calc(16 * var(--u)) calc(24 * var(--u)) 0;
+}
+
+/* Small Scripts stay at the top of the page. */
+[data-slot="sheet-column"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(10 * var(--u));
+  min-height: 0;
+  overflow: hidden;
+}
+
+[data-slot="sheet-team"] {
+  display: grid;
+  grid-template-columns: calc(20 * var(--u)) 1fr;
+}
+
+[data-slot="sheet-rail"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: calc(3 * var(--u));
+}
+
+[data-slot="sheet-rail"] h3 {
+  color: #fff;
+  font:
+    700 calc(10.5 * var(--u)) "Cinzel Variable",
+    serif;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+[data-slot="sheet-team"][data-rail="good"] [data-slot="sheet-rail"] {
+  background: var(--sheet-good);
+}
+
+[data-slot="sheet-team"][data-rail="evil"] [data-slot="sheet-rail"] {
+  background: var(--sheet-evil);
+}
+
+[data-slot="sheet-team"][data-rail="traveller"] [data-slot="sheet-rail"] {
+  background: linear-gradient(var(--sheet-good), var(--sheet-evil));
+}
+
+[data-slot="sheet-team"] [data-slot="sheet-row"] {
+  padding: calc(3 * var(--u)) calc(4 * var(--u)) calc(3 * var(--u)) calc(8 * var(--u));
+}
+
+[data-slot="sheet-name"] {
+  font-weight: 700;
+  font-size: calc(12 * var(--u));
+}
+
+[data-slot="sheet-team"] [data-slot="sheet-name"],
+[data-slot="sheet-ability"] {
+  display: block;
+}
+
+[data-slot="sheet-ability"] {
+  color: #333;
+}
+
+[data-slot="sheet-jinxes"] h3 {
+  margin-bottom: calc(6 * var(--u));
+  padding: calc(4 * var(--u)) 0 calc(3 * var(--u));
+  border-bottom: 1px solid #ccc;
+  font:
+    700 calc(12 * var(--u)) "Cinzel Variable",
+    serif;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+[data-slot="sheet-jinx"] {
+  display: flex;
+  gap: calc(8 * var(--u));
+  align-items: center;
+  margin-bottom: calc(6 * var(--u));
+}
+
+[data-slot="sheet-jinx-icons"] {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+[data-slot="sheet-jinx-icons"] img {
+  width: calc(24 * var(--u));
+  height: calc(24 * var(--u));
+}
+
+[data-slot="sheet-jinx-icons"] img + img {
+  margin-left: calc(-6 * var(--u));
+}
+
+/* ── Night sheet ─────────────────────────────────────────────────────── */
+
+[data-slot="sheet-night"] {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 1fr calc(30 * var(--u)) 1fr;
+  gap: calc(14 * var(--u));
+  min-height: 0;
+  padding: calc(26 * var(--u)) calc(22 * var(--u)) calc(10 * var(--u));
+}
+
+[data-slot="sheet-half"] {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Read from across the table. */
+[data-slot="sheet-half"][data-flipped] {
+  transform: rotate(180deg);
+}
+
+[data-slot="sheet-half-title"] {
+  margin-bottom: calc(8 * var(--u));
+  font:
+    700 calc(18 * var(--u)) "Cinzel Variable",
+    serif;
+  letter-spacing: 0.1em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+[data-slot="sheet-half"] ol {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+[data-slot="sheet-spine"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: calc(4 * var(--u));
+  background: var(--sheet-band);
+}
+
+[data-slot="sheet-spine"] p {
+  color: var(--sheet-band-ink);
+  font:
+    700 calc(13 * var(--u)) "Cinzel Variable",
+    serif;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+}
+
+[data-slot="sheet-half"] li > [data-slot="sheet-row"] {
+  gap: calc(7 * var(--u));
+  padding: calc(3 * var(--u)) calc(2 * var(--u));
+  border-bottom: 1px solid var(--sheet-rule);
+  border-radius: 0;
+}
+
+[data-slot="sheet-half"] img {
+  width: calc(28 * var(--u));
+  height: calc(28 * var(--u));
+}
+
+[data-slot="sheet-half"] [data-slot="sheet-name"] {
+  font-size: calc(11 * var(--u));
+}
+
+[data-slot="sheet-step"] {
+  display: flex;
+  gap: calc(7 * var(--u));
+  align-items: center;
+  margin: calc(2 * var(--u)) 0;
+  padding: calc(3 * var(--u)) calc(6 * var(--u));
+  border-radius: calc(3 * var(--u));
+  background: var(--sheet-band);
+  color: var(--sheet-band-ink);
+}
+
+[data-slot="sheet-step"][data-step="minioninfo"],
+[data-slot="sheet-step"][data-step="demoninfo"] {
+  background: #5c0a0d;
+}
+
+[data-slot="sheet-glyph"] {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: calc(20 * var(--u));
+  height: calc(20 * var(--u));
+  border-radius: 50%;
+  background: var(--sheet-band-ink);
+  color: var(--sheet-band);
+}
+
+[data-slot="sheet-step"][data-step="minioninfo"] [data-slot="sheet-glyph"],
+[data-slot="sheet-step"][data-step="demoninfo"] [data-slot="sheet-glyph"] {
+  color: #7c1d1d;
+}
+
+[data-slot="sheet-glyph"] svg {
+  width: 70%;
+  height: 70%;
+}
+
+[data-slot="sheet-step-name"] {
+  font:
+    700 calc(10.5 * var(--u)) "Cinzel Variable",
+    serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+[data-slot="sheet-step-text"] {
+  font-size: calc(9 * var(--u));
+  opacity: 0.85;
+}
+
+/* ── Preview viewport ────────────────────────────────────────────────── */
+
+[data-slot="sheet-scroller"] {
+  max-height: 80vh;
+}
+
+[data-slot="sheet-frame"] {
+  width: calc(var(--page-w) * var(--zoom));
+  height: calc(var(--page-h) * var(--zoom));
+}
+
+[data-slot="sheet-zoom"] {
+  width: var(--page-w);
+  height: var(--page-h);
+  transform: scale(var(--zoom));
+  transform-origin: top left;
+}

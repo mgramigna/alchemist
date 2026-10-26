@@ -24,13 +24,7 @@ import {
 import { cn } from "cn";
 import { useEffect, useRef, useState } from "react";
 import { characterTitle } from "../lib/characters.ts";
-import {
-  INSTRUCTIONS_FIELD,
-  NIGHT_LABELS,
-  STEP_DESCRIPTIONS,
-  STEP_LABELS,
-  entryTitle,
-} from "../lib/night.ts";
+import { INSTRUCTIONS_FIELD, NIGHT_LABELS, STEP_DESCRIPTIONS, entryTitle } from "../lib/night.ts";
 import { CharacterToken } from "./characters.tsx";
 import { Button } from "./ui/button.tsx";
 
@@ -331,74 +325,5 @@ export function NightOrderEditor({
         )}
       </section>
     </section>
-  );
-}
-
-/**
- * Minimal live Night sheet for one night: every entry in order, including
- * blank-instruction rows and anything after Dawn.
- */
-export function NightSheetPreview({
-  night,
-  order,
-  characters,
-  selectedId = null,
-  onSelect,
-}: {
-  readonly night: Night;
-  readonly order: NightOrder;
-  readonly characters: ReadonlyArray<Character>;
-  readonly selectedId?: CharacterId | null;
-  readonly onSelect?: (id: CharacterId) => void;
-}) {
-  return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-      <div className="bg-band px-4 py-3 text-center text-band-foreground">
-        <p className="font-heading text-lg">{NIGHT_LABELS[night]}</p>
-      </div>
-      <ol aria-label={`${NIGHT_LABELS[night]} sheet`} className="flex flex-col p-2">
-        {order.map((entry) => {
-          const character = characters.find(({ id }) => id === entry);
-
-          const content = (
-            <>
-              <EntryIcon entry={entry} character={character} className="size-8" />
-              <span className="flex min-w-0 flex-col">
-                <span className="text-sm font-medium wrap-anywhere">
-                  {isNightStep(entry)
-                    ? STEP_LABELS[entry]
-                    : character
-                      ? characterTitle(character)
-                      : "Unknown Character"}
-                </span>
-                <span className="text-xs wrap-anywhere">
-                  <EntryInstructions night={night} entry={entry} character={character} />
-                </span>
-              </span>
-            </>
-          );
-
-          return (
-            <li key={entry}>
-              {character && onSelect ? (
-                <button
-                  type="button"
-                  aria-pressed={character.id === selectedId}
-                  onClick={() => onSelect(character.id)}
-                  className={cn(
-                    "flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-                    character.id === selectedId && "bg-muted",
-                  )}
-                >
-                  {content}
-                </button>
-              ) : (
-                <div className="flex items-start gap-2 px-2 py-1.5">{content}</div>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-    </div>
   );
 }

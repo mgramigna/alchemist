@@ -97,6 +97,7 @@ export const scriptsFixture = Effect.sync(() => {
             name: row.name,
             authorCredit: row.authorCredit,
             characters: inScript(id),
+            nightOrders: nightOrders.get(id) ?? defaultNightOrders,
             jinxes: inJinxes(id),
           })),
         ),

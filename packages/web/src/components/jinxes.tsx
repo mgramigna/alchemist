@@ -224,35 +224,3 @@ function JinxFields({
     </div>
   );
 }
-
-export function JinxPreview({
-  jinxes,
-  characters,
-}: {
-  readonly jinxes: ReadonlyArray<Jinx>;
-  readonly characters: ReadonlyArray<PublicCharacter>;
-}) {
-  const id = useId();
-
-  if (jinxes.length === 0) return null;
-
-  return (
-    <section aria-labelledby={id} className="flex flex-col gap-3 border-t p-4">
-      <h3 id={id} className="font-heading text-sm tracking-wide uppercase">
-        Jinxes
-      </h3>
-      <ul className="flex flex-col gap-4">
-        {jinxes.map((jinx) => (
-          <li key={jinxKey(jinx)} className="flex min-w-0 flex-col gap-1.5">
-            <PairNames jinx={jinx} characters={characters} />
-            <p className="text-sm whitespace-pre-wrap wrap-anywhere">
-              {jinx.explanation.trim() || (
-                <em className="text-muted-foreground">No explanation yet</em>
-              )}
-            </p>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}

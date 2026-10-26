@@ -8,26 +8,21 @@ import {
   NIGHTS,
   abilityBlocker,
   instructionsBlocker,
-  defaultAlignment,
   genericIcons,
   nameBlocker,
-  type Alignment,
-  type Jinx,
   type Character,
   type CharacterDetails,
   type CharacterId,
   type ExportBlocker,
   type Night,
   type NightOrders,
-  type PublicCharacter,
 } from "@alchemist/domain";
-import { ArrowRightIcon, PlusIcon, ScrollIcon, TrashIcon } from "@phosphor-icons/react";
+import { ArrowRightIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { useId, type ReactNode } from "react";
 import { cn } from "cn";
 import { ReminderTokenList } from "./reminder-tokens.tsx";
 import { CharacterToken } from "./character-token.tsx";
 import { Counter } from "./counter.tsx";
-import { JinxPreview } from "./jinxes.tsx";
 import { useAppForm } from "../hooks/form.ts";
 import {
   ICON_VARIANT_LABELS,
@@ -456,118 +451,5 @@ function NightMembership({
         </div>
       )}
     </div>
-  );
-}
-
-// Team colour rails from the sheet layout prototype.
-const RAILS: Record<Alignment | "unaligned", string> = {
-  good: "border-good",
-  evil: "border-evil",
-  unaligned: "border-nudge",
-};
-
-const railClass = (team: AuthoredTeam) => RAILS[defaultAlignment(team) ?? "unaligned"];
-
-/**
- * Minimal live Character sheet: the title band and Characters by Team. Pass
- * `onSelect` to make each Character a button.
- */
-export function SheetPreview({
-  name,
-  authorCredit,
-  characters,
-  jinxes = [],
-  selectedId = null,
-  onSelect,
-}: {
-  readonly jinxes?: ReadonlyArray<Jinx>;
-  readonly name: string;
-  readonly authorCredit: string;
-  readonly characters: ReadonlyArray<PublicCharacter>;
-  readonly selectedId?: CharacterId | null;
-  readonly onSelect?: (id: CharacterId) => void;
-}) {
-  const groups = groupByTeam(characters).filter(({ characters: members }) => members.length > 0);
-
-  return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-      <div className="flex flex-col items-center gap-1 bg-band px-4 py-5 text-center text-band-foreground">
-        <p className="font-heading text-xl wrap-anywhere">{name.trim() || "Untitled Script"}</p>
-        <p className="text-xs wrap-anywhere opacity-80">
-          {authorCredit.trim() ? `by ${authorCredit}` : "Uncredited"}
-        </p>
-      </div>
-      {groups.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 px-4 py-10 text-center text-sm text-muted-foreground">
-          <ScrollIcon className="size-6" />
-          <p>Characters you add will appear on this sheet.</p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-4 p-4">
-          {groups.map(({ team, characters: members }) => (
-            <section
-              key={team}
-              aria-labelledby={`sheet-${team}`}
-              className={cn("flex flex-col gap-1 border-l-4 pl-2", railClass(team))}
-            >
-              <h3
-                id={`sheet-${team}`}
-                className="px-2 font-heading text-sm tracking-wide uppercase"
-              >
-                {teamPluralLabel(team)}
-              </h3>
-              <ul className="flex flex-col">
-                {members.map((character) => (
-                  <li key={character.id}>
-                    <SheetRow
-                      character={character}
-                      selected={character.id === selectedId}
-                      onSelect={onSelect}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
-      )}
-      <JinxPreview jinxes={jinxes} characters={characters} />
-    </div>
-  );
-}
-
-function SheetRow({
-  character,
-  selected,
-  onSelect,
-}: {
-  readonly character: PublicCharacter;
-  readonly selected: boolean;
-  readonly onSelect: ((id: CharacterId) => void) | undefined;
-}) {
-  const content = (
-    <>
-      <CharacterToken team={character.team} className="size-9" />
-      <span className="flex min-w-0 flex-col">
-        <span className="text-sm font-medium wrap-anywhere">{characterTitle(character)}</span>
-        <span className="text-xs wrap-anywhere text-muted-foreground">
-          {character.ability.trim() || <em>No ability yet</em>}
-        </span>
-      </span>
-    </>
-  );
-
-  if (onSelect === undefined)
-    return <div className="flex items-start gap-2 px-2 py-1.5">{content}</div>;
-
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onClick={() => onSelect(character.id)}
-      className={cn(rowClass, "items-start px-2", selected && "bg-muted")}
-    >
-      {content}
-    </button>
   );
 }

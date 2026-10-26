@@ -83,11 +83,14 @@ export const Character = Schema.Struct({
 
 export interface Character extends Schema.Schema.Type<typeof Character> {}
 
+// What anyone with the share link sees: the sheet content, never private sources.
 export const PublicCharacter = Schema.Struct({
   id: CharacterId,
   name: Schema.String,
   ability: Schema.String,
   team: AuthoredTeam,
+  firstNightInstructions: Schema.String,
+  otherNightInstructions: Schema.String,
 });
 
 export type InstructionsField = "firstNightInstructions" | "otherNightInstructions";

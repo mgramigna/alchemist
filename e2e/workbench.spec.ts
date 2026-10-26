@@ -69,7 +69,11 @@ type WireValue =
   | ReadonlyArray<Script>
   | NightOrders
   | { readonly id: string; readonly displayName: string }
-  | (Omit<Script, "updatedAt"> & { readonly characters: Character[]; readonly jinxes: Jinx[] });
+  | (Omit<Script, "updatedAt"> & {
+      readonly characters: Character[];
+      readonly nightOrders: NightOrders;
+      readonly jinxes: Jinx[];
+    });
 
 // Controlled owner API for browser states. Ownership, persistence and isolation
 // are covered against real D1 and the application service.
@@ -295,6 +299,7 @@ const ownerApi = async (page: Page) => {
               name: script.name,
               authorCredit: script.authorCredit,
               characters: state.characters,
+              nightOrders: state.nightOrders,
               jinxes: state.jinxes,
             })
           : route.abort();
@@ -320,7 +325,11 @@ const addCharacter = async (page: Page, team: string, nights: NightChoice = "No 
     .getByRole("navigation", { name: "Script sections" })
     .getByRole("button", { name: `Add ${team}` })
     .click();
-  await page.getByRole("menuitem", { name: nights }).click();
+  // Scope to this menu: the previous one may still be closing.
+  await page
+    .getByRole("menu", { name: `Add ${team}` })
+    .getByRole("menuitem", { name: nights })
+    .click();
 };
 
 const chooseTeam = async (page: Page, team: string) => {
@@ -353,7 +362,7 @@ test("an owner creates a Script, edits it with autosave, reopens it from the wor
   const preview = page.getByRole("complementary", { name: "Preview" });
   await expect(preview).toContainText("Night of Mirrors");
   await credit.fill("The Clocktower Collective");
-  await expect(preview).toContainText("by The Clocktower Collective");
+  await expect(preview).toContainText("The Clocktower Collective");
   await expect(page.getByRole("status")).toContainText("All changes saved");
   // Debounced: one save for the burst of edits.
   expect(api.saves).toEqual(["Night of Mirrors"]);
@@ -436,7 +445,7 @@ test("the Workbench stacks its panes on a narrow screen and is operable with the
   await page.keyboard.press("End");
   await page.keyboard.type(" & friends");
   await expect(page.getByRole("complementary", { name: "Preview" })).toContainText(
-    "by Ada Lovelace & friends",
+    "Ada Lovelace & friends",
   );
   await expect(page.getByRole("status")).toContainText("All changes saved");
 });
@@ -554,6 +563,22 @@ test("an owner adds Characters by Team and finds and fixes what blocks export", 
   );
   await preview.getByRole("button", { name: /Washerwoman/ }).click();
   await expect(page.getByRole("heading", { name: "Washerwoman" })).toBeVisible();
+  await expect(preview.getByRole("button", { name: /Washerwoman/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  // Keyboard selection from the sheet moves the highlight too.
+  await preview.getByRole("button", { name: /Imp/ }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Imp" })).toBeVisible();
+  await expect(preview.getByRole("button", { name: /Imp/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(preview.getByRole("button", { name: /Washerwoman/ })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
   await expect(page.getByRole("status")).toContainText("All changes saved");
   expect(api.characters.map(({ name: saved }) => saved)).toEqual(["Washerwoman", "Imp"]);
 });
@@ -739,7 +764,7 @@ test("an owner reorders a night with the keyboard and by dragging, including ste
   ]);
   // Blank instructions keep the entry and prompt for text on the sheet.
   await expect(preview.getByRole("list", { name: "First Night sheet" })).toContainText(
-    "Add instructions for the Storyteller.",
+    "Chef No instructions written",
   );
   await expect(page.getByRole("status")).toContainText("All changes saved");
   expect(api.nightOrders.firstNight).toEqual(expected);

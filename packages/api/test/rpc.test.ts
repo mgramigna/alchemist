@@ -8,6 +8,7 @@ import {
   ScriptId,
   ScriptNotFound,
   ScriptReadUnavailable,
+  defaultNightOrders,
 } from "@alchemist/domain";
 import { Rpcs } from "@alchemist/domain/rpc";
 import { assert, it } from "@effect/vitest";
@@ -39,6 +40,7 @@ const fixture = PublicScript.make({
   name: "Saved Script",
   authorCredit: "Saved credit",
   characters: [],
+  nightOrders: defaultNightOrders,
   jinxes: [],
 });
 
