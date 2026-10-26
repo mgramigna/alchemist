@@ -1,3 +1,4 @@
+import { ImportedArtworkNotice } from "./imported-artwork.tsx";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import {
   type Jinx,
@@ -293,6 +294,7 @@ export function Workbench({
           }}
         />
       </header>
+      <ImportedArtworkNotice scriptId={script.id} characters={roster.characters} />
       <div className="grid gap-6 lg:grid-cols-12">
         <nav
           aria-label="Script sections"

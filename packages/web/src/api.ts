@@ -55,3 +55,11 @@ export const updateJinx = Client.mutation("Jinx.update");
 export const deleteJinx = Client.mutation("Jinx.delete");
 
 export const exportScript = Client.mutation("Script.export");
+
+export const reviewScriptImport = Client.mutation("Script.reviewImport");
+export const importScript = Client.mutation("Script.import");
+
+export const importedScriptData = (id: ScriptId) =>
+  Client.query("Script.readImported", { id }, { reactivityKeys: [`Script:imported:${id}`] });
+
+export const useGenericArtwork = Client.mutation("Script.useGenericArtwork");

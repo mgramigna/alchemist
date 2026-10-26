@@ -1,3 +1,10 @@
+import {
+  ImportedArtwork,
+  ImportedData,
+  ImportJson,
+  ImportReview,
+  ScriptImportInvalid,
+} from "./import.ts";
 import { ScriptExportInvalid } from "./export.ts";
 import { Context, Schema } from "effect";
 import { Rpc, RpcGroup, RpcMiddleware } from "effect/rpc";
@@ -46,6 +53,29 @@ export const Rpcs = RpcGroup.make(
     success: PublicScript,
     error: Schema.Union([ScriptNotFound, ScriptReadUnavailable]),
   }),
+  Rpc.make("Script.useGenericArtwork", {
+    payload: {
+      id: ScriptId,
+      field: ImportedArtwork.fields.field,
+      characterId: Schema.NullOr(CharacterId),
+    },
+    success: ScriptId,
+    error: Schema.Union([ScriptNotFound, ScriptWriteUnavailable]),
+  }).middleware(Authentication),
+  Rpc.make("Script.reviewImport", {
+    payload: { json: ImportJson },
+    success: ImportReview,
+  }).middleware(Authentication),
+  Rpc.make("Script.import", {
+    payload: { json: ImportJson, acknowledgeDiscard: Schema.Boolean },
+    success: OwnedScript,
+    error: Schema.Union([ScriptImportInvalid, ScriptWriteUnavailable]),
+  }).middleware(Authentication),
+  Rpc.make("Script.readImported", {
+    payload: { id: ScriptId },
+    success: Schema.NullOr(ImportedData),
+    error: Schema.Union([ScriptNotFound, ScriptReadUnavailable]),
+  }).middleware(Authentication),
   // Owner operations. Another user's Script is indistinguishable from a missing one.
   Rpc.make("Script.export", {
     payload: { id: ScriptId },

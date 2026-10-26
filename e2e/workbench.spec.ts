@@ -57,6 +57,7 @@ interface OwnerApi {
 }
 
 type WireValue =
+  | null
   | { filename: string; json: string }
   | Jinx
   | ReadonlyArray<Jinx>
@@ -144,6 +145,8 @@ const ownerApi = async (page: Page) => {
         });
       }
 
+      case "Script.readImported":
+        return reply(null);
       case "Script.readOwned": {
         const script = find();
 

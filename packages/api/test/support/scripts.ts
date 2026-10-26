@@ -1,4 +1,5 @@
 import {
+  type ImportedData,
   type Jinx,
   jinxKey,
   defaultNightOrders,
@@ -14,6 +15,7 @@ import { ScriptStore, ScriptsLive } from "../../src/scripts.ts";
 
 // In-memory ScriptStore with the same owner scoping as the D1 adapter.
 export const scriptsFixture = Effect.sync(() => {
+  const imports = new Map<string, ImportedData>();
   const rows = new Map<string, OwnedScript & { readonly ownerId: string }>();
 
   const project = (row: OwnedScript): OwnedScript => ({
@@ -58,6 +60,35 @@ export const scriptsFixture = Effect.sync(() => {
     Option.fromNullishOr(rows.get(id)).pipe(Option.filter((row) => row.ownerId === ownerId));
 
   const store = Layer.succeed(ScriptStore, {
+    useGenericArtwork: (ownerId, id, field, characterId, now) =>
+      Effect.sync(() => {
+        const imported = imports.get(id);
+
+        if (Option.isNone(owned(ownerId, id)) || imported === undefined) return false;
+        imports.set(id, {
+          ...imported,
+          artwork: imported.artwork.filter(
+            (art) => art.field !== field || (art.characterId ?? null) !== characterId,
+          ),
+        });
+        touch(id, now);
+
+        return true;
+      }),
+    insertImport: (ownerId, script, draft) =>
+      Effect.sync(() => {
+        rows.set(script.id, { ...script, ownerId });
+
+        for (const character of draft.characters)
+          characters.set(`${script.id}:${character.id}`, { scriptId: script.id, character });
+
+        for (const jinx of draft.jinxes)
+          jinxes.set(`${script.id}:${jinxKey(jinx)}`, { scriptId: script.id, jinx });
+        nightOrders.set(script.id, draft.nightOrders);
+        imports.set(script.id, draft.imported);
+      }),
+    readImported: (ownerId, id) =>
+      Effect.sync(() => (Option.isSome(owned(ownerId, id)) ? (imports.get(id) ?? null) : null)),
     findPublic: (id) =>
       Effect.sync(() =>
         Option.fromNullishOr(rows.get(id)).pipe(
@@ -113,7 +144,7 @@ export const scriptsFixture = Effect.sync(() => {
       Effect.sync(() => {
         if (Option.isNone(owned(ownerId, scriptId))) return Option.none();
 
-        characters.set(character.id, { scriptId, character });
+        characters.set(`${scriptId}:${character.id}`, { scriptId, character });
         nightOrders.set(scriptId, orders);
         touch(scriptId, now);
 
@@ -121,7 +152,7 @@ export const scriptsFixture = Effect.sync(() => {
       }),
     updateCharacter: (ownerId, scriptId, id, details, now) =>
       Effect.sync(() => {
-        const row = characters.get(id);
+        const row = characters.get(`${scriptId}:${id}`);
 
         if (Option.isNone(owned(ownerId, scriptId)) || row?.scriptId !== scriptId)
           return Option.none();
@@ -139,17 +170,20 @@ export const scriptsFixture = Effect.sync(() => {
           flavor: details.flavor,
         };
 
-        characters.set(id, { scriptId, character });
+        characters.set(`${scriptId}:${id}`, { scriptId, character });
         touch(scriptId, now);
 
         return Option.some(character);
       }),
     deleteCharacter: (ownerId, scriptId, id, now) =>
       Effect.sync(() => {
-        if (Option.isNone(owned(ownerId, scriptId)) || characters.get(id)?.scriptId !== scriptId)
+        if (
+          Option.isNone(owned(ownerId, scriptId)) ||
+          characters.get(`${scriptId}:${id}`)?.scriptId !== scriptId
+        )
           return false;
 
-        characters.delete(id);
+        characters.delete(`${scriptId}:${id}`);
 
         for (const [key, row] of jinxes)
           if (row.scriptId === scriptId && (row.jinx.first === id || row.jinx.second === id))
@@ -172,7 +206,9 @@ export const scriptsFixture = Effect.sync(() => {
         if (Option.isNone(owned(ownerId, scriptId))) return Option.none();
 
         if (
-          ![jinx.first, jinx.second].every((id) => characters.get(id)?.scriptId === scriptId) ||
+          ![jinx.first, jinx.second].every(
+            (id) => characters.get(`${scriptId}:${id}`)?.scriptId === scriptId,
+          ) ||
           jinx.first >= jinx.second
         )
           return yield* new ScriptWriteUnavailable({});
@@ -215,7 +251,10 @@ export const scriptsFixture = Effect.sync(() => {
         if (Option.isNone(owned(ownerId, scriptId))) return Option.none();
 
         if (
-          order.some((entry) => !isNightStep(entry) && characters.get(entry)?.scriptId !== scriptId)
+          order.some(
+            (entry) =>
+              !isNightStep(entry) && characters.get(`${scriptId}:${entry}`)?.scriptId !== scriptId,
+          )
         )
           return yield* new ScriptWriteUnavailable({});
 

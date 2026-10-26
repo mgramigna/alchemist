@@ -4,6 +4,13 @@
     "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "src/**/*.json", "src/**/*.tsx", "test/**/*.ts", "*.config.ts"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.json",
+    "src/**/*.tsx",
+    "test/**/*.ts",
+    "test/**/*.json",
+    "*.config.ts"
+  ],
   "references": []
 }

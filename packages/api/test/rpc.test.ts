@@ -384,3 +384,75 @@ it.effect("Jinx RPCs require authentication and round-trip one pair from either 
     ).pipe(Effect.provide(Layer.provideMerge(server, Layer.merge(a.layer, s.layer))));
   }),
 );
+
+it.effect(
+  "import RPCs authenticate review/commit, serialize preserved data, and enforce artwork ownership",
+  () =>
+    Effect.gen(function* () {
+      const a = yield* authFixture;
+      const s = yield* scriptsFixture;
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const client = yield* RpcTest.makeClient(Rpcs);
+          const alice = yield* signIn("alice");
+          const bob = yield* signIn("bob");
+
+          const json =
+            '[{"id":"custom","name":"","team":"townsfolk","ability":"","image":"https://example.org/icon.png","edition":"homebrew","special":[{"type":"signal","name":"card"}],"extra":true}]';
+
+          assert.instanceOf(
+            yield* client["Script.reviewImport"]({ json }).pipe(Effect.flip),
+            AuthRejected,
+          );
+          assert.instanceOf(
+            yield* client["Script.import"]({ json, acknowledgeDiscard: true }).pipe(Effect.flip),
+            AuthRejected,
+          );
+          const report = yield* client["Script.reviewImport"]({ json }).pipe(session(alice));
+          assert(report.draft);
+          assert.deepStrictEqual(report.discarded, ["Entry 1.extra"]);
+          assert(report.blockers.length > 0);
+
+          const imported = yield* client["Script.import"]({ json, acknowledgeDiscard: true }).pipe(
+            session(alice),
+          );
+
+          const data = yield* client["Script.readImported"]({ id: imported.id }).pipe(
+            session(alice),
+          );
+
+          assert(data);
+          assert.strictEqual(data.characters[0]?.edition, "homebrew");
+          assert.strictEqual(data.artwork[0]?.slots[0]?.source, "https://example.org/icon.png");
+          assert.instanceOf(
+            yield* client["Script.readImported"]({ id: imported.id }).pipe(
+              session(bob),
+              Effect.flip,
+            ),
+            ScriptNotFound,
+          );
+
+          const repair = {
+            id: imported.id,
+            field: "image" as const,
+            characterId: report.draft.characters[0]?.id ?? null,
+          };
+
+          assert.instanceOf(
+            yield* client["Script.useGenericArtwork"](repair).pipe(Effect.flip),
+            AuthRejected,
+          );
+          assert.instanceOf(
+            yield* client["Script.useGenericArtwork"](repair).pipe(session(bob), Effect.flip),
+            ScriptNotFound,
+          );
+          yield* client["Script.useGenericArtwork"](repair).pipe(session(alice));
+          assert.deepStrictEqual(
+            (yield* client["Script.readImported"]({ id: imported.id }).pipe(session(alice)))
+              ?.artwork,
+            [],
+          );
+        }),
+      ).pipe(Effect.provide(Layer.provideMerge(server, Layer.merge(a.layer, s.layer))));
+    }),
+);

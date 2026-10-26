@@ -40,6 +40,12 @@ export const Handlers = Rpcs.toLayer(
 
           return yield* scripts.exportJson(id, config.origin);
         }),
+      "Script.useGenericArtwork": ({ id, field, characterId }) =>
+        scripts.useGenericArtwork(id, field, characterId),
+      "Script.reviewImport": ({ json }) => scripts.reviewImport(json),
+      "Script.import": ({ json, acknowledgeDiscard }) =>
+        scripts.importJson(json, acknowledgeDiscard),
+      "Script.readImported": ({ id }) => scripts.readImported(id),
       "Script.create": () => scripts.create(),
       "Script.listOwned": () => scripts.listOwned(),
       "Script.readOwned": ({ id }) => scripts.readOwned(id),

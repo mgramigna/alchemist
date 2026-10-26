@@ -110,7 +110,7 @@ test("D1 owner queries are scoped by owner, ordered by last change, and updates 
         characters: [],
         jinxes: [],
       });
-      // Migrated rows (the fixture) remain readable after the change-tracking migration.
+      // The development fixture is readable with the initial schema.
       expect(
         Option.getOrNull(yield* scripts.findPublic(ScriptId.make("01k8ac00000000000000000001")))
           ?.name,
@@ -488,3 +488,105 @@ test("D1 keeps separate ordered duplicate token drafts, setup and flavor across 
       ).toBe(40);
     }),
   ));
+
+test("D1 imports reused IDs atomically, keeps integration data across edits, and scopes fallback repair by owner", async () => {
+  const { reviewImport } = await import("@alchemist/domain");
+
+  const json = await readFile(
+    new URL("../../domain/test/fixtures/import-script.json", import.meta.url),
+    "utf8",
+  );
+
+  const review = reviewImport(json, "Alice");
+  const draft = review.draft;
+  expect(draft).not.toBeNull();
+
+  if (draft === null) return;
+  const first = script("01k8aj00000000000000000001", 10);
+  const second = script("01k8aj00000000000000000002", 10);
+
+  await run(
+    Effect.gen(function* () {
+      const scripts = yield* ScriptStore;
+      yield* scripts.insertImport("alice", first, draft);
+      yield* scripts.insertImport("bob", second, draft);
+      expect(
+        (yield* scripts.listCharacters("alice", first.id)).map((character) => character.id),
+      ).toEqual(["moon", "moth", "seer", "shade"]);
+      expect((yield* scripts.listCharacters("bob", second.id)).length).toBe(4);
+      expect(Option.getOrThrow(yield* scripts.findNightOrders("alice", first.id))).toEqual(
+        draft.nightOrders,
+      );
+      expect(yield* scripts.listJinxes("alice", first.id)).toEqual(draft.jinxes);
+      expect(yield* scripts.readImported("bob", first.id)).toBeNull();
+      expect(yield* scripts.readImported("alice", first.id)).toEqual(draft.imported);
+      expect(
+        yield* scripts.useGenericArtwork("bob", first.id, "image", CharacterId.make("seer"), 20),
+      ).toBe(false);
+      expect(
+        yield* scripts.useGenericArtwork("alice", first.id, "image", CharacterId.make("seer"), 20),
+      ).toBe(true);
+      expect((yield* scripts.readImported("alice", first.id))?.artwork).toEqual(
+        draft.imported.artwork.slice(1),
+      );
+      expect((yield* scripts.readImported("alice", first.id))?.characters).toEqual(
+        draft.imported.characters,
+      );
+      expect(yield* scripts.useGenericArtwork("alice", first.id, "logo", null, 30)).toBe(true);
+      expect((yield* scripts.readImported("alice", first.id))?.artwork).toHaveLength(1);
+      const seer = draft.characters[0];
+      expect(seer).toBeDefined();
+
+      if (seer === undefined) return;
+      yield* scripts.updateCharacter("alice", first.id, seer.id, { ...seer, name: "Renamed" }, 40);
+      expect(
+        (yield* scripts.listCharacters("bob", second.id)).find(
+          (character) => character.id === "seer",
+        )?.name,
+      ).toBe("Seer");
+      expect(
+        (yield* scripts.listCharacters("alice", first.id)).find(
+          (character) => character.id === "seer",
+        )?.name,
+      ).toBe("Renamed");
+      expect((yield* scripts.readImported("alice", first.id))?.characters).toEqual(
+        draft.imported.characters,
+      );
+    }),
+  );
+
+  // A failure at the final statement must roll back Script, Characters, orders, and Jinxes.
+  await db
+    .prepare(
+      "CREATE TRIGGER refuse_import BEFORE INSERT ON script_imports BEGIN SELECT RAISE(ABORT, 'injected import failure'); END",
+    )
+    .run();
+  const rejected = script("01k8aj00000000000000000003", 10);
+
+  try {
+    await run(
+      Effect.gen(function* () {
+        const scripts = yield* ScriptStore;
+        expect((yield* scripts.insertImport("alice", rejected, draft).pipe(Effect.flip))._tag).toBe(
+          "ScriptWriteUnavailable",
+        );
+        expect(Option.isNone(yield* scripts.findOwned("alice", rejected.id))).toBe(true);
+        expect(Option.isNone(yield* scripts.findPublic(rejected.id))).toBe(true);
+        expect(yield* scripts.listCharacters("alice", rejected.id)).toEqual([]);
+        expect(yield* scripts.listJinxes("alice", rejected.id)).toEqual([]);
+        expect(yield* scripts.readImported("alice", rejected.id)).toBeNull();
+      }),
+    );
+
+    const rows = await db
+      .prepare(
+        "SELECT (SELECT count(*) FROM characters WHERE script_id = ?) AS characters, (SELECT count(*) FROM night_order_entries WHERE script_id = ?) AS nights, (SELECT count(*) FROM jinxes WHERE script_id = ?) AS jinxes",
+      )
+      .bind(rejected.id, rejected.id, rejected.id)
+      .first();
+
+    expect(rows).toEqual({ characters: 0, nights: 0, jinxes: 0 });
+  } finally {
+    await db.prepare("DROP TRIGGER refuse_import").run();
+  }
+});
