@@ -1,3 +1,4 @@
+import { textLength } from "@alchemist/domain";
 import {
   FLAVOR_EXPORT_LIMIT,
   flavorBlocker,
@@ -76,7 +77,12 @@ export function CharacterNavigator({
   onAdd,
 }: {
   readonly characters: ReadonlyArray<Character>;
-  readonly blockers: ReadonlyArray<ExportBlocker>;
+  readonly blockers: ReadonlyArray<
+    Omit<ExportBlocker, "field" | "otherCharacterId"> & {
+      readonly field: string;
+      readonly otherCharacterId?: string;
+    }
+  >;
   readonly selectedId: CharacterId | null;
   readonly adding: AuthoredTeam | null;
   readonly onSelect: (id: CharacterId) => void;
@@ -161,7 +167,12 @@ export function ExportBlockerList({
   onSelect,
 }: {
   readonly characters: ReadonlyArray<Character>;
-  readonly blockers: ReadonlyArray<ExportBlocker>;
+  readonly blockers: ReadonlyArray<
+    Omit<ExportBlocker, "field" | "otherCharacterId"> & {
+      readonly field: string;
+      readonly otherCharacterId?: string;
+    }
+  >;
   readonly onSelect: (id: CharacterId) => void;
 }) {
   return (
@@ -198,7 +209,11 @@ export function ExportBlockerList({
                           ? `${REMINDER_TITLES[blocker.field]}${blocker.tokenIndex === undefined ? "" : `, token ${blocker.tokenIndex + 1}`}: `
                           : blocker.field === "flavor"
                             ? "Flavor text: "
-                            : ""}
+                            : blocker.field === "firstNightInstructions"
+                              ? "First Night instructions: "
+                              : blocker.field === "otherNightInstructions"
+                                ? "Other Nights instructions: "
+                                : `${blocker.field}: `}
                       {blocker.message}
                     </span>
                   </span>
@@ -215,8 +230,8 @@ export function ExportBlockerList({
 // Export limits are not enforced while typing, so drafts can run over them.
 function Counter({ value, limit }: { readonly value: string; readonly limit: number }) {
   return (
-    <span className={cn("tabular-nums", value.length > limit && "text-destructive")}>
-      {value.length}/{limit} characters
+    <span className={cn("tabular-nums", textLength(value) > limit && "text-destructive")}>
+      {textLength(value)}/{limit} characters
     </span>
   );
 }

@@ -1,3 +1,9 @@
+import {
+  explanationBlocker,
+  flavorBlocker,
+  reminderLabelBlocker,
+  textLength,
+} from "../src/index.ts";
 import { Schema } from "effect";
 import { expect, test } from "vitest";
 import {
@@ -129,4 +135,22 @@ test("token lists validate independently, allow duplicates and retain positions 
   expect(exportBlockers([{ ...draft, reminders: [], remindersGlobal: [], flavor: "" }])).toEqual(
     [],
   );
+});
+
+test("field blockers use the official schema's Unicode code-point lengths", () => {
+  expect(textLength("😀")).toBe(1);
+  expect(textLength("e\u0301")).toBe(2); // Code points, not grapheme clusters.
+
+  for (const [limit, blocker] of [
+    [30, (value: string) => nameBlocker(value, [])],
+    [250, abilityBlocker],
+    [500, instructionsBlocker],
+    [500, flavorBlocker],
+    [500, explanationBlocker],
+    [30, (value: string) => reminderLabelBlocker(value, "reminders")],
+    [25, (value: string) => reminderLabelBlocker(value, "remindersGlobal")],
+  ] as const) {
+    expect(blocker("😀".repeat(limit))).toBeUndefined();
+    expect(blocker("😀".repeat(limit + 1))).toBe(`Use ${limit} characters or fewer.`);
+  }
 });

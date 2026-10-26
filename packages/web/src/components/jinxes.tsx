@@ -1,3 +1,4 @@
+import { textLength } from "@alchemist/domain";
 import {
   JINX_EXPLANATION_EXPORT_LIMIT,
   explanationBlocker,
@@ -211,7 +212,7 @@ function JinxFields({
               className="max-h-64 overflow-y-auto"
               label="Jinx explanation"
               autoFocus={autoFocus}
-              description={`${field.state.value.length}/${JINX_EXPLANATION_EXPORT_LIMIT} characters · Drafts save even when invalid.`}
+              description={`${textLength(field.state.value)}/${JINX_EXPLANATION_EXPORT_LIMIT} characters · Drafts save even when invalid.`}
               maxLength={2000}
               rows={3}
             />

@@ -1,3 +1,4 @@
+import { textLength } from "./text.ts";
 import { Match, Schema } from "effect";
 
 export const CharacterId = Schema.String.check(
@@ -112,7 +113,7 @@ export const nameBlocker = (
 ): string | undefined => {
   if (name.trim() === "") return "Enter a name.";
 
-  if (name.length > NAME_EXPORT_LIMIT) return `Use ${NAME_EXPORT_LIMIT} characters or fewer.`;
+  if (textLength(name) > NAME_EXPORT_LIMIT) return `Use ${NAME_EXPORT_LIMIT} characters or fewer.`;
 
   const key = nameKey(name);
 
@@ -125,7 +126,7 @@ export const nameBlocker = (
 export const abilityBlocker = (ability: string): string | undefined => {
   if (ability.trim() === "") return "Enter an ability.";
 
-  if (ability.length > ABILITY_EXPORT_LIMIT)
+  if (textLength(ability) > ABILITY_EXPORT_LIMIT)
     return `Use ${ABILITY_EXPORT_LIMIT} characters or fewer.`;
 
   return undefined;
@@ -133,7 +134,7 @@ export const abilityBlocker = (ability: string): string | undefined => {
 
 // Blank instructions are allowed: the entry still appears in the night order.
 export const instructionsBlocker = (instructions: string): string | undefined =>
-  instructions.length > INSTRUCTIONS_EXPORT_LIMIT
+  textLength(instructions) > INSTRUCTIONS_EXPORT_LIMIT
     ? `Use ${INSTRUCTIONS_EXPORT_LIMIT} characters or fewer.`
     : undefined;
 
@@ -146,7 +147,7 @@ export type ReminderField = keyof typeof REMINDER_LABEL_LIMIT;
 export const reminderLabelBlocker = (label: string, field: ReminderField): string | undefined =>
   label.trim() === ""
     ? "Enter a token label."
-    : label.length > REMINDER_LABEL_LIMIT[field]
+    : textLength(label) > REMINDER_LABEL_LIMIT[field]
       ? `Use ${REMINDER_LABEL_LIMIT[field]} characters or fewer.`
       : undefined;
 
@@ -154,7 +155,7 @@ export const reminderCountBlocker = (tokens: ReadonlyArray<string>): string | un
   tokens.length > REMINDER_COUNT_LIMIT ? `Use ${REMINDER_COUNT_LIMIT} tokens or fewer.` : undefined;
 
 export const flavorBlocker = (flavor: string): string | undefined =>
-  flavor.length > FLAVOR_EXPORT_LIMIT
+  textLength(flavor) > FLAVOR_EXPORT_LIMIT
     ? `Use ${FLAVOR_EXPORT_LIMIT} characters or fewer.`
     : undefined;
 

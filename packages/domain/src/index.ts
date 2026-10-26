@@ -81,3 +81,7 @@ export {
   explanationBlocker,
   jinxExportBlockers,
 } from "./jinx.ts";
+
+export * from "./export.ts";
+
+export { textLength } from "./text.ts";

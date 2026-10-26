@@ -4,7 +4,7 @@ import { HttpRouter, HttpServer } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 import { Auth } from "./auth.ts";
 import { Scripts } from "./scripts.ts";
-import { AuthenticationLive, Handlers } from "./rpc.ts";
+import { AuthenticationLive, Handlers, ExportOrigin } from "./rpc.ts";
 import { authResponse, handleAuth, sameOrigin } from "./auth-http.ts";
 
 export class AppConfig extends Context.Service<
@@ -54,7 +54,9 @@ export const handleRequest = Effect.fn("App.handleRequest")(function* (request: 
     }
   }
 
-  const context = yield* Effect.context<Auth | Scripts>();
+  const config = yield* AppConfig;
+  const services = yield* Effect.context<Auth | Scripts>();
+  const context = Context.add(services, ExportOrigin, { origin: config.origin });
 
   const response = yield* Effect.promise(() => rpcApp.handler(request, context));
 

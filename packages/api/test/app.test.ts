@@ -1,3 +1,4 @@
+import { scriptsFixture } from "./support/scripts.ts";
 import { ScriptId } from "@alchemist/domain";
 import { assert, it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
@@ -188,4 +189,60 @@ it.effect("public reads stay anonymous through the shared RPC endpoint", () =>
       }),
     ]),
   ),
+);
+
+it.effect(
+  "JSON export over HTTP validates drafts, enforces ownership and serializes the saved download",
+  () =>
+    Effect.gen(function* () {
+      const a = yield* authFixture;
+      const s = yield* scriptsFixture;
+      yield* Effect.gen(function* () {
+        const token = yield* signIn("alice");
+        const scripts = yield* Scripts;
+        const script = yield* scripts.create().pipe(asUser(token));
+
+        const exportRequest = (sessionToken: string | null) =>
+          handleRequest(
+            new Request(`${origin}/api/rpc`, {
+              method: "POST",
+              headers: {
+                Origin: origin,
+                "Content-Type": "application/x-ndjson",
+                Cookie: `${SESSION_COOKIE}=${sessionToken ?? ""}`,
+              },
+              body: `{"_tag":"Request","id":"1","tag":"Script.export","payload":{"id":${JSON.stringify(script.id)}},"headers":[]}\n`,
+            }),
+          ).pipe(Effect.flatMap((response) => Effect.promise(() => response.json())));
+
+        assert.strictEqual((yield* exportRequest(null)).exit.cause[0].error._tag, "AuthRejected");
+        assert.strictEqual(
+          (yield* exportRequest(token)).exit.cause[0].error._tag,
+          "ScriptExportInvalid",
+        );
+
+        for (let i = 0; i < 4; i++) {
+          const character = yield* scripts
+            .createCharacter(script.id, "townsfolk", [])
+            .pipe(asUser(token));
+
+          yield* scripts
+            .updateCharacter(script.id, character.id, {
+              ...character,
+              name: `Character ${i}`,
+              ability: "Ability",
+            })
+            .pipe(asUser(token));
+        }
+
+        const response = yield* exportRequest(token);
+        assert.strictEqual(response.exit._tag, "Success");
+        const document = JSON.parse(response.exit.value.json);
+        assert.strictEqual(document[0].name, "Untitled Script");
+        assert.strictEqual(document.length, 5);
+        assert.include(document[1].image[0], `${origin}/icons/generic/v1/`);
+        const bob = yield* signIn("bob");
+        assert.strictEqual((yield* exportRequest(bob)).exit.cause[0].error._tag, "ScriptNotFound");
+      }).pipe(Effect.provide([a.layer, s.layer, config]));
+    }),
 );
