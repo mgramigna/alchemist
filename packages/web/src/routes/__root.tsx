@@ -21,7 +21,11 @@ function RootLayout() {
         Skip to content
       </a>
       <header className="px-6 md:px-12 lg:px-20 py-6">
-        <Link className="tracking-brand no-underline" to="/" aria-label="Alchemist home">
+        <Link
+          className="font-heading tracking-brand no-underline"
+          to="/"
+          aria-label="Alchemist home"
+        >
           <span aria-hidden="true">◈</span> ALCHEMIST
         </Link>
       </header>
