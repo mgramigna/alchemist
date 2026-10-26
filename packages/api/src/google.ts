@@ -1,5 +1,6 @@
 import { AuthRejected, AuthUnavailable, DisplayName } from "@alchemist/domain";
 import { Effect, Layer, Redacted, Schema } from "effect";
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { GoogleIdentityProvider } from "./auth.ts";
 
@@ -61,36 +62,32 @@ export const verifyGoogleToken = Effect.fn("Google.verifyToken")(function* (
   return { sub: claims.sub, name: displayName };
 });
 
-export const googleProvider = (
-  config: GoogleConfig,
-  request: typeof fetch = fetch,
-  keys: JWTVerifyGetKey = googleKeys,
-) =>
-  Layer.succeed(GoogleIdentityProvider, {
-    authorizationUrl: (state, challenge, nonce) => {
-      const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-      url.search = new URLSearchParams({
-        client_id: config.clientId,
-        redirect_uri: config.callbackUrl,
-        response_type: "code",
-        scope: "openid profile",
-        state,
-        nonce,
-        code_challenge: challenge,
-        code_challenge_method: "S256",
-      }).toString();
+export const googleProvider = (config: GoogleConfig, keys: JWTVerifyGetKey = googleKeys) =>
+  Layer.effect(
+    GoogleIdentityProvider,
+    Effect.gen(function* () {
+      const client = yield* HttpClient.HttpClient;
 
-      return url.href;
-    },
-    exchange: Effect.fn("Google.exchange")(function* (code, flow, now) {
-      const response = yield* Effect.tryPromise({
-        try: () =>
-          request("https://oauth2.googleapis.com/token", {
-            method: "POST",
-            signal: AbortSignal.timeout(10000),
-            redirect: "error",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({
+      return GoogleIdentityProvider.of({
+        authorizationUrl: (state, challenge, nonce) => {
+          const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+          url.search = new URLSearchParams({
+            client_id: config.clientId,
+            redirect_uri: config.callbackUrl,
+            response_type: "code",
+            scope: "openid profile",
+            state,
+            nonce,
+            code_challenge: challenge,
+            code_challenge_method: "S256",
+          }).toString();
+
+          return url.href;
+        },
+        exchange: Effect.fn("Google.exchange")(function* (code, flow, now) {
+          const request = HttpClientRequest.post("https://oauth2.googleapis.com/token").pipe(
+            HttpClientRequest.acceptJson,
+            HttpClientRequest.bodyUrlParams({
               code,
               client_id: config.clientId,
               client_secret: Redacted.value(config.clientSecret),
@@ -98,22 +95,50 @@ export const googleProvider = (
               grant_type: "authorization_code",
               code_verifier: flow.verifier,
             }),
-          }),
-        catch: () => new AuthUnavailable({}),
+          );
+
+          const response = yield* client.execute(request).pipe(
+            Effect.timeout("10 seconds"),
+            // The cause is dropped from the domain error, so record it here.
+            Effect.tapCause(Effect.logError),
+            Effect.mapError(() => new AuthUnavailable({})),
+          );
+
+          if (response.status < 200 || response.status >= 300) {
+            // Log only known OAuth error identifiers, never provider descriptions or bodies.
+            const providerError = yield* HttpClientResponse.schemaBodyJson(
+              Schema.Struct({
+                error: Schema.Literals([
+                  "invalid_request",
+                  "invalid_client",
+                  "invalid_grant",
+                  "unauthorized_client",
+                  "unsupported_grant_type",
+                  "invalid_scope",
+                  "access_denied",
+                  "server_error",
+                  "temporarily_unavailable",
+                ]),
+              }),
+            )(response).pipe(
+              Effect.match({
+                onFailure: () => "unrecognized",
+                onSuccess: (value) => value.error,
+              }),
+            );
+
+            yield* Effect.logWarning("Google rejected token exchange", { providerError });
+
+            return yield* new AuthRejected({});
+          }
+
+          const token = yield* HttpClientResponse.schemaBodyJson(TokenResponse)(response).pipe(
+            Effect.mapError(() => new AuthRejected({})),
+          );
+
+          // Only sub/name escape this adapter; Google tokens and other profile claims are discarded.
+          return yield* verifyGoogleToken(token.id_token, flow.nonce, config.clientId, now, keys);
+        }),
       });
-
-      if (!response.ok) return yield* new AuthRejected({});
-
-      const body = yield* Effect.tryPromise({
-        try: () => response.json(),
-        catch: () => new AuthRejected({}),
-      });
-
-      const token = yield* Schema.decodeUnknownEffect(TokenResponse)(body).pipe(
-        Effect.mapError(() => new AuthRejected({})),
-      );
-
-      // Only sub/name escape this adapter; Google tokens and other profile claims are discarded.
-      return yield* verifyGoogleToken(token.id_token, flow.nonce, config.clientId, now, keys);
     }),
-  });
+  );

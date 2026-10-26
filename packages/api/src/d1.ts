@@ -32,6 +32,7 @@ export const D1ScriptStore = Layer.effect(
                 }),
               );
         },
+        Effect.tapCause(Effect.logError),
         Effect.mapError(() => new ScriptReadUnavailable({})),
       ),
     });

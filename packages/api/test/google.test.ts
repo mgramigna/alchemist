@@ -1,5 +1,6 @@
 import { AuthRejected } from "@alchemist/domain";
-import { Effect, Redacted } from "effect";
+import { Effect, Layer, Redacted } from "effect";
+import { FetchHttpClient } from "effect/http";
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT, type JWTPayload } from "jose";
 import { expect, test } from "vitest";
 import { GoogleIdentityProvider } from "../src/auth.ts";
@@ -90,10 +91,10 @@ test("Google exchanges the code with exact callback, secret and PKCE; returns on
   const token = await sign(base);
 
   const transport: typeof fetch = async (input, init) => {
-    expect(input).toBe("https://oauth2.googleapis.com/token");
+    expect(input instanceof URL ? input.href : input).toBe("https://oauth2.googleapis.com/token");
     expect(init?.method).toBe("POST");
-    expect(init?.body).toBeInstanceOf(URLSearchParams);
-    expect(init?.body instanceof URLSearchParams ? init.body.toString() : "").toBe(
+    expect(init?.body).toBeInstanceOf(Uint8Array);
+    expect(init?.body instanceof Uint8Array ? new TextDecoder().decode(init.body) : "").toBe(
       new URLSearchParams({
         code: "code",
         client_id: "client",
@@ -113,8 +114,10 @@ test("Google exchanges the code with exact callback, secret and PKCE; returns on
       clientSecret: Redacted.make("secret"),
       callbackUrl: "https://alchemist.test/auth/google/callback",
     },
-    transport,
     keys,
+  ).pipe(
+    Layer.provide(FetchHttpClient.layer),
+    Layer.provide(Layer.succeed(FetchHttpClient.Fetch, transport)),
   );
 
   const identity = await Effect.runPromise(

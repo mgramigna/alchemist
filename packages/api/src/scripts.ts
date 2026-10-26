@@ -32,6 +32,7 @@ export const ScriptsLive = Layer.effect(
 
         // Decode the explicit representation, stripping any accidental adapter fields.
         return yield* Schema.decodeEffect(PublicScript)(script.value).pipe(
+          Effect.tapCause(Effect.logError),
           Effect.mapError(() => new ScriptReadUnavailable({})),
         );
       }),

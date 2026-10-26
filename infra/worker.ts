@@ -1,7 +1,7 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as SQL from "@alchemy.run/cloudflare/D1/SQL";
 import { Config, Effect, Layer } from "effect";
-import { HttpServerResponse } from "effect/http";
+import { FetchHttpClient, HttpServerResponse } from "effect/http";
 import { AppConfig, handleRequest } from "../packages/api/src/app.ts";
 import { AuthLive } from "../packages/api/src/auth.ts";
 import { D1AuthStore } from "../packages/api/src/auth-store.ts";
@@ -38,7 +38,11 @@ export default Cloudflare.Worker(
             clientId,
             clientSecret,
             callbackUrl: `${origin}/auth/google/callback`,
-          }),
+          }).pipe(
+            Layer.provide(FetchHttpClient.layer),
+            // Workers reject `redirect: "error"`; a 3xx stays non-2xx and is rejected.
+            Layer.provide(Layer.succeed(FetchHttpClient.RequestInit, { redirect: "manual" })),
+          ),
         ),
       ),
       Layer.succeed(AppConfig, { origin }),

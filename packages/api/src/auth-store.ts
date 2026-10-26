@@ -19,7 +19,13 @@ export const D1AuthStore = Layer.effect(
     // D1's atomic batch is a driver extension; SqlClient has no equivalent.
     // Both tags are supplied by the same Alchemy SQL.D1Layer in the composition root.
     const d1 = yield* D1Client;
-    const unavailable = () => new AuthUnavailable({});
+
+    // The cause is dropped from the domain error, so record it here.
+    const unavailable = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      effect.pipe(
+        Effect.tapCause(Effect.logError),
+        Effect.mapError(() => new AuthUnavailable({})),
+      );
 
     return AuthStore.of({
       saveFlow: Effect.fn("D1AuthStore.saveFlow")(function* (flow, now) {
@@ -29,7 +35,7 @@ export const D1AuthStore = Layer.effect(
           sql`INSERT INTO login_flows (state_hash, browser_hash, verifier, nonce, expires_at)
           VALUES (${flow.stateHash}, ${flow.browserHash}, ${flow.verifier}, ${flow.nonce}, ${flow.expiresAt})`,
         ]);
-      }, Effect.mapError(unavailable)),
+      }, unavailable),
       consumeFlow: Effect.fn("D1AuthStore.consumeFlow")(function* (state, browser, now) {
         const rows = yield* sql`DELETE FROM login_flows
         WHERE state_hash = ${state} AND browser_hash = ${browser} AND expires_at > ${now}
@@ -38,7 +44,7 @@ export const D1AuthStore = Layer.effect(
         const decoded = yield* Schema.decodeUnknownEffect(Schema.Array(PendingFlow))(rows);
 
         return decoded[0] ?? null;
-      }, Effect.mapError(unavailable)),
+      }, unavailable),
       signIn: Effect.fn("D1AuthStore.signIn")(function* (identity, userId, session) {
         const results = yield* d1.batch([
           sql`INSERT INTO users (id, google_sub, display_name) VALUES (${userId}, ${identity.sub}, ${identity.name})
@@ -54,24 +60,24 @@ export const D1AuthStore = Layer.effect(
         if (user === null) return yield* new AuthUnavailable({});
 
         return user;
-      }, Effect.mapError(unavailable)),
+      }, unavailable),
       current: Effect.fn("D1AuthStore.current")(function* (hash, now) {
         return yield* decodeUser(
           yield* sql`SELECT users.id, display_name AS displayName FROM users
         JOIN sessions ON sessions.user_id = users.id
         WHERE token_hash = ${hash} AND expires_at > ${now}`,
         );
-      }, Effect.mapError(unavailable)),
+      }, unavailable),
       rename: Effect.fn("D1AuthStore.rename")(function* (hash, now, name) {
         return yield* decodeUser(
           yield* sql`UPDATE users SET display_name = ${name}
         WHERE id = (SELECT user_id FROM sessions WHERE token_hash = ${hash} AND expires_at > ${now})
         RETURNING id, display_name AS displayName`,
         );
-      }, Effect.mapError(unavailable)),
+      }, unavailable),
       signOut: Effect.fn("D1AuthStore.signOut")(function* (hash) {
         yield* sql`DELETE FROM sessions WHERE token_hash = ${hash}`;
-      }, Effect.mapError(unavailable)),
+      }, unavailable),
     });
   }),
 );
