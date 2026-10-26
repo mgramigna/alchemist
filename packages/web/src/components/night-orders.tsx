@@ -59,7 +59,7 @@ function EntryIcon({
     );
   }
 
-  return character ? <CharacterToken team={character.team} className={className} /> : null;
+  return character ? <CharacterToken character={character} className={className} /> : null;
 }
 
 /** The entry's Night Instructions, or a prompt to write them. Blank entries stay in the order. */
@@ -297,7 +297,7 @@ export function NightOrderEditor({
 
               return (
                 <li key={character.id} className="flex items-center gap-2 px-2 py-1">
-                  <CharacterToken team={character.team} className="size-6" />
+                  <CharacterToken character={character} className="size-6" />
                   <span
                     className={cn(
                       "min-w-0 flex-1 truncate text-sm",

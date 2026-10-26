@@ -39,12 +39,19 @@ export {
   defaultAlignment,
   exportBlockers,
   genericIcons,
+  characterIcons,
+  isStale,
+  IconVariant,
+  ArtworkVariant,
+  ArtworkLook,
+  ArtworkStyle,
+  PublishedArtwork,
+  CharacterArtwork,
   instructionsBlocker,
   nameBlocker,
   type Alignment,
   type ExportBlocker,
   type GenericIcon,
-  type IconVariant,
   type InstructionsField,
 } from "./character.ts";
 
@@ -87,3 +94,5 @@ export * from "./export.ts";
 export { textLength } from "./text.ts";
 
 export * from "./import.ts";
+
+export * from "./artwork.ts";

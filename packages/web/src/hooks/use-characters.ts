@@ -1,6 +1,7 @@
 import type {
   AuthoredTeam,
   Character,
+  CharacterArtwork,
   CharacterDetails,
   CharacterId,
   Night,
@@ -11,7 +12,7 @@ import { Exit } from "effect";
 import { useRef, useState, useSyncExternalStore } from "react";
 import { ScriptKeys, createCharacter, deleteCharacter, updateCharacter } from "../api.ts";
 import { createAutosave } from "../lib/autosave.ts";
-import { replaceCharacter, sameDetails } from "../lib/characters.ts";
+import { replaceCharacter, sameDetails, withArtwork } from "../lib/characters.ts";
 
 /**
  * The Workbench's working copy of a Script's Characters. Edits apply locally at
@@ -86,6 +87,10 @@ export function useCharacters(
     edit: (id: CharacterId, details: CharacterDetails) => {
       commit(replaceCharacter(latest.current, id, details));
       autosave.schedule(latest.current);
+    },
+    /** Records artwork the server has already saved; nothing is autosaved. */
+    setArtwork: (id: CharacterId, artwork: CharacterArtwork | undefined) => {
+      commit(withArtwork(latest.current, id, artwork));
     },
     /**
      * Resolves to the new Character, or undefined if the server refused. The

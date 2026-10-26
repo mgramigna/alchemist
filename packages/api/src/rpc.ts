@@ -63,6 +63,12 @@ export const Handlers = Rpcs.toLayer(
       "Character.update": ({ scriptId, id, ...details }) =>
         scripts.updateCharacter(scriptId, id, details),
       "Character.delete": ({ scriptId, id }) => scripts.deleteCharacter(scriptId, id),
+      "Artwork.upload": ({ scriptId, id, ...upload }) =>
+        scripts.uploadArtwork(scriptId, id, upload),
+      "Artwork.restyle": ({ scriptId, id, ...restyle }) =>
+        scripts.restyleArtwork(scriptId, id, restyle),
+      "Artwork.readSource": ({ scriptId, id }) => scripts.readArtworkSource(scriptId, id),
+      "Artwork.remove": ({ scriptId, id }) => scripts.removeArtwork(scriptId, id),
       "Jinx.list": ({ scriptId }) => scripts.listJinxes(scriptId),
       "Jinx.create": ({ scriptId, ...pair }) => scripts.createJinx(scriptId, pair),
       "Jinx.update": ({ scriptId, ...jinx }) => scripts.updateJinx(scriptId, jinx),

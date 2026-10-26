@@ -10,6 +10,7 @@ import { CurrentUser } from "@alchemist/domain/rpc";
 import { assert, it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { readFileSync } from "node:fs";
+import { ArtworkStorage } from "../src/artwork-storage.ts";
 import { Scripts, ScriptsLive, ScriptStore } from "../src/scripts.ts";
 import { scriptsFixture } from "./support/scripts.ts";
 
@@ -128,6 +129,7 @@ it.effect("reports an atomic store failure without returning an imported Script"
   }).pipe(
     Effect.provide(
       ScriptsLive.pipe(
+        Layer.provide(Layer.mock(ArtworkStorage, {})),
         Layer.provide(
           Layer.mock(ScriptStore, {
             insertImport: () => Effect.fail(new ScriptWriteUnavailable({})),

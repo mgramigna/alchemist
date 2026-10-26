@@ -6,11 +6,20 @@ import {
   ScriptImportInvalid,
 } from "./import.ts";
 import { ScriptExportInvalid } from "./export.ts";
+import {
+  ArtworkConflict,
+  ArtworkInvalid,
+  ArtworkNotFound,
+  ArtworkRestyle,
+  ArtworkSource,
+  ArtworkUpload,
+} from "./artwork.ts";
 import { Context, Schema } from "effect";
 import { Rpc, RpcGroup, RpcMiddleware } from "effect/rpc";
 import {
   AuthoredTeam,
   Character,
+  CharacterArtwork,
   CharacterDetails,
   CharacterId,
   CharacterNotFound,
@@ -135,6 +144,35 @@ export const Rpcs = RpcGroup.make(
     // The deleted ID: JSON cannot carry a void result.
     success: CharacterId,
     error: Schema.Union([CharacterNotFound, ScriptWriteUnavailable]),
+  }).middleware(Authentication),
+  // The browser styles uploads locally; the server validates, stores the private
+  // original and publishes immutable variants before switching references.
+  Rpc.make("Artwork.upload", {
+    payload: { scriptId: ScriptId, id: CharacterId, ...ArtworkUpload.fields },
+    success: CharacterArtwork,
+    error: Schema.Union([
+      CharacterNotFound,
+      ArtworkInvalid,
+      ArtworkConflict,
+      ScriptWriteUnavailable,
+    ]),
+  }).middleware(Authentication),
+  Rpc.make("Artwork.restyle", {
+    payload: { scriptId: ScriptId, id: CharacterId, ...ArtworkRestyle.fields },
+    success: CharacterArtwork,
+    error: Schema.Union([ArtworkNotFound, ArtworkInvalid, ArtworkConflict, ScriptWriteUnavailable]),
+  }).middleware(Authentication),
+  // The owner's retained original, for restyling. Never part of a public read.
+  Rpc.make("Artwork.readSource", {
+    payload: { scriptId: ScriptId, id: CharacterId },
+    success: ArtworkSource,
+    error: Schema.Union([ArtworkNotFound, ScriptReadUnavailable]),
+  }).middleware(Authentication),
+  // Returns the Character to generic icons. Published images stay available.
+  Rpc.make("Artwork.remove", {
+    payload: { scriptId: ScriptId, id: CharacterId },
+    success: CharacterId,
+    error: Schema.Union([ArtworkNotFound, ScriptWriteUnavailable]),
   }).middleware(Authentication),
   Rpc.make("Jinx.list", {
     payload: { scriptId: ScriptId },

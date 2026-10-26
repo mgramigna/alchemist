@@ -8,7 +8,6 @@ import {
   NIGHTS,
   abilityBlocker,
   instructionsBlocker,
-  genericIcons,
   nameBlocker,
   type Character,
   type CharacterDetails,
@@ -24,13 +23,7 @@ import { ReminderTokenList } from "./reminder-tokens.tsx";
 import { CharacterToken } from "./character-token.tsx";
 import { Counter } from "./counter.tsx";
 import { useAppForm } from "../hooks/form.ts";
-import {
-  ICON_VARIANT_LABELS,
-  characterTitle,
-  groupByTeam,
-  teamLabel,
-  teamPluralLabel,
-} from "../lib/characters.ts";
+import { characterTitle, groupByTeam, teamLabel, teamPluralLabel } from "../lib/characters.ts";
 import { fieldLabel } from "../lib/fields.ts";
 import { INSTRUCTIONS_FIELD, NIGHT_LABELS, positionSummary } from "../lib/night.ts";
 import { Badge } from "./ui/badge.tsx";
@@ -129,7 +122,7 @@ export function CharacterNavigator({
                   onClick={() => onSelect(character.id)}
                   className={cn(rowClass, character.id === selectedId && "bg-muted font-medium")}
                 >
-                  <CharacterToken team={character.team} className="size-5" />
+                  <CharacterToken character={character} className="size-5" />
                   <span
                     className={cn(
                       "min-w-0 flex-1 truncate",
@@ -193,7 +186,7 @@ export function ExportBlockerList({
                   onClick={() => onSelect(blocker.characterId)}
                   className={cn(rowClass, "text-sm")}
                 >
-                  {character && <CharacterToken team={character.team} className="size-5" />}
+                  {character && <CharacterToken character={character} className="size-5" />}
                   <span className="min-w-0">
                     <span className="font-medium">
                       {character ? characterTitle(character) : "Character"}:
@@ -231,8 +224,10 @@ export function CharacterForm({
   onToggleNight,
   onOpenNight,
   jinxEditor,
+  iconEditor,
 }: {
   readonly jinxEditor: ReactNode;
+  readonly iconEditor: ReactNode;
   readonly character: Character;
   readonly characters: ReadonlyArray<Character>;
   readonly nightOrders: NightOrders;
@@ -268,7 +263,7 @@ export function CharacterForm({
         className="flex min-w-0 flex-col gap-6 rounded-xl border border-border bg-card p-5 lg:col-span-5"
       >
         <div className="flex flex-wrap items-center gap-3">
-          <CharacterToken team={character.team} className="size-11" />
+          <CharacterToken character={character} className="size-11" />
           <h2
             id="character-title"
             className="min-w-0 flex-1 basis-40 text-xl font-semibold wrap-anywhere"
@@ -353,22 +348,7 @@ export function CharacterForm({
             />
           )}
         </form.AppField>
-        <section aria-labelledby="icon-title" className="flex flex-col gap-2 border-t pt-5">
-          <h3 id="icon-title" className="font-medium">
-            Icon
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Generic icons follow the Team until you add artwork.
-          </p>
-          <ul className="flex flex-wrap gap-4">
-            {genericIcons(character.team).map(({ variant }) => (
-              <li key={variant} className="flex flex-col items-center gap-1 text-xs">
-                <CharacterToken team={character.team} variant={variant} className="size-12" />
-                {ICON_VARIANT_LABELS[variant]}
-              </li>
-            ))}
-          </ul>
-        </section>
+        {iconEditor}
         <section aria-labelledby="nights-title" className="flex flex-col gap-5 border-t pt-5">
           <div className="flex flex-col gap-1">
             <h3 id="nights-title" className="font-medium">

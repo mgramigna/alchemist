@@ -11,11 +11,63 @@ import {
   type OwnedScript,
 } from "@alchemist/domain";
 import { Effect, Layer, Option } from "effect";
-import { ScriptStore, ScriptsLive } from "../../src/scripts.ts";
+import { ArtworkStorage } from "../../src/artwork-storage.ts";
+import { ScriptStore, ScriptsLive, type StoredArtwork } from "../../src/scripts.ts";
+
+// In-memory buckets. Publishing refuses existing keys like the R2 adapter, and
+// `failPublishAfter` makes the nth later publish fail to exercise partial writes.
+export const storageFixture = () => {
+  const sources = new Map<string, Uint8Array>();
+  const published = new Map<string, Uint8Array>();
+  const control = { failPublishAfter: Number.POSITIVE_INFINITY, failSourceWrites: false };
+
+  const layer = Layer.succeed(ArtworkStorage, {
+    putSource: (key, bytes) =>
+      control.failSourceWrites
+        ? Effect.fail(new ScriptWriteUnavailable({}))
+        : Effect.sync(() => void sources.set(key, bytes)),
+    readSource: (key) => Effect.sync(() => Option.fromNullishOr(sources.get(key))),
+    deleteSource: (key) => Effect.sync(() => void sources.delete(key)),
+    publish: (key, png) =>
+      Effect.suspend(() => {
+        if (published.has(key) || control.failPublishAfter-- <= 0)
+          return Effect.fail(new ScriptWriteUnavailable({}));
+        published.set(key, png);
+
+        return Effect.void;
+      }),
+    readPublished: (key) =>
+      Effect.sync(() =>
+        Option.fromNullishOr(published.get(key)).pipe(
+          Option.map((bytes) => ({ bytes, etag: `"${key}"` })),
+        ),
+      ),
+  });
+
+  return { sources, published, control, layer };
+};
 
 // In-memory ScriptStore with the same owner scoping as the D1 adapter.
 export const scriptsFixture = Effect.sync(() => {
   const imports = new Map<string, ImportedData>();
+  const artwork = new Map<string, StoredArtwork>();
+
+  const withArtwork = (scriptId: string, character: Character): Character => {
+    const stored = artwork.get(`${scriptId}:${character.id}`);
+
+    return stored === undefined
+      ? character
+      : {
+          ...character,
+          artwork: {
+            team: stored.team,
+            variants: stored.variants,
+            sourceId: stored.sourceId,
+            style: stored.style,
+          },
+        };
+  };
+
   const rows = new Map<string, OwnedScript & { readonly ownerId: string }>();
 
   const project = (row: OwnedScript): OwnedScript => ({
@@ -60,6 +112,50 @@ export const scriptsFixture = Effect.sync(() => {
     Option.fromNullishOr(rows.get(id)).pipe(Option.filter((row) => row.ownerId === ownerId));
 
   const store = Layer.succeed(ScriptStore, {
+    findArtwork: (ownerId, scriptId, id) =>
+      Effect.sync(() => {
+        const row = characters.get(`${scriptId}:${id}`);
+
+        if (Option.isNone(owned(ownerId, scriptId)) || row === undefined) return Option.none();
+
+        return Option.some({
+          team: row.character.team,
+          artwork: artwork.get(`${scriptId}:${id}`) ?? null,
+        });
+      }),
+    replaceArtwork: (ownerId, scriptId, id, next, expectedSourceId, now) =>
+      Effect.sync(() => {
+        const key = `${scriptId}:${id}`;
+
+        if (
+          Option.isNone(owned(ownerId, scriptId)) ||
+          !characters.has(key) ||
+          (artwork.get(key)?.sourceId ?? null) !== expectedSourceId
+        )
+          return false;
+        artwork.set(key, next);
+        const imported = imports.get(scriptId);
+
+        if (imported !== undefined)
+          imports.set(scriptId, {
+            ...imported,
+            artwork: imported.artwork.filter(
+              (art) => art.field !== "image" || art.characterId !== id,
+            ),
+          });
+        touch(scriptId, now);
+
+        return true;
+      }),
+    deleteArtwork: (ownerId, scriptId, id, now) =>
+      Effect.sync(() => {
+        if (Option.isNone(owned(ownerId, scriptId))) return false;
+        const removed = artwork.delete(`${scriptId}:${id}`);
+
+        if (removed) touch(scriptId, now);
+
+        return removed;
+      }),
     useGenericArtwork: (ownerId, id, field, characterId, now) =>
       Effect.sync(() => {
         const imported = imports.get(id);
@@ -108,7 +204,19 @@ export const scriptsFixture = Effect.sync(() => {
             id: row.id,
             name: row.name,
             authorCredit: row.authorCredit,
-            characters: inScript(id),
+            characters: inScript(id).map((character) => {
+              const stored = artwork.get(`${id}:${character.id}`);
+
+              return {
+                id: character.id,
+                name: character.name,
+                ability: character.ability,
+                team: character.team,
+                firstNightInstructions: character.firstNightInstructions,
+                otherNightInstructions: character.otherNightInstructions,
+                ...(stored && { artwork: { team: stored.team, variants: stored.variants } }),
+              };
+            }),
             nightOrders: nightOrders.get(id) ?? defaultNightOrders,
             jinxes: inJinxes(id),
           })),
@@ -152,7 +260,11 @@ export const scriptsFixture = Effect.sync(() => {
         ),
       ),
     listCharacters: (ownerId, scriptId) =>
-      Effect.sync(() => (Option.isSome(owned(ownerId, scriptId)) ? inScript(scriptId) : [])),
+      Effect.sync(() =>
+        Option.isSome(owned(ownerId, scriptId))
+          ? inScript(scriptId).map((character) => withArtwork(scriptId, character))
+          : [],
+      ),
     insertCharacter: (ownerId, scriptId, character, orders, now) =>
       Effect.sync(() => {
         if (Option.isNone(owned(ownerId, scriptId))) return Option.none();
@@ -186,7 +298,7 @@ export const scriptsFixture = Effect.sync(() => {
         characters.set(`${scriptId}:${id}`, { scriptId, character });
         touch(scriptId, now);
 
-        return Option.some(character);
+        return Option.some(withArtwork(scriptId, character));
       }),
     deleteCharacter: (ownerId, scriptId, id, now) =>
       Effect.sync(() => {
@@ -197,6 +309,7 @@ export const scriptsFixture = Effect.sync(() => {
           return false;
 
         characters.delete(`${scriptId}:${id}`);
+        artwork.delete(`${scriptId}:${id}`);
 
         for (const [key, row] of jinxes)
           if (row.scriptId === scriptId && (row.jinx.first === id || row.jinx.second === id))
@@ -280,5 +393,15 @@ export const scriptsFixture = Effect.sync(() => {
       }),
   });
 
-  return { rows, characters, nightOrders, layer: ScriptsLive.pipe(Layer.provide(store)) };
+  const storage = storageFixture();
+
+  return {
+    rows,
+    characters,
+    nightOrders,
+    artwork,
+    imports,
+    storage,
+    layer: ScriptsLive.pipe(Layer.provide(store), Layer.provideMerge(storage.layer)),
+  };
 });

@@ -61,6 +61,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./ui/alert-dialog.tsx";
+import { CharacterArtworkEditor } from "./character-artwork.tsx";
 import { CharacterForm, CharacterNavigator, ExportBlockerList } from "./characters.tsx";
 import { NightOrderEditor } from "./night-orders.tsx";
 import { SheetPreview } from "./sheet-preview.tsx";
@@ -496,6 +497,13 @@ export function Workbench({
                 onAdd={relationships.add}
                 onChange={relationships.edit}
                 onDelete={relationships.remove}
+              />
+            }
+            iconEditor={
+              <CharacterArtworkEditor
+                scriptId={script.id}
+                character={selected}
+                onArtwork={(artwork) => roster.setArtwork(selected.id, artwork)}
               />
             }
             character={selected}

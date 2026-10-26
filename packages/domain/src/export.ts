@@ -1,7 +1,7 @@
 import type { ImportedData } from "./import.ts";
 import { textLength } from "./text.ts";
 import { Result, Schema } from "effect";
-import { exportBlockers, genericIcons, type Character } from "./character.ts";
+import { characterIcons, exportBlockers, type Character } from "./character.ts";
 import { jinxExportBlockers, jinxPair, type Jinx } from "./jinx.ts";
 import { NIGHTS, nightOrderProblem, type NightOrders } from "./night.ts";
 import type { ScriptDetails } from "./script.ts";
@@ -156,20 +156,21 @@ export const botcSchemaProblems = (document: unknown): ReadonlyArray<ScriptExpor
   return Result.isSuccess(result) ? [] : [{ field: "schema", message: result.failure.message }];
 };
 
-// Preserve imported slot shape/cardinality while every unresolved slot uses a
-// local generic. Private external sources never enter the export document.
+// Uploaded artwork exports its published variants. Otherwise preserve imported
+// slot shape/cardinality while every unresolved slot uses a local generic.
+// Private sources, uploaded or external, never enter the export document.
 const exportImages = (
   character: Character,
   imported: ImportedData | undefined,
   assetOrigin: string,
 ) => {
-  const icons = genericIcons(character.team).map((icon) => new URL(icon.path, assetOrigin).href);
+  const icons = characterIcons(character).map((icon) => new URL(icon.path, assetOrigin).href);
 
   const artwork = imported?.artwork.find(
     (art) => art.characterId === character.id && art.field === "image",
   );
 
-  if (artwork === undefined) return icons;
+  if (artwork === undefined || character.artwork !== undefined) return icons;
   const slots = artwork.slots.map((_, index) => icons[index % icons.length] ?? icons[0]);
 
   return artwork.format === "single" ? slots[0] : slots;

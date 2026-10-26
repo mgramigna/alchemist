@@ -65,3 +65,8 @@ export const importedScriptData = (id: ScriptId) =>
   Client.query("Script.readImported", { id }, { reactivityKeys: [`Script:imported:${id}`] });
 
 export const useGenericArtwork = Client.mutation("Script.useGenericArtwork");
+
+export const uploadArtwork = Client.mutation("Artwork.upload");
+export const restyleArtwork = Client.mutation("Artwork.restyle");
+export const readArtworkSource = Client.mutation("Artwork.readSource");
+export const removeArtwork = Client.mutation("Artwork.remove");
