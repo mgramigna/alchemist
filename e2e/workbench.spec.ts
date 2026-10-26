@@ -1034,9 +1034,11 @@ test("Reminder Token count errors remain editable on a narrow screen", async ({ 
   await ordinary.screenshot({ path: test.info().outputPath("reminders-mobile.png") });
 });
 
-test("JSON download requires saved edits and downloads the saved Script on a narrow screen", async ({
+test("JSON export requires saved edits and copies or downloads the saved Script on a narrow screen", async ({
   page,
+  context,
 }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const api = await ownerApi(page);
   const id = "01k8ae00000000000000000001";
   api.scripts.push({ id, name: "Saved Script", authorCredit: "Ada", updatedAt: 0 });
@@ -1059,27 +1061,50 @@ test("JSON download requires saved edits and downloads the saved Script on a nar
   await expect(page.getByText("Ready to export")).toBeVisible();
   const name = page.getByRole("textbox", { name: "Script name" });
   await name.fill("Just edited");
-  await page.getByRole("button", { name: "Download JSON" }).click();
+  await page.getByRole("button", { name: "Export JSON" }).click();
+  await page.getByRole("menuitem", { name: "Copy JSON" }).click();
   await expect(page.getByRole("alert")).toContainText("Wait for all changes to save");
   expect(api.exports).toBe(0);
   await expect(page.getByRole("status")).toContainText("All changes saved");
   api.failSaves = true;
   await name.fill("Retained after failure");
   await expect(page.getByRole("status")).toContainText("Couldn’t save");
-  await page.getByRole("button", { name: "Download JSON" }).click();
+  await page.getByRole("button", { name: "Export JSON" }).click();
+  await page.getByRole("menuitem", { name: "Download JSON" }).click();
   expect(api.exports).toBe(0);
   api.failSaves = false;
   await page.getByRole("button", { name: "Retry save" }).click();
   await expect(page.getByRole("status")).toContainText("All changes saved");
-  const downloaded = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download JSON" }).focus();
+  await page.getByRole("button", { name: "Export JSON" }).focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitem")).toHaveText(["Copy JSON", "Download JSON"]);
+  await expect(page.getByRole("menuitem", { name: "Copy JSON" })).toBeFocused();
   await page.keyboard.press("Enter");
+  await expect(page.getByText("JSON copied to clipboard", { exact: true })).toBeVisible();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(api.exports).toBe(1);
+
+  // Clipboard failures leave downloading available as an alternative.
+  await page.evaluate(() => {
+    navigator.clipboard.writeText = async () => {
+      throw new DOMException("Clipboard denied", "NotAllowedError");
+    };
+  });
+  await page.getByRole("button", { name: "Export JSON" }).click();
+  await page.getByRole("menuitem", { name: "Copy JSON" }).click();
+  await expect(page.getByRole("alert")).toContainText("Couldn’t copy the JSON");
+  const downloaded = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export JSON" }).click();
+  await page.getByRole("menuitem", { name: "Download JSON" }).click();
   const file = await downloaded;
   expect(file.suggestedFilename()).toBe("saved-script.json");
   const path = await file.path();
 
   if (path === null) throw new Error("Download did not produce a file");
-  const document = JSON.parse(await readFile(path, "utf8"));
+  const json = await readFile(path, "utf8");
+  expect(json).toBe(copied);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  const document = JSON.parse(json);
   expect(document[0]).toEqual({
     id: "_meta",
     name: "Retained after failure",
@@ -1093,7 +1118,7 @@ test("JSON download requires saved edits and downloads the saved Script on a nar
     "Character 3",
     "Character 4",
   ]);
-  expect(api.exports).toBe(1);
+  expect(api.exports).toBe(3);
   expect(await noHorizontalScroll(page)).toBe(true);
 });
 
