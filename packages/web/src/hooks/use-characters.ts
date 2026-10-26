@@ -1,12 +1,17 @@
-import type { AuthoredTeam, Character, CharacterId, ScriptId } from "@alchemist/domain";
+import type {
+  AuthoredTeam,
+  Character,
+  CharacterDetails,
+  CharacterId,
+  Night,
+  ScriptId,
+} from "@alchemist/domain";
 import { useAtomSet } from "@effect/atom-react";
 import { Exit } from "effect";
 import { useRef, useState, useSyncExternalStore } from "react";
 import { ScriptKeys, createCharacter, deleteCharacter, updateCharacter } from "../api.ts";
 import { createAutosave } from "../lib/autosave.ts";
 import { replaceCharacter, sameDetails } from "../lib/characters.ts";
-
-type Details = Pick<Character, "name" | "ability" | "team">;
 
 /**
  * The Workbench's working copy of a Script's Characters. Edits apply locally at
@@ -43,6 +48,8 @@ export function useCharacters(
             name: character.name,
             ability: character.ability,
             team: character.team,
+            firstNightInstructions: character.firstNightInstructions,
+            otherNightInstructions: character.otherNightInstructions,
           },
           reactivityKeys: [ScriptKeys.owned],
         });
@@ -72,14 +79,17 @@ export function useCharacters(
     characters,
     status,
     autosave,
-    edit: (id: CharacterId, details: Details) => {
+    edit: (id: CharacterId, details: CharacterDetails) => {
       commit(replaceCharacter(latest.current, id, details));
       autosave.schedule(latest.current);
     },
-    /** Resolves to the new Character, or undefined if the server refused. */
-    add: async (team: AuthoredTeam) => {
+    /**
+     * Resolves to the new Character, or undefined if the server refused. The
+     * server also adds it to each chosen night, immediately before Dawn.
+     */
+    add: async (team: AuthoredTeam, nights: ReadonlyArray<Night>) => {
       const exit = await create({
-        payload: { scriptId, team },
+        payload: { scriptId, team, nights },
         reactivityKeys: [ScriptKeys.owned],
       });
 

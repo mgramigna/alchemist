@@ -46,10 +46,18 @@ export const CharacterAbility = Schema.String.check(
   Schema.isMaxLength(1000, { message: "Use 1000 characters or fewer." }),
 );
 
+// Storyteller directions for each night, kept whether or not the Character is
+// currently in that night's order.
+export const NightInstructions = Schema.String.check(
+  Schema.isMaxLength(2000, { message: "Use 2000 characters or fewer." }),
+);
+
 export const CharacterDetails = Schema.Struct({
   name: CharacterName,
   ability: CharacterAbility,
   team: AuthoredTeam,
+  firstNightInstructions: NightInstructions,
+  otherNightInstructions: NightInstructions,
 });
 
 export interface CharacterDetails extends Schema.Schema.Type<typeof CharacterDetails> {}
@@ -69,6 +77,8 @@ export const PublicCharacter = Schema.Struct({
   team: AuthoredTeam,
 });
 
+export type InstructionsField = "firstNightInstructions" | "otherNightInstructions";
+
 export interface PublicCharacter extends Schema.Schema.Type<typeof PublicCharacter> {}
 
 // Also returned when the Character's Script belongs to someone else.
@@ -80,6 +90,7 @@ export class CharacterNotFound extends Schema.TaggedError<
 // Limits the official Script schema enforces at export time.
 export const NAME_EXPORT_LIMIT = 30;
 export const ABILITY_EXPORT_LIMIT = 250;
+export const INSTRUCTIONS_EXPORT_LIMIT = 500;
 
 const nameKey = (name: string) => name.trim().toLowerCase();
 
@@ -109,16 +120,22 @@ export const abilityBlocker = (ability: string): string | undefined => {
   return undefined;
 };
 
+// Blank instructions are allowed: the entry still appears in the night order.
+export const instructionsBlocker = (instructions: string): string | undefined =>
+  instructions.length > INSTRUCTIONS_EXPORT_LIMIT
+    ? `Use ${INSTRUCTIONS_EXPORT_LIMIT} characters or fewer.`
+    : undefined;
+
 export interface ExportBlocker {
   readonly characterId: CharacterId;
-  readonly field: "name" | "ability";
+  readonly field: "name" | "ability" | InstructionsField;
   readonly message: string;
 }
 
 export const exportBlockers = (
-  characters: ReadonlyArray<Pick<Character, "id" | "name" | "ability">>,
+  characters: ReadonlyArray<Pick<Character, "id" | "name" | "ability" | InstructionsField>>,
 ): ReadonlyArray<ExportBlocker> =>
-  characters.flatMap(({ id, name, ability }) => {
+  characters.flatMap(({ id, name, ability, ...instructions }) => {
     const blockers: Array<ExportBlocker> = [];
     const otherNames = characters.flatMap((other) => (other.id === id ? [] : [other.name]));
     const nameMessage = nameBlocker(name, otherNames);
@@ -129,6 +146,12 @@ export const exportBlockers = (
 
     if (abilityMessage !== undefined)
       blockers.push({ characterId: id, field: "ability", message: abilityMessage });
+
+    for (const field of ["firstNightInstructions", "otherNightInstructions"] as const) {
+      const message = instructionsBlocker(instructions[field]);
+
+      if (message !== undefined) blockers.push({ characterId: id, field, message });
+    }
 
     return blockers;
   });

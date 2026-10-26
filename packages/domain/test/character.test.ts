@@ -7,8 +7,14 @@ import {
   abilityBlocker,
   exportBlockers,
   genericIcons,
+  instructionsBlocker,
   nameBlocker,
 } from "../src/index.ts";
+
+const instructions = (firstNightInstructions: string, otherNightInstructions: string) => ({
+  firstNightInstructions,
+  otherNightInstructions,
+});
 
 const id = (n: number) => CharacterId.make(`01k8ae1000000000000000000${n}`);
 
@@ -34,14 +40,32 @@ test("name and ability blockers report blanks, export limits and trimmed case-in
 
 test("a duplicate name blocks export on both Characters", () => {
   const blockers = exportBlockers([
-    { id: id(1), name: "Imp", ability: "Kills" },
-    { id: id(2), name: "imp ", ability: "" },
+    { id: id(1), name: "Imp", ability: "Kills", ...instructions("", "") },
+    { id: id(2), name: "imp ", ability: "", ...instructions("", "") },
   ]);
 
   expect(blockers.map((blocker) => [blocker.characterId, blocker.field])).toEqual([
     [id(1), "name"],
     [id(2), "name"],
     [id(2), "ability"],
+  ]);
+});
+
+test("blank Night Instructions are allowed; over-limit instructions block export per night", () => {
+  expect(instructionsBlocker("")).toBeUndefined();
+  expect(instructionsBlocker("x".repeat(500))).toBeUndefined();
+  expect(instructionsBlocker("x".repeat(501))).toBe("Use 500 characters or fewer.");
+
+  const blockers = exportBlockers([
+    { id: id(1), name: "Imp", ability: "Kills", ...instructions("", "x".repeat(501)) },
+  ]);
+
+  expect(blockers).toEqual([
+    {
+      characterId: id(1),
+      field: "otherNightInstructions",
+      message: "Use 500 characters or fewer.",
+    },
   ]);
 });
 

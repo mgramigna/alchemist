@@ -1,4 +1,10 @@
-import { Character, CharacterId, OwnedScript, ScriptId } from "@alchemist/domain";
+import {
+  Character,
+  CharacterId,
+  OwnedScript,
+  ScriptId,
+  defaultNightOrders,
+} from "@alchemist/domain";
 import * as D1Client from "@effect/sql-d1/D1Client";
 import { Effect, Layer, Option } from "effect";
 import { Miniflare } from "miniflare";
@@ -6,6 +12,8 @@ import { readdir, readFile } from "node:fs/promises";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { D1ScriptStore } from "../src/d1.ts";
 import { ScriptStore } from "../src/scripts.ts";
+
+const noInstructions = { firstNightInstructions: "", otherNightInstructions: "" };
 
 const mf = new Miniflare({
   modules: true,
@@ -116,6 +124,7 @@ test("D1 Character writes are owner-scoped, atomic with the Script change time, 
         name: "Washerwoman",
         ability: "You start knowing a Townsfolk.",
         team: "townsfolk",
+        ...noInstructions,
       });
 
       const second = Character.make({
@@ -124,10 +133,12 @@ test("D1 Character writes are owner-scoped, atomic with the Script change time, 
         name: "",
       });
 
-      expect(Option.getOrNull(yield* scripts.insertCharacter("alice", mine.id, first, 20))).toEqual(
-        first,
-      );
-      yield* scripts.insertCharacter("alice", mine.id, second, 21);
+      expect(
+        Option.getOrNull(
+          yield* scripts.insertCharacter("alice", mine.id, first, defaultNightOrders, 20),
+        ),
+      ).toEqual(first);
+      yield* scripts.insertCharacter("alice", mine.id, second, defaultNightOrders, 21);
       // Bob can neither add to nor see Alice's Script.
       expect(
         Option.isNone(
@@ -135,6 +146,7 @@ test("D1 Character writes are owner-scoped, atomic with the Script change time, 
             "bob",
             mine.id,
             { ...first, id: CharacterId.make("01k8ae10000000000000000003") },
+            defaultNightOrders,
             22,
           ),
         ),
@@ -152,7 +164,7 @@ test("D1 Character writes are owner-scoped, atomic with the Script change time, 
             "bob",
             mine.id,
             first.id,
-            { name: "Hijack", ability: "", team: "demon" },
+            { name: "Hijack", ability: "", team: "demon", ...noInstructions },
             30,
           ),
         ),
@@ -164,7 +176,7 @@ test("D1 Character writes are owner-scoped, atomic with the Script change time, 
             "alice",
             mine.id,
             CharacterId.make("01k8ae10000000000000000009"),
-            { name: "x", ability: "", team: "demon" },
+            { name: "x", ability: "", team: "demon", ...noInstructions },
             30,
           ),
         ),
@@ -176,7 +188,7 @@ test("D1 Character writes are owner-scoped, atomic with the Script change time, 
         "alice",
         mine.id,
         first.id,
-        { name: "Imp", ability: first.ability, team: "demon" },
+        { name: "Imp", ability: first.ability, team: "demon", ...noInstructions },
         40,
       );
 
@@ -185,6 +197,7 @@ test("D1 Character writes are owner-scoped, atomic with the Script change time, 
         name: "Imp",
         ability: first.ability,
         team: "demon",
+        ...noInstructions,
       });
       expect(Option.getOrNull(yield* scripts.findOwned("alice", mine.id))?.updatedAt).toBe(40);
       expect(
@@ -198,5 +211,89 @@ test("D1 Character writes are owner-scoped, atomic with the Script change time, 
         second.id,
       ]);
       expect(Option.getOrNull(yield* scripts.findOwned("alice", mine.id))?.updatedAt).toBe(50);
+    }),
+  ));
+
+test("D1 Night Orders default on creation, replace atomically, refuse other Scripts' Characters, and lose deleted members", () =>
+  run(
+    Effect.gen(function* () {
+      const scripts = yield* ScriptStore;
+      const mine = script("01k8af00000000000000000001", 10);
+      const other = script("01k8af00000000000000000002", 10);
+      yield* scripts.insert("alice", mine);
+      yield* scripts.insert("alice", other);
+      expect(Option.getOrNull(yield* scripts.findNightOrders("alice", mine.id))).toEqual(
+        defaultNightOrders,
+      );
+      expect(Option.isNone(yield* scripts.findNightOrders("bob", mine.id))).toBe(true);
+
+      const character = (id: string) =>
+        Character.make({
+          id: CharacterId.make(id),
+          name: "Chef",
+          ability: "You start knowing a number.",
+          team: "townsfolk",
+          firstNightInstructions: "Show the number.",
+          otherNightInstructions: "",
+        });
+
+      const chef = character("01k8af10000000000000000001");
+      const foreign = character("01k8af10000000000000000002");
+
+      // The Character and its memberships are written together.
+      const joined = {
+        firstNight: ["dusk", "minioninfo", "demoninfo", chef.id, "dawn"],
+        otherNight: ["dusk", "dawn", chef.id],
+      } as const;
+
+      expect(
+        Option.getOrNull(yield* scripts.insertCharacter("alice", mine.id, chef, joined, 20)),
+      ).toEqual(chef);
+      yield* scripts.insertCharacter("alice", other.id, foreign, defaultNightOrders, 20);
+      expect(Option.getOrNull(yield* scripts.findNightOrders("alice", mine.id))).toEqual(joined);
+      expect((yield* scripts.listCharacters("alice", mine.id))[0]?.firstNightInstructions).toBe(
+        "Show the number.",
+      );
+
+      const reordered = yield* scripts.replaceNightOrder(
+        "alice",
+        mine.id,
+        "firstNight",
+        [chef.id, "dusk", "minioninfo", "dawn", "demoninfo"],
+        30,
+      );
+
+      expect(Option.getOrNull(reordered)).toEqual({
+        firstNight: [chef.id, "dusk", "minioninfo", "dawn", "demoninfo"],
+        otherNight: joined.otherNight,
+      });
+      expect(Option.getOrNull(yield* scripts.findOwned("alice", mine.id))?.updatedAt).toBe(30);
+
+      // The foreign key refuses another Script's Character and rolls back the whole write.
+      const crossScript = yield* Effect.flip(
+        scripts.replaceNightOrder("alice", mine.id, "otherNight", ["dusk", foreign.id, "dawn"], 40),
+      );
+
+      expect(crossScript._tag).toBe("ScriptWriteUnavailable");
+      expect(
+        Option.getOrNull(yield* scripts.findNightOrders("alice", mine.id))?.otherNight,
+      ).toEqual(joined.otherNight);
+      expect(Option.getOrNull(yield* scripts.findOwned("alice", mine.id))?.updatedAt).toBe(30);
+
+      // Another owner changes nothing.
+      expect(
+        Option.isNone(
+          yield* scripts.replaceNightOrder("bob", mine.id, "otherNight", ["dusk", "dawn"], 50),
+        ),
+      ).toBe(true);
+      expect(
+        Option.getOrNull(yield* scripts.findNightOrders("alice", mine.id))?.otherNight,
+      ).toEqual(joined.otherNight);
+
+      expect(yield* scripts.deleteCharacter("alice", mine.id, chef.id, 60)).toBe(true);
+      expect(Option.getOrNull(yield* scripts.findNightOrders("alice", mine.id))).toEqual({
+        firstNight: ["dusk", "minioninfo", "dawn", "demoninfo"],
+        otherNight: ["dusk", "dawn"],
+      });
     }),
   ));

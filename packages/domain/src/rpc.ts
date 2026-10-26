@@ -7,7 +7,9 @@ import {
   CharacterId,
   CharacterName,
   CharacterNotFound,
+  NightInstructions,
 } from "./character.ts";
+import { Night, NightOrder, NightOrderInvalid, NightOrders } from "./night.ts";
 import { AuthRejected, AuthUnavailable, DisplayName, User } from "./auth.ts";
 import {
   AuthorCredit,
@@ -61,8 +63,13 @@ export const Rpcs = RpcGroup.make(
     success: Schema.Array(Character),
     error: Schema.Union([ScriptNotFound, ScriptReadUnavailable]),
   }).middleware(Authentication),
+  // Creation asks which nights the Character acts on; each chosen night gains it before Dawn.
   Rpc.make("Character.create", {
-    payload: { scriptId: ScriptId, team: AuthoredTeam },
+    payload: {
+      scriptId: ScriptId,
+      team: AuthoredTeam,
+      nights: Schema.Array(Night).check(Schema.isMaxLength(2)),
+    },
     success: Character,
     error: Schema.Union([ScriptNotFound, ScriptWriteUnavailable]),
   }).middleware(Authentication),
@@ -74,6 +81,8 @@ export const Rpcs = RpcGroup.make(
       name: CharacterName,
       ability: CharacterAbility,
       team: AuthoredTeam,
+      firstNightInstructions: NightInstructions,
+      otherNightInstructions: NightInstructions,
     },
     success: Character,
     error: Schema.Union([CharacterNotFound, ScriptWriteUnavailable]),
@@ -83,6 +92,18 @@ export const Rpcs = RpcGroup.make(
     // The deleted ID: JSON cannot carry a void result.
     success: CharacterId,
     error: Schema.Union([CharacterNotFound, ScriptWriteUnavailable]),
+  }).middleware(Authentication),
+  Rpc.make("NightOrder.read", {
+    payload: { scriptId: ScriptId },
+    success: NightOrders,
+    error: Schema.Union([ScriptNotFound, ScriptReadUnavailable]),
+  }).middleware(Authentication),
+  // Replaces one night's complete order. Membership, standard steps and
+  // positions all change through this one write.
+  Rpc.make("NightOrder.replace", {
+    payload: { scriptId: ScriptId, night: Night, order: NightOrder },
+    success: NightOrders,
+    error: Schema.Union([ScriptNotFound, NightOrderInvalid, ScriptWriteUnavailable]),
   }).middleware(Authentication),
   // Anonymous browsers get null rather than an error, so this stays outside Authentication.
   Rpc.make("Account.current", {

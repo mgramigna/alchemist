@@ -14,11 +14,22 @@ interface Character {
   name: string;
   ability: string;
   team: string;
+  firstNightInstructions: string;
+  otherNightInstructions: string;
 }
+
+interface NightOrders {
+  firstNight: string[];
+  otherNight: string[];
+}
+
+type Night = keyof NightOrders;
 
 interface OwnerApi {
   readonly scripts: Script[];
   readonly characters: Character[];
+  nightOrders: NightOrders;
+  readonly nightSaves: Night[];
   readonly characterSaves: string[];
   readonly saves: string[];
   failSaves: boolean;
@@ -31,6 +42,7 @@ type WireValue =
   | ReadonlyArray<Character>
   | string
   | ReadonlyArray<Script>
+  | NightOrders
   | { readonly id: string; readonly displayName: string }
   | (Omit<Script, "updatedAt"> & { readonly characters: [] });
 
@@ -40,6 +52,11 @@ const ownerApi = async (page: Page) => {
   const state: OwnerApi = {
     scripts: [],
     characters: [],
+    nightOrders: {
+      firstNight: ["dusk", "minioninfo", "demoninfo", "dawn"],
+      otherNight: ["dusk", "dawn"],
+    },
+    nightSaves: [],
     characterSaves: [],
     saves: [],
     failSaves: false,
@@ -104,9 +121,18 @@ const ownerApi = async (page: Page) => {
           name: "",
           ability: "",
           team: body.payload.team,
+          firstNightInstructions: "",
+          otherNightInstructions: "",
         };
 
         state.characters.push(character);
+
+        const nights: Night[] = body.payload.nights;
+
+        for (const night of nights) {
+          const order = state.nightOrders[night];
+          order.splice(order.indexOf("dawn"), 0, character.id);
+        }
 
         return reply(character);
       }
@@ -119,6 +145,8 @@ const ownerApi = async (page: Page) => {
         character.name = body.payload.name;
         character.ability = body.payload.ability;
         character.team = body.payload.team;
+        character.firstNightInstructions = body.payload.firstNightInstructions;
+        character.otherNightInstructions = body.payload.otherNightInstructions;
         state.characterSaves.push(character.name);
 
         return reply(character);
@@ -129,8 +157,23 @@ const ownerApi = async (page: Page) => {
           state.characters.findIndex(({ id }) => id === body.payload.id),
           1,
         );
+        state.nightOrders = {
+          firstNight: state.nightOrders.firstNight.filter((entry) => entry !== body.payload.id),
+          otherNight: state.nightOrders.otherNight.filter((entry) => entry !== body.payload.id),
+        };
 
         return reply(body.payload.id);
+      }
+
+      case "NightOrder.read":
+        return reply(state.nightOrders);
+      case "NightOrder.replace": {
+        if (state.failSaves) return route.abort();
+
+        state.nightOrders = { ...state.nightOrders, [body.payload.night]: body.payload.order };
+        state.nightSaves.push(body.payload.night);
+
+        return reply(state.nightOrders);
       }
 
       case "Script.readPublic": {
@@ -152,6 +195,21 @@ const ownerApi = async (page: Page) => {
   });
 
   return state;
+};
+
+type NightChoice =
+  | "First Night and Other Nights"
+  | "First Night only"
+  | "Other Nights only"
+  | "No night action";
+
+// Creation asks which nights the new Character acts on.
+const addCharacter = async (page: Page, team: string, nights: NightChoice = "No night action") => {
+  await page
+    .getByRole("navigation", { name: "Script sections" })
+    .getByRole("button", { name: `Add ${team}` })
+    .click();
+  await page.getByRole("menuitem", { name: nights }).click();
 };
 
 const noHorizontalScroll = (page: Page) =>
@@ -318,12 +376,19 @@ test("an owner adds Characters by Team and finds and fixes what blocks export", 
   await expect(nav).toContainText("Ready to export");
 
   // A new blank draft is saved, selected, and named from the keyboard.
-  await nav.getByRole("button", { name: "Add Townsfolk" }).click();
+  await addCharacter(page, "Townsfolk");
   await expect(page.getByRole("heading", { name: "Unnamed Townsfolk" })).toBeVisible();
   const name = page.getByRole("textbox", { name: "Name" });
   await expect(name).toBeFocused();
   expect(api.characters).toEqual([
-    { id: expect.any(String), name: "", ability: "", team: "townsfolk" },
+    {
+      id: expect.any(String),
+      name: "",
+      ability: "",
+      team: "townsfolk",
+      firstNightInstructions: "",
+      otherNightInstructions: "",
+    },
   ]);
   await expect(nav.getByRole("list", { name: "Townsfolk" })).toContainText("2 problems");
 
@@ -347,7 +412,7 @@ test("an owner adds Characters by Team and finds and fixes what blocks export", 
   await expect(nav).toContainText("Ready to export");
 
   // Names must be unique, ignoring case and surrounding spaces.
-  await nav.getByRole("button", { name: "Add Demon" }).click();
+  await addCharacter(page, "Demon");
   await name.fill(" washerwoman ");
   await expect(
     page.getByText("Another Character has this name. Names must be unique."),
@@ -380,7 +445,7 @@ test("a Team change keeps the Character's content and survives reload; deleting 
   await page.goto("/");
   await page.getByRole("button", { name: "New Script" }).click();
   const nav = page.getByRole("navigation", { name: "Script sections" });
-  await nav.getByRole("button", { name: "Add Outsider" }).click();
+  await addCharacter(page, "Outsider");
   await page.getByRole("textbox", { name: "Name" }).fill("Drunk");
   await page.getByRole("textbox", { name: "Ability" }).fill("You think you are a Townsfolk.");
 
@@ -426,8 +491,169 @@ test("Character editing is usable on a narrow screen", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/");
   await page.getByRole("button", { name: "New Script" }).click();
-  await page.getByRole("button", { name: "Add Minion" }).click();
+  await addCharacter(page, "Minion");
   await page.getByRole("textbox", { name: "Name" }).fill("Poisoner");
   await expect(page.getByRole("complementary", { name: "Preview" })).toContainText("Poisoner");
+  expect(await noHorizontalScroll(page)).toBe(true);
+});
+
+test("creation chooses nights; the Character shows its position, keeps instructions when leaving a night, and links to reordering", async ({
+  page,
+}) => {
+  const api = await ownerApi(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "New Script" }).click();
+  await addCharacter(page, "Townsfolk", "First Night and Other Nights");
+  await page.getByRole("textbox", { name: "Name" }).fill("Chef");
+  const [chef] = api.characters;
+  expect(api.nightOrders).toEqual({
+    firstNight: ["dusk", "minioninfo", "demoninfo", chef?.id, "dawn"],
+    otherNight: ["dusk", chef?.id, "dawn"],
+  });
+
+  const nights = page.getByRole("region", { name: "Night actions" });
+  await expect(nights.getByRole("checkbox", { name: "Acts on the First Night" })).toBeChecked();
+  await expect(nights).toContainText("#4 of 5 · after Demon Info, before Dawn");
+  await expect(nights).toContainText("#2 of 3 · after Dusk, before Dawn");
+
+  // Blank instructions are encouraged but allowed.
+  await expect(nights.getByText("Tell the Storyteller what to do.").first()).toBeVisible();
+  await nights
+    .getByRole("textbox", { name: "First Night instructions" })
+    .fill("Show the Chef a number.");
+  await nights.getByRole("textbox", { name: "Other Nights instructions" }).fill("Kept for later.");
+
+  // Leaving a night keeps its instructions.
+  await nights.getByRole("checkbox", { name: "Acts on Other Nights" }).click();
+  await expect(nights).not.toContainText("#2 of 3");
+  await expect(nights.getByRole("textbox", { name: "Other Nights instructions" })).toHaveValue(
+    "Kept for later.",
+  );
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  expect(api.nightOrders.otherNight).toEqual(["dusk", "dawn"]);
+  expect(api.characters[0]?.otherNightInstructions).toBe("Kept for later.");
+
+  await page.reload();
+  await page
+    .getByRole("navigation", { name: "Script sections" })
+    .getByRole("button", { name: "Chef" })
+    .click();
+  await expect(nights.getByRole("checkbox", { name: "Acts on Other Nights" })).not.toBeChecked();
+  await expect(nights.getByRole("textbox", { name: "Other Nights instructions" })).toHaveValue(
+    "Kept for later.",
+  );
+
+  // The reorder link opens the night and its sheet in the preview.
+  await nights.getByRole("button", { name: "Reorder First Night" }).click();
+  await expect(page.getByRole("heading", { name: "First Night", exact: true })).toBeVisible();
+  const preview = page.getByRole("complementary", { name: "Preview" });
+  await expect(preview.getByRole("tab", { name: "First Night" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(preview.getByRole("list", { name: "First Night sheet" })).toContainText(
+    "Show the Chef a number.",
+  );
+});
+
+test("an owner reorders a night with the keyboard and by dragging, including steps and after Dawn", async ({
+  page,
+}) => {
+  const api = await ownerApi(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "New Script" }).click();
+  await addCharacter(page, "Townsfolk", "First Night only");
+  await page.getByRole("textbox", { name: "Name" }).fill("Chef");
+  await addCharacter(page, "Demon");
+  await page.getByRole("textbox", { name: "Name" }).fill("Imp");
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  const [chef, imp] = api.characters;
+
+  const nav = page.getByRole("navigation", { name: "Script sections" });
+  await nav.getByRole("button", { name: /^Other Nights/ }).click();
+  const preview = page.getByRole("complementary", { name: "Preview" });
+  await expect(preview.getByRole("tab", { name: "Other Nights" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await nav.getByRole("button", { name: /^First Night/ }).click();
+  const order = page.getByRole("list", { name: "First Night order" });
+  await expect(order.getByRole("listitem")).toHaveCount(5);
+
+  // Keyboard: Chef moves past Dawn; focus follows to the button still usable.
+  await page.getByRole("button", { name: "Move Chef down" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(order.getByRole("listitem").last()).toContainText("Chef");
+  await expect(page.getByRole("button", { name: "Move Chef up" })).toBeFocused();
+  // Standard steps move too.
+  await page.getByRole("button", { name: "Move Dusk down" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "Move Dusk down" })).toBeFocused();
+
+  // The tray adds before Dawn; removal returns a Character to the tray.
+  const tray = page.getByRole("region", { name: "Not in this night" });
+  await tray.getByRole("button", { name: "Add Imp to First Night" }).click();
+  await expect(tray).toContainText("Every Character acts on the First Night.");
+  await page.getByRole("button", { name: "Remove Chef from First Night" }).click();
+  await expect(tray.getByRole("button", { name: "Add Chef to First Night" })).toBeVisible();
+  await tray.getByRole("button", { name: "Add Chef to First Night" }).click();
+
+  // Dragging Imp onto Minion Info takes its place at the top.
+  await order
+    .getByRole("listitem")
+    .filter({ hasText: "Imp" })
+    .dragTo(order.getByRole("listitem").filter({ hasText: "Minion Info" }));
+
+  const expected = [imp?.id, "minioninfo", "dusk", "demoninfo", chef?.id, "dawn"];
+  await expect(order.getByRole("listitem")).toHaveText([
+    /Imp/,
+    /Minion Info/,
+    /Dusk/,
+    /Demon Info/,
+    /Chef/,
+    /Dawn/,
+  ]);
+  // Blank instructions keep the entry and prompt for text on the sheet.
+  await expect(preview.getByRole("list", { name: "First Night sheet" })).toContainText(
+    "Add instructions for the Storyteller.",
+  );
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  expect(api.nightOrders.firstNight).toEqual(expected);
+  expect(api.nightOrders.otherNight).toEqual(["dusk", "dawn"]);
+
+  await page.reload();
+  await nav.getByRole("button", { name: /^First Night/ }).click();
+  await expect(order.getByRole("listitem")).toHaveText([
+    /Imp/,
+    /Minion Info/,
+    /Dusk/,
+    /Demon Info/,
+    /Chef/,
+    /Dawn/,
+  ]);
+
+  // Deleting a Character removes it from the night.
+  await order.getByRole("button", { name: "Imp", exact: true }).click();
+  await page.getByRole("button", { name: "Delete Character" }).click();
+  await page
+    .getByRole("alertdialog", { name: "Delete this Character?" })
+    .getByRole("button", { name: "Delete Character" })
+    .click();
+  await expect(page.getByRole("heading", { name: "Script details" })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  expect(api.nightOrders.firstNight).toEqual(["minioninfo", "dusk", "demoninfo", chef?.id, "dawn"]);
+});
+
+test("night reordering is usable on a narrow screen", async ({ page }) => {
+  await ownerApi(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "New Script" }).click();
+  await addCharacter(page, "Minion", "Other Nights only");
+  await page.getByRole("textbox", { name: "Name" }).fill("Poisoner");
+  await page.getByRole("button", { name: "Reorder Other Nights" }).click();
+  const order = page.getByRole("list", { name: "Other Nights order" });
+  await page.getByRole("button", { name: "Move Poisoner up" }).click();
+  await expect(order.getByRole("listitem").first()).toContainText("Poisoner");
   expect(await noHorizontalScroll(page)).toBe(true);
 });

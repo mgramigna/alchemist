@@ -1,5 +1,7 @@
 import {
   CharacterNotFound,
+  NightOrderInvalid,
+  type Character,
   PublicScript,
   ScriptId,
   ScriptNotFound,
@@ -12,6 +14,11 @@ import { Effect, Exit, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import { Scripts, ScriptsLive, ScriptStore } from "../src/scripts.ts";
 import { scriptsFixture } from "./support/scripts.ts";
+
+const noInstructions = { firstNightInstructions: "", otherNightInstructions: "" };
+
+// Night Instructions are not part of the public projection yet.
+const publicView = ({ id, name, ability, team }: Character) => ({ id, name, ability, team });
 
 const id = ScriptId.make("01k8ac00000000000000000001");
 
@@ -199,11 +206,17 @@ it.effect(
         const script = yield* scripts.create().pipe(as(alice));
         yield* TestClock.adjust(1_000);
 
-        const added = yield* scripts.createCharacter(script.id, "demon").pipe(as(alice));
+        const added = yield* scripts.createCharacter(script.id, "demon", []).pipe(as(alice));
         assert.match(added.id, /^[0-7][0-9a-hjkmnp-tv-z]{25}$/);
         assert.deepStrictEqual(
-          { name: added.name, ability: added.ability, team: added.team },
-          { name: "", ability: "", team: "demon" },
+          {
+            name: added.name,
+            ability: added.ability,
+            team: added.team,
+            firstNightInstructions: added.firstNightInstructions,
+            otherNightInstructions: added.otherNightInstructions,
+          },
+          { name: "", ability: "", team: "demon", ...noInstructions },
         );
         assert.strictEqual((yield* scripts.readOwned(script.id).pipe(as(alice))).updatedAt, 1_000);
         yield* TestClock.adjust(1_000);
@@ -212,7 +225,12 @@ it.effect(
         const longName = "N".repeat(60);
 
         const renamed = yield* scripts
-          .updateCharacter(script.id, added.id, { name: longName, ability: "", team: "demon" })
+          .updateCharacter(script.id, added.id, {
+            name: longName,
+            ability: "",
+            team: "demon",
+            ...noInstructions,
+          })
           .pipe(as(alice));
 
         assert.deepStrictEqual(renamed, {
@@ -220,6 +238,7 @@ it.effect(
           name: longName,
           ability: "",
           team: "demon",
+          ...noInstructions,
         });
 
         // A Team change keeps every authored field and the Character's identity.
@@ -228,6 +247,7 @@ it.effect(
             name: "Imp",
             ability: "Each night*",
             team: "minion",
+            ...noInstructions,
           })
           .pipe(as(alice));
 
@@ -236,10 +256,13 @@ it.effect(
           name: "Imp",
           ability: "Each night*",
           team: "minion",
+          ...noInstructions,
         });
         assert.deepStrictEqual(yield* scripts.listCharacters(script.id).pipe(as(alice)), [moved]);
         assert.strictEqual((yield* scripts.readOwned(script.id).pipe(as(alice))).updatedAt, 2_000);
-        assert.deepStrictEqual((yield* scripts.readPublic(script.id)).characters, [moved]);
+        assert.deepStrictEqual((yield* scripts.readPublic(script.id)).characters, [
+          publicView(moved),
+        ]);
       }).pipe(Effect.provide(f.layer));
     }),
 );
@@ -250,13 +273,13 @@ it.effect("deleting a Character removes it from storage and the public Script", 
     yield* Effect.gen(function* () {
       const scripts = yield* Scripts;
       const script = yield* scripts.create().pipe(as(alice));
-      const keep = yield* scripts.createCharacter(script.id, "townsfolk").pipe(as(alice));
-      const drop = yield* scripts.createCharacter(script.id, "outsider").pipe(as(alice));
+      const keep = yield* scripts.createCharacter(script.id, "townsfolk", []).pipe(as(alice));
+      const drop = yield* scripts.createCharacter(script.id, "outsider", []).pipe(as(alice));
 
       yield* scripts.deleteCharacter(script.id, drop.id).pipe(as(alice));
 
       assert.deepStrictEqual(yield* scripts.listCharacters(script.id).pipe(as(alice)), [keep]);
-      assert.deepStrictEqual((yield* scripts.readPublic(script.id)).characters, [keep]);
+      assert.deepStrictEqual((yield* scripts.readPublic(script.id)).characters, [publicView(keep)]);
       assert.deepStrictEqual(
         yield* scripts.deleteCharacter(script.id, drop.id).pipe(as(alice), Effect.flip),
         new CharacterNotFound({ id: drop.id }),
@@ -271,7 +294,7 @@ it.effect("another user cannot list, add, edit or delete Characters on an owner'
     yield* Effect.gen(function* () {
       const scripts = yield* Scripts;
       const script = yield* scripts.create().pipe(as(alice));
-      const character = yield* scripts.createCharacter(script.id, "townsfolk").pipe(as(alice));
+      const character = yield* scripts.createCharacter(script.id, "townsfolk", []).pipe(as(alice));
       const notFound = new ScriptNotFound({ id: script.id });
       const missing = new CharacterNotFound({ id: character.id });
 
@@ -280,12 +303,17 @@ it.effect("another user cannot list, add, edit or delete Characters on an owner'
         notFound,
       );
       assert.deepStrictEqual(
-        yield* scripts.createCharacter(script.id, "demon").pipe(as(bob), Effect.flip),
+        yield* scripts.createCharacter(script.id, "demon", []).pipe(as(bob), Effect.flip),
         notFound,
       );
       assert.deepStrictEqual(
         yield* scripts
-          .updateCharacter(script.id, character.id, { name: "Hijack", ability: "", team: "demon" })
+          .updateCharacter(script.id, character.id, {
+            name: "Hijack",
+            ability: "",
+            team: "demon",
+            ...noInstructions,
+          })
           .pipe(as(bob), Effect.flip),
         missing,
       );
@@ -295,6 +323,209 @@ it.effect("another user cannot list, add, edit or delete Characters on an owner'
       );
       assert.deepStrictEqual(yield* scripts.listCharacters(script.id).pipe(as(alice)), [character]);
       assert.strictEqual(f.characters.size, 1);
+    }).pipe(Effect.provide(f.layer));
+  }),
+);
+
+it.effect(
+  "creation places chosen nights before Dawn; owners reorder steps and Characters, including after Dawn",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* scriptsFixture;
+      yield* Effect.gen(function* () {
+        const scripts = yield* Scripts;
+        const script = yield* scripts.create().pipe(as(alice));
+
+        const both = yield* scripts
+          .createCharacter(script.id, "townsfolk", ["firstNight", "otherNight"])
+          .pipe(as(alice));
+
+        const other = yield* scripts
+          .createCharacter(script.id, "demon", ["otherNight"])
+          .pipe(as(alice));
+
+        yield* scripts.createCharacter(script.id, "outsider", []).pipe(as(alice));
+
+        assert.deepStrictEqual(yield* scripts.readNightOrders(script.id).pipe(as(alice)), {
+          firstNight: ["dusk", "minioninfo", "demoninfo", both.id, "dawn"],
+          otherNight: ["dusk", both.id, other.id, "dawn"],
+        });
+
+        yield* TestClock.adjust(1_000);
+
+        const reordered = yield* scripts
+          .replaceNightOrder(script.id, "otherNight", ["dusk", other.id, "dawn", both.id])
+          .pipe(as(alice));
+
+        assert.deepStrictEqual(reordered.otherNight, ["dusk", other.id, "dawn", both.id]);
+        assert.strictEqual((yield* scripts.readOwned(script.id).pipe(as(alice))).updatedAt, 1_000);
+
+        // Standard steps move too; the other night is untouched.
+        const moved = yield* scripts
+          .replaceNightOrder(script.id, "firstNight", [
+            "minioninfo",
+            "dusk",
+            both.id,
+            "demoninfo",
+            "dawn",
+          ])
+          .pipe(as(alice));
+
+        assert.deepStrictEqual(moved, {
+          firstNight: ["minioninfo", "dusk", both.id, "demoninfo", "dawn"],
+          otherNight: ["dusk", other.id, "dawn", both.id],
+        });
+        assert.deepStrictEqual(yield* scripts.readNightOrders(script.id).pipe(as(alice)), moved);
+        assert.deepStrictEqual(f.nightOrders.get(script.id), moved);
+      }).pipe(Effect.provide(f.layer));
+    }),
+);
+
+it.effect(
+  "Night Instructions are independent of membership: blank keeps the entry, removal keeps the text",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* scriptsFixture;
+      yield* Effect.gen(function* () {
+        const scripts = yield* Scripts;
+        const script = yield* scripts.create().pipe(as(alice));
+
+        const character = yield* scripts
+          .createCharacter(script.id, "minion", ["firstNight"])
+          .pipe(as(alice));
+
+        // A member with blank instructions remains in the order.
+        assert.deepStrictEqual(
+          (yield* scripts.readNightOrders(script.id).pipe(as(alice))).firstNight,
+          ["dusk", "minioninfo", "demoninfo", character.id, "dawn"],
+        );
+
+        const written = yield* scripts
+          .updateCharacter(script.id, character.id, {
+            name: "Poisoner",
+            ability: "Each night, poison a player.",
+            team: "minion",
+            firstNightInstructions: "The Poisoner chooses a player.",
+            otherNightInstructions: "Not a member, but kept for later.",
+          })
+          .pipe(as(alice));
+
+        yield* scripts
+          .replaceNightOrder(script.id, "firstNight", ["dusk", "minioninfo", "demoninfo", "dawn"])
+          .pipe(as(alice));
+
+        assert.deepStrictEqual(yield* scripts.listCharacters(script.id).pipe(as(alice)), [written]);
+
+        yield* scripts
+          .replaceNightOrder(script.id, "firstNight", [
+            "dusk",
+            "minioninfo",
+            "demoninfo",
+            character.id,
+            "dawn",
+          ])
+          .pipe(as(alice));
+
+        assert.strictEqual(
+          (yield* scripts.listCharacters(script.id).pipe(as(alice)))[0]?.firstNightInstructions,
+          "The Poisoner chooses a player.",
+        );
+      }).pipe(Effect.provide(f.layer));
+    }),
+);
+
+it.effect("deleting a Character removes its memberships from both nights", () =>
+  Effect.gen(function* () {
+    const f = yield* scriptsFixture;
+    yield* Effect.gen(function* () {
+      const scripts = yield* Scripts;
+      const script = yield* scripts.create().pipe(as(alice));
+
+      const keep = yield* scripts
+        .createCharacter(script.id, "townsfolk", ["firstNight", "otherNight"])
+        .pipe(as(alice));
+
+      const drop = yield* scripts
+        .createCharacter(script.id, "outsider", ["firstNight", "otherNight"])
+        .pipe(as(alice));
+
+      yield* scripts.deleteCharacter(script.id, drop.id).pipe(as(alice));
+
+      assert.deepStrictEqual(yield* scripts.readNightOrders(script.id).pipe(as(alice)), {
+        firstNight: ["dusk", "minioninfo", "demoninfo", keep.id, "dawn"],
+        otherNight: ["dusk", keep.id, "dawn"],
+      });
+    }).pipe(Effect.provide(f.layer));
+  }),
+);
+
+it.effect("malformed and cross-Script orders are refused without changing the saved order", () =>
+  Effect.gen(function* () {
+    const f = yield* scriptsFixture;
+    yield* Effect.gen(function* () {
+      const scripts = yield* Scripts;
+      const script = yield* scripts.create().pipe(as(alice));
+
+      const mine = yield* scripts
+        .createCharacter(script.id, "townsfolk", ["otherNight"])
+        .pipe(as(alice));
+
+      const elsewhere = yield* scripts.create().pipe(as(alice));
+      const foreign = yield* scripts.createCharacter(elsewhere.id, "demon", []).pipe(as(alice));
+      const before = yield* scripts.readNightOrders(script.id).pipe(as(alice));
+
+      for (const order of [
+        ["dusk", mine.id],
+        ["dusk", "dawn", "dawn", mine.id],
+        ["dusk", "demoninfo", mine.id, "dawn"],
+        ["dusk", mine.id, mine.id, "dawn"],
+        ["dusk", foreign.id, "dawn"],
+      ] as const) {
+        const error = yield* scripts
+          .replaceNightOrder(script.id, "otherNight", order)
+          .pipe(as(alice), Effect.flip);
+
+        assert.instanceOf(error, NightOrderInvalid);
+        assert.strictEqual(error.night, "otherNight");
+      }
+
+      assert.deepStrictEqual(yield* scripts.readNightOrders(script.id).pipe(as(alice)), before);
+      assert.deepStrictEqual(
+        (yield* scripts.readNightOrders(elsewhere.id).pipe(as(alice))).otherNight,
+        ["dusk", "dawn"],
+      );
+    }).pipe(Effect.provide(f.layer));
+  }),
+);
+
+it.effect("another user cannot read or replace an owner's Night Orders", () =>
+  Effect.gen(function* () {
+    const f = yield* scriptsFixture;
+    yield* Effect.gen(function* () {
+      const scripts = yield* Scripts;
+      const script = yield* scripts.create().pipe(as(alice));
+      const notFound = new ScriptNotFound({ id: script.id });
+
+      assert.deepStrictEqual(
+        yield* scripts.readNightOrders(script.id).pipe(as(bob), Effect.flip),
+        notFound,
+      );
+      assert.deepStrictEqual(
+        yield* scripts
+          .replaceNightOrder(script.id, "otherNight", ["dawn", "dusk"])
+          .pipe(as(bob), Effect.flip),
+        notFound,
+      );
+      assert.deepStrictEqual(
+        yield* scripts
+          .createCharacter(script.id, "demon", ["firstNight"])
+          .pipe(as(bob), Effect.flip),
+        notFound,
+      );
+      assert.deepStrictEqual(
+        (yield* scripts.readNightOrders(script.id).pipe(as(alice))).otherNight,
+        ["dusk", "dawn"],
+      );
     }).pipe(Effect.provide(f.layer));
   }),
 );

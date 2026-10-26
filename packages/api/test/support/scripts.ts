@@ -1,4 +1,12 @@
-import type { Character, OwnedScript } from "@alchemist/domain";
+import {
+  defaultNightOrders,
+  isNightStep,
+  setNightOrder,
+  ScriptWriteUnavailable,
+  type Character,
+  type NightOrders,
+  type OwnedScript,
+} from "@alchemist/domain";
 import { Effect, Layer, Option } from "effect";
 import { ScriptStore, ScriptsLive } from "../../src/scripts.ts";
 
@@ -17,6 +25,8 @@ export const scriptsFixture = Effect.sync(() => {
     string,
     { readonly scriptId: string; readonly character: Character }
   >();
+
+  const nightOrders = new Map<string, NightOrders>();
 
   const inScript = (scriptId: string) =>
     [...characters.values()]
@@ -61,6 +71,7 @@ export const scriptsFixture = Effect.sync(() => {
           authorCredit: script.authorCredit,
           updatedAt: script.updatedAt,
         });
+        nightOrders.set(script.id, defaultNightOrders);
       }),
     listOwned: (ownerId) =>
       Effect.sync(() =>
@@ -90,11 +101,12 @@ export const scriptsFixture = Effect.sync(() => {
       ),
     listCharacters: (ownerId, scriptId) =>
       Effect.sync(() => (Option.isSome(owned(ownerId, scriptId)) ? inScript(scriptId) : [])),
-    insertCharacter: (ownerId, scriptId, character, now) =>
+    insertCharacter: (ownerId, scriptId, character, orders, now) =>
       Effect.sync(() => {
         if (Option.isNone(owned(ownerId, scriptId))) return Option.none();
 
         characters.set(character.id, { scriptId, character });
+        nightOrders.set(scriptId, orders);
         touch(scriptId, now);
 
         return Option.some(character);
@@ -106,7 +118,14 @@ export const scriptsFixture = Effect.sync(() => {
         if (Option.isNone(owned(ownerId, scriptId)) || row?.scriptId !== scriptId)
           return Option.none();
 
-        const character = { id, name: details.name, ability: details.ability, team: details.team };
+        const character = {
+          id,
+          name: details.name,
+          ability: details.ability,
+          team: details.team,
+          firstNightInstructions: details.firstNightInstructions,
+          otherNightInstructions: details.otherNightInstructions,
+        };
 
         characters.set(id, { scriptId, character });
         touch(scriptId, now);
@@ -119,11 +138,41 @@ export const scriptsFixture = Effect.sync(() => {
           return false;
 
         characters.delete(id);
+
+        const orders = nightOrders.get(scriptId) ?? defaultNightOrders;
+
+        nightOrders.set(scriptId, {
+          firstNight: orders.firstNight.filter((entry) => entry !== id),
+          otherNight: orders.otherNight.filter((entry) => entry !== id),
+        });
         touch(scriptId, now);
 
         return true;
       }),
+    findNightOrders: (ownerId, scriptId) =>
+      Effect.sync(() =>
+        owned(ownerId, scriptId).pipe(
+          Option.map(() => nightOrders.get(scriptId) ?? defaultNightOrders),
+        ),
+      ),
+    // Mirrors the D1 foreign key: a reference to another Script's Character fails the write.
+    replaceNightOrder: (ownerId, scriptId, night, order, now) =>
+      Effect.gen(function* () {
+        if (Option.isNone(owned(ownerId, scriptId))) return Option.none();
+
+        if (
+          order.some((entry) => !isNightStep(entry) && characters.get(entry)?.scriptId !== scriptId)
+        )
+          return yield* new ScriptWriteUnavailable({});
+
+        const orders = setNightOrder(nightOrders.get(scriptId) ?? defaultNightOrders, night, order);
+
+        nightOrders.set(scriptId, orders);
+        touch(scriptId, now);
+
+        return Option.some(orders);
+      }),
   });
 
-  return { rows, characters, layer: ScriptsLive.pipe(Layer.provide(store)) };
+  return { rows, characters, nightOrders, layer: ScriptsLive.pipe(Layer.provide(store)) };
 });

@@ -1,11 +1,16 @@
 import { useAtomSet } from "@effect/atom-react";
 import {
   AuthorCredit,
+  NIGHTS,
   ScriptName,
+  addBeforeDawn,
   exportBlockers,
+  removeEntry,
   type AuthoredTeam,
   type Character,
   type CharacterId,
+  type Night,
+  type NightOrders,
   type OwnedScript,
   type ScriptDetails,
 } from "@alchemist/domain";
@@ -25,7 +30,9 @@ import { toast } from "sonner";
 import { ScriptKeys, updateScriptDetails } from "../api.ts";
 import { useAppForm } from "../hooks/form.ts";
 import { useCharacters } from "../hooks/use-characters.ts";
+import { useNightOrders } from "../hooks/use-night-orders.ts";
 import { characterTitle } from "../lib/characters.ts";
+import { NIGHT_LABELS } from "../lib/night.ts";
 import { scriptTitle } from "../lib/script.ts";
 import { createAutosave, type SaveStatus } from "../lib/autosave.ts";
 import {
@@ -44,7 +51,9 @@ import {
   ExportBlockerList,
   SheetPreview,
 } from "./characters.tsx";
+import { NightOrderEditor, NightSheetPreview } from "./night-orders.tsx";
 import { Button, buttonVariants } from "./ui/button.tsx";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx";
 import { Input } from "./ui/input.tsx";
 import { Spinner } from "./ui/spinner.tsx";
 
@@ -56,13 +65,26 @@ const AuthorCreditInput = Schema.toStandardSchemaV1(AuthorCredit);
 const combinedStatus = (...statuses: ReadonlyArray<SaveStatus>): SaveStatus =>
   statuses.includes("failed") ? "failed" : statuses.includes("pending") ? "pending" : "saved";
 
+// What the centre pane is editing.
+type Page =
+  | { readonly kind: "script" }
+  | { readonly kind: "character"; readonly id: CharacterId }
+  | { readonly kind: "night"; readonly night: Night };
+
+type PreviewSheet = "characters" | Night;
+
+const isPreviewSheet = (value: unknown): value is PreviewSheet =>
+  value === "characters" || NIGHTS.some((night) => night === value);
+
 /** The owner's editor: navigator, focused form and live preview. */
 export function Workbench({
   script,
   characters: initialCharacters,
+  nightOrders: initialNightOrders,
 }: {
   readonly script: OwnedScript;
   readonly characters: ReadonlyArray<Character>;
+  readonly nightOrders: NightOrders;
 }) {
   const update = useAtomSet(updateScriptDetails, { mode: "promiseExit" });
   const updateRef = useRef(update);
@@ -83,11 +105,26 @@ export function Workbench({
 
   const detailsStatus = useSyncExternalStore(autosave.subscribe, autosave.status);
   const roster = useCharacters(script.id, initialCharacters, SAVE_DELAY_MS);
-  const status = combinedStatus(detailsStatus, roster.status);
-  const unsaved = () => autosave.status() !== "saved" || roster.autosave.status() !== "saved";
+  const nights = useNightOrders(script.id, initialNightOrders, SAVE_DELAY_MS);
+  const status = combinedStatus(detailsStatus, roster.status, nights.status);
+
+  const unsaved = () =>
+    [autosave, roster.autosave, nights.autosave].some((saver) => saver.status() !== "saved");
+
+  const [page, setPage] = useState<Page>({ kind: "script" });
+  const [preview, setPreview] = useState<PreviewSheet>("characters");
+  const selectedId = page.kind === "character" ? page.id : null;
 
   // null selects the Script details.
-  const [selectedId, setSelectedId] = useState<CharacterId | null>(null);
+  const setSelectedId = (id: CharacterId | null) =>
+    setPage(id === null ? { kind: "script" } : { kind: "character", id });
+
+  // Opening a night also shows its sheet in the preview.
+  const openNight = (night: Night) => {
+    setPage({ kind: "night", night });
+    setPreview(night);
+  };
+
   const [addedId, setAddedId] = useState<CharacterId | null>(null);
   const [adding, setAdding] = useState<AuthoredTeam | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Character | null>(null);
@@ -111,10 +148,10 @@ export function Workbench({
   const blockers = exportBlockers(characters);
   const selected = characters.find((character) => character.id === selectedId);
 
-  const add = async (team: AuthoredTeam) => {
+  const add = async (team: AuthoredTeam, chosen: ReadonlyArray<Night>) => {
     setAdding(team);
 
-    const added = await roster.add(team);
+    const added = await roster.add(team, chosen);
 
     setAdding(null);
 
@@ -124,6 +161,7 @@ export function Workbench({
       return;
     }
 
+    nights.created(added.id, chosen);
     setAddedId(added.id);
     setSelectedId(added.id);
   };
@@ -135,6 +173,7 @@ export function Workbench({
       return;
     }
 
+    nights.deleted(character.id);
     setDeleteTarget(null);
     setSelectedId(null);
     toast.success(`Deleted ${characterTitle(character)}`);
@@ -158,6 +197,7 @@ export function Workbench({
           retry={() => {
             autosave.retry();
             roster.autosave.retry();
+            nights.autosave.retry();
           }}
         />
       </header>
@@ -168,11 +208,11 @@ export function Workbench({
         >
           <button
             type="button"
-            aria-current={selected === undefined ? "true" : undefined}
+            aria-current={page.kind === "script" ? "true" : undefined}
             onClick={() => setSelectedId(null)}
             className={cn(
               "flex flex-col rounded-lg px-3 py-2 text-left hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-              selected === undefined && "bg-muted",
+              page.kind === "script" && "bg-muted",
             )}
           >
             <span className="font-medium wrap-anywhere">{scriptTitle(values.name)}</span>
@@ -184,8 +224,40 @@ export function Workbench({
             selectedId={selectedId}
             adding={adding}
             onSelect={setSelectedId}
-            onAdd={(team) => void add(team)}
+            onAdd={(team, chosen) => void add(team, chosen)}
           />
+          <section aria-labelledby="nights-nav" className="flex flex-col gap-0.5">
+            <h2
+              id="nights-nav"
+              className="px-3 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+            >
+              Night Orders
+            </h2>
+            <ul aria-label="Night Orders" className="flex flex-col gap-0.5">
+              {NIGHTS.map((night) => {
+                const current = page.kind === "night" && page.night === night;
+
+                return (
+                  <li key={night}>
+                    <button
+                      type="button"
+                      aria-current={current ? "true" : undefined}
+                      onClick={() => openNight(night)}
+                      className={cn(
+                        "flex w-full items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-left hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+                        current && "bg-muted font-medium",
+                      )}
+                    >
+                      {NIGHT_LABELS[night]}
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {nights.orders[night].length} entries
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
           <div className="border-t px-3 pt-3">
             {blockers.length === 0 ? (
               <p className="text-muted-foreground">Ready to export</p>
@@ -199,7 +271,16 @@ export function Workbench({
             )}
           </div>
         </nav>
-        {selected === undefined ? (
+        {page.kind === "night" ? (
+          <NightOrderEditor
+            key={page.night}
+            night={page.night}
+            order={nights.orders[page.night]}
+            characters={characters}
+            onChange={(order) => nights.replace(page.night, order)}
+            onSelect={setSelectedId}
+          />
+        ) : selected === undefined ? (
           <form.AppForm>
             <form.Form
               aria-labelledby="details-title"
@@ -240,10 +321,20 @@ export function Workbench({
           <CharacterForm
             key={selected.id}
             character={selected}
-            otherNames={characters.flatMap(({ id, name }) => (id === selected.id ? [] : [name]))}
+            characters={characters}
+            nightOrders={nights.orders}
             autoFocusName={selected.id === addedId}
             onChange={(details) => roster.edit(selected.id, details)}
             onDelete={() => setDeleteTarget(selected)}
+            onToggleNight={(night, member) =>
+              nights.replace(
+                night,
+                member
+                  ? addBeforeDawn(nights.orders[night], selected.id)
+                  : removeEntry(nights.orders[night], selected.id),
+              )
+            }
+            onOpenNight={openNight}
           />
         )}
         <aside
@@ -253,13 +344,41 @@ export function Workbench({
           <h2 id="preview-title" className="text-sm font-medium text-muted-foreground">
             Preview
           </h2>
-          <SheetPreview
-            name={values.name}
-            authorCredit={values.authorCredit}
-            characters={characters}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-          />
+          <Tabs
+            value={preview}
+            onValueChange={(value) => {
+              if (isPreviewSheet(value)) setPreview(value);
+            }}
+          >
+            <TabsList aria-label="Preview sheet" className="w-full">
+              <TabsTrigger value="characters">Characters</TabsTrigger>
+              {NIGHTS.map((night) => (
+                <TabsTrigger key={night} value={night}>
+                  {NIGHT_LABELS[night]}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            <TabsContent value="characters">
+              <SheetPreview
+                name={values.name}
+                authorCredit={values.authorCredit}
+                characters={characters}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+              />
+            </TabsContent>
+            {NIGHTS.map((night) => (
+              <TabsContent key={night} value={night}>
+                <NightSheetPreview
+                  night={night}
+                  order={nights.orders[night]}
+                  characters={characters}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                />
+              </TabsContent>
+            ))}
+          </Tabs>
         </aside>
       </div>
       <DeleteCharacterDialog
