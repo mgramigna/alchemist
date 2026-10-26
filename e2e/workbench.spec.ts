@@ -1,316 +1,93 @@
 import {
-  botcDocument,
   Character as DomainCharacter,
   NightOrders as DomainNightOrders,
   Jinx as DomainJinx,
+  OwnedScript,
 } from "@alchemist/domain";
 import { Schema } from "effect";
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
+import { callRpc, signIn } from "./support/api.ts";
 
 const rpc = /\/api\/rpc\/?$/;
 
-interface Script {
-  id: string;
-  name: string;
-  authorCredit: string;
-  updatedAt: number;
-}
+const scriptId = (page: Page) => {
+  const id = new URL(page.url()).pathname.split("/")[2];
 
-interface Character {
-  id: string;
-  name: string;
-  ability: string;
-  team: string;
-  reminders: string[];
-  remindersGlobal: string[];
-  setup: boolean;
-  flavor: string;
-  firstNightInstructions: string;
-  otherNightInstructions: string;
-}
+  if (!id) throw new Error("Expected a Script URL");
 
-interface NightOrders {
-  firstNight: string[];
-  otherNight: string[];
-}
+  return id;
+};
 
-type Night = keyof NightOrders;
+const readCharacters = (page: Page) =>
+  callRpc(page, "Character.list", { scriptId: scriptId(page) }, Schema.Array(DomainCharacter));
 
-interface Jinx {
-  first: string;
-  second: string;
-  explanation: string;
-}
+const readNights = (page: Page) =>
+  callRpc(page, "NightOrder.read", { scriptId: scriptId(page) }, DomainNightOrders);
 
-interface OwnerApi {
-  readonly jinxes: Jinx[];
-  readonly scripts: Script[];
-  readonly characters: Character[];
-  nightOrders: NightOrders;
-  readonly nightSaves: Night[];
-  readonly characterSaves: string[];
-  readonly saves: string[];
-  exports: number;
-  failSaves: boolean;
-  created: number;
-}
+const readJinxes = (page: Page) =>
+  callRpc(page, "Jinx.list", { scriptId: scriptId(page) }, Schema.Array(DomainJinx));
 
-type WireValue =
-  | null
-  | { filename: string; json: string }
-  | Jinx
-  | ReadonlyArray<Jinx>
-  | { first: string; second: string }
-  | Script
-  | Character
-  | ReadonlyArray<Character>
-  | string
-  | ReadonlyArray<Script>
-  | NightOrders
-  | { readonly id: string; readonly displayName: string }
-  | (Omit<Script, "updatedAt"> & {
-      readonly characters: Character[];
-      readonly nightOrders: NightOrders;
-      readonly jinxes: Jinx[];
-    });
+const readScript = (page: Page) =>
+  callRpc(page, "Script.readOwned", { id: scriptId(page) }, OwnedScript);
 
-// Controlled owner API for browser states. Ownership, persistence and isolation
-// are covered against real D1 and the application service.
-const ownerApi = async (page: Page) => {
-  const state: OwnerApi = {
-    jinxes: [],
-    scripts: [],
-    characters: [],
-    nightOrders: {
-      firstNight: ["dusk", "minioninfo", "demoninfo", "dawn"],
-      otherNight: ["dusk", "dawn"],
-    },
-    nightSaves: [],
-    characterSaves: [],
-    saves: [],
-    exports: 0,
-    failSaves: false,
-    created: 0,
+// Only transport failures are intercepted. Every successful request reaches the server.
+const failRpc = async (page: Page, tags: readonly string[]) => {
+  const handler = async (route: import("@playwright/test").Route) => {
+    if (tags.includes(route.request().postDataJSON().tag)) await route.abort();
+    else await route.continue();
   };
 
-  const success = (requestId: string, value: WireValue) =>
-    `{"_tag":"Exit","requestId":${JSON.stringify(requestId)},"exit":{"_tag":"Success","value":${JSON.stringify(value)}}}\n`;
+  await page.route(rpc, handler);
 
-  await page.route(rpc, async (route) => {
-    const body = route.request().postDataJSON();
+  return () => page.unroute(rpc, handler);
+};
 
-    const reply = (value: WireValue) =>
-      route.fulfill({ contentType: "application/x-ndjson", body: success(body.id, value) });
+const seedScript = async (page: Page, count: number) => {
+  const script = await callRpc(page, "Script.create", {}, OwnedScript);
+  await callRpc(
+    page,
+    "Script.updateDetails",
+    {
+      id: script.id,
+      name: "Saved Script",
+      authorCredit: "Ada",
+    },
+    OwnedScript,
+  );
 
-    const find = () => state.scripts.find((candidate) => candidate.id === body.payload.id);
+  for (let i = 1; i <= count; i++) {
+    const character = await callRpc(
+      page,
+      "Character.create",
+      {
+        scriptId: script.id,
+        team: i === 4 ? "traveller" : "townsfolk",
+        nights: [],
+      },
+      DomainCharacter,
+    );
 
-    switch (body.tag) {
-      case "Account.current":
-        return reply({ id: "user", displayName: "Ada Lovelace" });
-      case "Script.listOwned":
-        return reply([...state.scripts].sort((a, b) => b.updatedAt - a.updatedAt));
-      case "Script.create": {
-        state.created += 1;
+    await callRpc(
+      page,
+      "Character.update",
+      {
+        ...character,
+        scriptId: script.id,
+        name: count === 1 ? "Chef" : `Character ${i}`,
+        ability: `Ability ${i}`,
+        reminders: ["Same", "Same"],
+        remindersGlobal: ["Global"],
+        setup: true,
+        flavor: "Flavor",
+        firstNightInstructions: "First",
+        otherNightInstructions: "Other",
+      },
+      DomainCharacter,
+    );
+  }
 
-        const script = {
-          id: `01k8ae0000000000000000000${state.created}`,
-          name: "Untitled Script",
-          authorCredit: "Ada Lovelace",
-          updatedAt: Date.now(),
-        };
-
-        state.scripts.push(script);
-
-        return reply(script);
-      }
-
-      case "Script.export": {
-        state.exports += 1;
-        const script = find();
-
-        if (!script || state.failSaves) return route.abort();
-
-        return reply({
-          filename: "saved-script.json",
-          json: JSON.stringify(
-            botcDocument(
-              {
-                script,
-                characters: state.characters.map((character) =>
-                  Schema.decodeUnknownSync(DomainCharacter)(character),
-                ),
-                nightOrders: Schema.decodeSync(DomainNightOrders)(state.nightOrders),
-                jinxes: state.jinxes.map((jinx) => Schema.decodeSync(DomainJinx)(jinx)),
-              },
-              "https://alchemist.example",
-            ),
-          ),
-        });
-      }
-
-      case "Script.readImported":
-        return reply(null);
-      case "Script.readOwned": {
-        const script = find();
-
-        return script ? reply(script) : route.abort();
-      }
-
-      case "Script.updateDetails": {
-        const script = find();
-
-        if (state.failSaves || !script) return route.abort();
-
-        script.name = body.payload.name;
-        script.authorCredit = body.payload.authorCredit;
-        script.updatedAt = Date.now();
-        state.saves.push(script.name);
-
-        return reply(script);
-      }
-
-      case "Jinx.list":
-        return reply(state.jinxes);
-      case "Jinx.create": {
-        if (state.failSaves) return route.abort();
-
-        const [first, second] = [body.payload.first, body.payload.second].sort((a, b) =>
-          a.localeCompare(b),
-        );
-
-        const jinx = { first, second, explanation: "" };
-        state.jinxes.push(jinx);
-
-        return reply(jinx);
-      }
-
-      case "Jinx.update": {
-        if (state.failSaves) return route.abort();
-
-        const jinx = state.jinxes.find(
-          (j) => j.first === body.payload.first && j.second === body.payload.second,
-        );
-
-        if (!jinx) return route.abort();
-        jinx.explanation = body.payload.explanation;
-
-        return reply(jinx);
-      }
-
-      case "Jinx.delete": {
-        if (state.failSaves) return route.abort();
-
-        const index = state.jinxes.findIndex(
-          (j) => j.first === body.payload.first && j.second === body.payload.second,
-        );
-
-        if (index < 0) return route.abort();
-        state.jinxes.splice(index, 1);
-
-        return reply({ first: body.payload.first, second: body.payload.second });
-      }
-
-      case "Character.list":
-        return reply(state.characters);
-      case "Character.create": {
-        const character = {
-          id: `01k8af0000000000000000000${state.characters.length + 1}`,
-          name: "",
-          ability: "",
-          team: body.payload.team,
-          reminders: [],
-          remindersGlobal: [],
-          setup: false,
-          flavor: "",
-          firstNightInstructions: "",
-          otherNightInstructions: "",
-        };
-
-        state.characters.push(character);
-
-        const nights: Night[] = body.payload.nights;
-
-        for (const night of nights) {
-          const order = state.nightOrders[night];
-          order.splice(order.indexOf("dawn"), 0, character.id);
-        }
-
-        return reply(character);
-      }
-
-      case "Character.update": {
-        const character = state.characters.find(({ id }) => id === body.payload.id);
-
-        if (state.failSaves || !character) return route.abort();
-
-        character.reminders = body.payload.reminders;
-        character.remindersGlobal = body.payload.remindersGlobal;
-        character.setup = body.payload.setup;
-        character.flavor = body.payload.flavor;
-        character.name = body.payload.name;
-        character.ability = body.payload.ability;
-        character.team = body.payload.team;
-        character.firstNightInstructions = body.payload.firstNightInstructions;
-        character.otherNightInstructions = body.payload.otherNightInstructions;
-        state.characterSaves.push(character.name);
-
-        return reply(character);
-      }
-
-      case "Character.delete": {
-        state.characters.splice(
-          state.characters.findIndex(({ id }) => id === body.payload.id),
-          1,
-        );
-
-        for (let i = state.jinxes.length - 1; i >= 0; i--) {
-          const jinx = state.jinxes[i];
-
-          if (jinx?.first === body.payload.id || jinx?.second === body.payload.id)
-            state.jinxes.splice(i, 1);
-        }
-
-        state.nightOrders = {
-          firstNight: state.nightOrders.firstNight.filter((entry) => entry !== body.payload.id),
-          otherNight: state.nightOrders.otherNight.filter((entry) => entry !== body.payload.id),
-        };
-
-        return reply(body.payload.id);
-      }
-
-      case "NightOrder.read":
-        return reply(state.nightOrders);
-      case "NightOrder.replace": {
-        if (state.failSaves) return route.abort();
-
-        state.nightOrders = { ...state.nightOrders, [body.payload.night]: body.payload.order };
-        state.nightSaves.push(body.payload.night);
-
-        return reply(state.nightOrders);
-      }
-
-      case "Script.readPublic": {
-        const script = find();
-
-        return script
-          ? reply({
-              id: script.id,
-              name: script.name,
-              authorCredit: script.authorCredit,
-              characters: state.characters,
-              nightOrders: state.nightOrders,
-              jinxes: state.jinxes,
-            })
-          : route.abort();
-      }
-
-      default:
-        return route.abort();
-    }
-  });
-
-  return state;
+  return script.id;
 };
 
 type NightChoice =
@@ -321,6 +98,7 @@ type NightChoice =
 
 // Creation asks which nights the new Character acts on.
 const addCharacter = async (page: Page, team: string, nights: NightChoice = "No night action") => {
+  await expect(page.getByRole("status").filter({ hasText: "All changes saved" })).toBeVisible();
   await page
     .getByRole("navigation", { name: "Script sections" })
     .getByRole("button", { name: `Add ${team}` })
@@ -330,6 +108,8 @@ const addCharacter = async (page: Page, team: string, nights: NightChoice = "No 
     .getByRole("menu", { name: `Add ${team}` })
     .getByRole("menuitem", { name: nights })
     .click();
+  await expect(page.getByRole("heading", { name: `Unnamed ${team}`, exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Name", exact: true })).toBeFocused();
 };
 
 const chooseTeam = async (page: Page, team: string) => {
@@ -345,12 +125,13 @@ test("an owner creates a Script, edits it with autosave, reopens it from the wor
   context,
 }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  const api = await ownerApi(page);
+  await signIn(page, { name: "Ada Lovelace" });
   await page.goto("/");
   await expect(page.getByText("No Scripts yet")).toBeVisible();
   await page.getByRole("button", { name: "New Script" }).click();
 
-  await expect(page).toHaveURL(/\/scripts\/01k8ae00000000000000000001\/edit$/);
+  await expect(page).toHaveURL(/\/scripts\/[^/]+\/edit$/);
+  const id = scriptId(page);
   const name = page.getByRole("textbox", { name: "Script name" });
   const credit = page.getByRole("textbox", { name: "Author Credit" });
   await expect(name).toHaveValue("Untitled Script");
@@ -364,8 +145,10 @@ test("an owner creates a Script, edits it with autosave, reopens it from the wor
   await credit.fill("The Clocktower Collective");
   await expect(preview).toContainText("The Clocktower Collective");
   await expect(page.getByRole("status")).toContainText("All changes saved");
-  // Debounced: one save for the burst of edits.
-  expect(api.saves).toEqual(["Night of Mirrors"]);
+  expect(await readScript(page)).toMatchObject({
+    name: "Night of Mirrors",
+    authorCredit: "The Clocktower Collective",
+  });
 
   await page.reload();
   await expect(name).toHaveValue("Night of Mirrors");
@@ -374,7 +157,7 @@ test("an owner creates a Script, edits it with autosave, reopens it from the wor
   await page.getByRole("button", { name: "Copy link" }).click();
   await expect(page.getByText("Share link copied")).toBeVisible();
   const shareUrl = await page.evaluate(() => navigator.clipboard.readText());
-  expect(new URL(shareUrl).pathname).toBe("/scripts/01k8ae00000000000000000001");
+  expect(new URL(shareUrl).pathname).toBe(`/scripts/${id}`);
   await expect(page.getByRole("textbox", { name: "Share link" })).toHaveValue(shareUrl);
 
   await page.getByRole("link", { name: "Your Scripts" }).click();
@@ -395,16 +178,17 @@ test("an owner creates a Script, edits it with autosave, reopens it from the wor
 test("a failed save keeps the edit, warns before leaving, and recovers with a keyboard retry", async ({
   page,
 }) => {
-  const api = await ownerApi(page);
+  await signIn(page, { name: "Ada Lovelace" });
   await page.goto("/");
   await page.getByRole("button", { name: "New Script" }).click();
   const name = page.getByRole("textbox", { name: "Script name" });
   await expect(name).toHaveValue("Untitled Script");
 
-  api.failSaves = true;
+  const restoreNetwork = await failRpc(page, ["Script.updateDetails"]);
   await name.fill("Unsaved draft");
   await expect(page.getByRole("status")).toContainText("Couldn’t save your changes");
   await expect(name).toHaveValue("Unsaved draft");
+  expect(await readScript(page)).toMatchObject({ name: "Untitled Script" });
 
   await page.getByRole("link", { name: "Your Scripts" }).click();
   const dialog = page.getByRole("alertdialog", { name: "Leave with unsaved changes?" });
@@ -413,12 +197,12 @@ test("a failed save keeps the edit, warns before leaving, and recovers with a ke
   await expect(page).toHaveURL(/\/edit$/);
   await expect(name).toHaveValue("Unsaved draft");
 
-  api.failSaves = false;
+  await restoreNetwork();
   const retry = page.getByRole("button", { name: "Retry save" });
   await retry.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("status")).toContainText("All changes saved");
-  expect(api.saves).toEqual(["Unsaved draft"]);
+  expect(await readScript(page)).toMatchObject({ name: "Unsaved draft" });
 
   await page.getByRole("link", { name: "Your Scripts" }).click();
   await expect(page).toHaveURL(/\/$/);
@@ -428,22 +212,29 @@ test("a failed save keeps the edit, warns before leaving, and recovers with a ke
 test("the Workbench stacks its panes on a narrow screen and is operable with the keyboard", async ({
   page,
 }) => {
-  await ownerApi(page);
+  await signIn(page, { name: "Ada Lovelace" });
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/");
   await page.getByRole("button", { name: "New Script" }).click();
   const name = page.getByRole("textbox", { name: "Script name" });
-  await expect(name).toBeVisible();
+  await expect(name).toHaveValue("Untitled Script");
+  await expect(page.getByRole("textbox", { name: "Author Credit" })).toHaveValue("Ada Lovelace");
   await expect(page.getByRole("navigation", { name: "Script sections" })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "Preview" })).toBeVisible();
   expect(await noHorizontalScroll(page)).toBe(true);
 
+  await expect(page.getByRole("status").filter({ hasText: "All changes saved" })).toBeVisible();
   await name.focus();
+  await expect(name).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("textbox", { name: "Author Credit" })).toBeFocused();
   // Tabbing into a field selects its text; append rather than replace.
-  await page.keyboard.press("End");
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("textbox", { name: "Author Credit" })).toBeFocused();
   await page.keyboard.type(" & friends");
+  await expect(page.getByRole("textbox", { name: "Author Credit" })).toHaveValue(
+    "Ada Lovelace & friends",
+  );
   await expect(page.getByRole("complementary", { name: "Preview" })).toContainText(
     "Ada Lovelace & friends",
   );
@@ -458,6 +249,7 @@ test("anonymous and malformed Workbench links explain what to do", async ({ page
   ).toBeVisible();
   await expect(page.getByRole("textbox")).toHaveCount(0);
 
+  await signIn(page);
   await page.goto("/scripts/invalid/edit");
   await expect(page.getByRole("heading", { name: "Script not found" })).toBeVisible();
 });
@@ -465,36 +257,35 @@ test("anonymous and malformed Workbench links explain what to do", async ({ page
 test("opening a Script announces loading and offers a retry after a transport failure", async ({
   page,
 }) => {
+  await signIn(page);
+  const id = await seedScript(page, 0);
   let release = () => {};
 
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
 
-  await page.route(rpc, async (route) => {
-    await gate;
-    await route.abort();
-  });
-  await page.goto("/scripts/01k8ac00000000000000000001/edit");
+  const handler = async (route: import("@playwright/test").Route) => {
+    if (route.request().postDataJSON().tag === "Script.readOwned") {
+      await gate;
+      await route.abort();
+    } else await route.continue();
+  };
+
+  await page.route(rpc, handler);
+  await page.goto(`/scripts/${id}/edit`);
   await expect(page.getByRole("status")).toContainText("Opening Script");
   release();
   await expect(page.getByRole("alert")).toContainText("We couldn’t open this Script");
-  await page.unroute(rpc);
-  const api = await ownerApi(page);
-  api.scripts.push({
-    id: "01k8ac00000000000000000001",
-    name: "Recovered Script",
-    authorCredit: "Ada Lovelace",
-    updatedAt: 0,
-  });
+  await page.unroute(rpc, handler);
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.getByRole("textbox", { name: "Script name" })).toHaveValue("Recovered Script");
+  await expect(page.getByRole("textbox", { name: "Script name" })).toHaveValue("Saved Script");
 });
 
 test("an owner adds Characters by Team and finds and fixes what blocks export", async ({
   page,
 }) => {
-  const api = await ownerApi(page);
+  await signIn(page, { name: "Ada Lovelace" });
   await page.goto("/");
   await page.getByRole("button", { name: "New Script" }).click();
   const nav = page.getByRole("navigation", { name: "Script sections" });
@@ -505,7 +296,7 @@ test("an owner adds Characters by Team and finds and fixes what blocks export", 
   await expect(page.getByRole("heading", { name: "Unnamed Townsfolk" })).toBeVisible();
   const name = page.getByRole("textbox", { name: "Name" });
   await expect(name).toBeFocused();
-  expect(api.characters).toEqual([
+  expect(await readCharacters(page)).toEqual([
     {
       id: expect.any(String),
       name: "",
@@ -533,7 +324,7 @@ test("an owner adds Characters by Team and finds and fixes what blocks export", 
   await expect(page.getByText("Use 30 characters or fewer.")).toBeVisible();
   await expect(page.getByText("31/30 characters")).toBeVisible();
   await expect(page.getByRole("status")).toContainText("All changes saved");
-  expect(api.characters[0]?.name).toBe("N".repeat(31));
+  expect((await readCharacters(page))[0]?.name).toBe("N".repeat(31));
 
   await name.fill("Washerwoman");
   await page.getByRole("textbox", { name: "Ability" }).fill("You start knowing a Townsfolk.");
@@ -580,13 +371,16 @@ test("an owner adds Characters by Team and finds and fixes what blocks export", 
     "false",
   );
   await expect(page.getByRole("status")).toContainText("All changes saved");
-  expect(api.characters.map(({ name: saved }) => saved)).toEqual(["Washerwoman", "Imp"]);
+  expect((await readCharacters(page)).map(({ name: saved }) => saved)).toEqual([
+    "Washerwoman",
+    "Imp",
+  ]);
 });
 
 test("a Team change keeps the Character's content and survives reload; deleting returns to the Script", async ({
   page,
 }) => {
-  const api = await ownerApi(page);
+  await signIn(page, { name: "Ada Lovelace" });
   await page.goto("/");
   await page.getByRole("button", { name: "New Script" }).click();
   const nav = page.getByRole("navigation", { name: "Script sections" });
@@ -594,9 +388,13 @@ test("a Team change keeps the Character's content and survives reload; deleting 
   await page.getByRole("textbox", { name: "Name" }).fill("Drunk");
   await page.getByRole("textbox", { name: "Ability" }).fill("You think you are a Townsfolk.");
 
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  await expect.poll(async () => (await readCharacters(page))[0]?.name).toBe("Drunk");
   await page.getByRole("combobox", { name: "Team" }).focus();
   await page.keyboard.press("ArrowDown");
-  await page.keyboard.press("End");
+  await expect(page.getByRole("listbox")).toBeVisible();
+  await page.keyboard.press("t");
+  await expect(page.getByRole("option", { name: "Traveller", exact: true })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("combobox", { name: "Team" })).toContainText("Traveller");
   await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue("Drunk");
@@ -611,7 +409,7 @@ test("a Team change keeps the Character's content and survives reload; deleting 
     "Evil",
   ]);
   await expect(page.getByRole("status")).toContainText("All changes saved");
-  const [saved] = api.characters;
+  const [saved] = await readCharacters(page);
 
   await page.reload();
   await nav.getByRole("button", { name: "Drunk" }).click();
@@ -619,7 +417,7 @@ test("a Team change keeps the Character's content and survives reload; deleting 
   await expect(page.getByRole("textbox", { name: "Ability" })).toHaveValue(
     "You think you are a Townsfolk.",
   );
-  expect(api.characters).toEqual([saved]);
+  expect(await readCharacters(page)).toEqual([saved]);
 
   await page.getByRole("button", { name: "Delete Character" }).focus();
   await page.keyboard.press("Enter");
@@ -632,11 +430,11 @@ test("a Team change keeps the Character's content and survives reload; deleting 
   await dialog.getByRole("button", { name: "Delete Character" }).click();
   await expect(page.getByRole("heading", { name: "Script details" })).toBeVisible();
   await expect(nav.getByRole("list", { name: "Travellers" })).toHaveCount(0);
-  expect(api.characters).toEqual([]);
+  expect(await readCharacters(page)).toEqual([]);
 });
 
 test("Character editing is usable on a narrow screen", async ({ page }) => {
-  await ownerApi(page);
+  await signIn(page, { name: "Ada Lovelace" });
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/");
   await page.getByRole("button", { name: "New Script" }).click();
@@ -649,13 +447,13 @@ test("Character editing is usable on a narrow screen", async ({ page }) => {
 test("creation chooses nights; the Character shows its position, keeps instructions when leaving a night, and links to reordering", async ({
   page,
 }) => {
-  const api = await ownerApi(page);
+  await signIn(page, { name: "Ada Lovelace" });
   await page.goto("/");
   await page.getByRole("button", { name: "New Script" }).click();
   await addCharacter(page, "Townsfolk", "First Night and Other Nights");
   await page.getByRole("textbox", { name: "Name" }).fill("Chef");
-  const [chef] = api.characters;
-  expect(api.nightOrders).toEqual({
+  const [chef] = await readCharacters(page);
+  expect(await readNights(page)).toEqual({
     firstNight: ["dusk", "minioninfo", "demoninfo", chef?.id, "dawn"],
     otherNight: ["dusk", chef?.id, "dawn"],
   });
@@ -672,6 +470,9 @@ test("creation chooses nights; the Character shows its position, keeps instructi
     .fill("Show the Chef a number.");
   await nights.getByRole("textbox", { name: "Other Nights instructions" }).fill("Kept for later.");
 
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  await expect.poll(async () => (await readCharacters(page))[0]?.name).toBe("Chef");
+
   // Leaving a night keeps its instructions.
   await nights.getByRole("checkbox", { name: "Acts on Other Nights" }).click();
   await expect(nights).not.toContainText("#2 of 3");
@@ -679,8 +480,8 @@ test("creation chooses nights; the Character shows its position, keeps instructi
     "Kept for later.",
   );
   await expect(page.getByRole("status")).toContainText("All changes saved");
-  expect(api.nightOrders.otherNight).toEqual(["dusk", "dawn"]);
-  expect(api.characters[0]?.otherNightInstructions).toBe("Kept for later.");
+  expect((await readNights(page)).otherNight).toEqual(["dusk", "dawn"]);
+  expect((await readCharacters(page))[0]?.otherNightInstructions).toBe("Kept for later.");
 
   await page.reload();
   await page
@@ -708,7 +509,7 @@ test("creation chooses nights; the Character shows its position, keeps instructi
 test("an owner reorders a night with the keyboard and by dragging, including steps and after Dawn", async ({
   page,
 }) => {
-  const api = await ownerApi(page);
+  await signIn(page, { name: "Ada Lovelace" });
   await page.goto("/");
   await page.getByRole("button", { name: "New Script" }).click();
   await addCharacter(page, "Townsfolk", "First Night only");
@@ -716,7 +517,7 @@ test("an owner reorders a night with the keyboard and by dragging, including ste
   await addCharacter(page, "Demon");
   await page.getByRole("textbox", { name: "Name" }).fill("Imp");
   await expect(page.getByRole("status")).toContainText("All changes saved");
-  const [chef, imp] = api.characters;
+  const [chef, imp] = await readCharacters(page);
 
   const nav = page.getByRole("navigation", { name: "Script sections" });
   await nav.getByRole("button", { name: /^Other Nights/ }).click();
@@ -767,8 +568,8 @@ test("an owner reorders a night with the keyboard and by dragging, including ste
     "Chef No instructions written",
   );
   await expect(page.getByRole("status")).toContainText("All changes saved");
-  expect(api.nightOrders.firstNight).toEqual(expected);
-  expect(api.nightOrders.otherNight).toEqual(["dusk", "dawn"]);
+  expect((await readNights(page)).firstNight).toEqual(expected);
+  expect((await readNights(page)).otherNight).toEqual(["dusk", "dawn"]);
 
   await page.reload();
   await nav.getByRole("button", { name: /^First Night/ }).click();
@@ -790,16 +591,24 @@ test("an owner reorders a night with the keyboard and by dragging, including ste
     .click();
   await expect(page.getByRole("heading", { name: "Script details" })).toBeVisible();
   await expect(page.getByRole("status")).toContainText("All changes saved");
-  expect(api.nightOrders.firstNight).toEqual(["minioninfo", "dusk", "demoninfo", chef?.id, "dawn"]);
+  expect((await readNights(page)).firstNight).toEqual([
+    "minioninfo",
+    "dusk",
+    "demoninfo",
+    chef?.id,
+    "dawn",
+  ]);
 });
 
 test("night reordering is usable on a narrow screen", async ({ page }) => {
-  await ownerApi(page);
+  await signIn(page, { name: "Ada Lovelace" });
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/");
   await page.getByRole("button", { name: "New Script" }).click();
   await addCharacter(page, "Minion", "Other Nights only");
   await page.getByRole("textbox", { name: "Name" }).fill("Poisoner");
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  await expect.poll(async () => (await readCharacters(page))[0]?.name).toBe("Poisoner");
   await page.getByRole("button", { name: "Reorder Other Nights" }).click();
   const order = page.getByRole("list", { name: "Other Nights order" });
   await page.getByRole("button", { name: "Move Poisoner up" }).click();
@@ -810,7 +619,7 @@ test("night reordering is usable on a narrow screen", async ({ page }) => {
 test("Jinxes share invalid drafts and corrections between endpoints, survive reload, and can be deleted from either end", async ({
   page,
 }) => {
-  const api = await ownerApi(page);
+  await signIn(page, { name: "Ada Lovelace" });
   await page.goto("/");
   await page.getByRole("button", { name: "New Script" }).click();
   await addCharacter(page, "Townsfolk");
@@ -820,12 +629,12 @@ test("Jinxes share invalid drafts and corrections between endpoints, survive rel
   await page.getByRole("textbox", { name: "Name", exact: true }).fill("Imp");
   await page.getByRole("textbox", { name: "Ability", exact: true }).fill("Choose a player.");
   const jinxes = page.getByRole("region", { name: "Jinxes", exact: true }).first();
-  api.failSaves = true;
+  const restoreNetwork = await failRpc(page, ["Jinx.create", "Jinx.update", "Jinx.delete"]);
   await jinxes.getByRole("button", { name: "Add Jinx" }).click();
   await page.getByRole("menuitem", { name: "Chef" }).click();
   await expect(jinxes.getByRole("alert")).toContainText("Couldn’t add the Jinx.");
-  expect(api.jinxes).toEqual([]);
-  api.failSaves = false;
+  expect(await readJinxes(page)).toEqual([]);
+  await restoreNetwork();
   await jinxes.getByRole("button", { name: "Add Jinx" }).focus();
   await page.keyboard.press("Enter");
   await page.getByRole("menuitem", { name: "Chef" }).focus();
@@ -837,8 +646,8 @@ test("Jinxes share invalid drafts and corrections between endpoints, survive rel
   await explanation.fill("x".repeat(501));
   await expect(jinxes).toContainText("Use 500 characters or fewer.");
   await expect(page.getByRole("status")).toContainText("All changes saved");
-  expect(api.jinxes).toHaveLength(1);
-  expect(api.jinxes[0]?.explanation).toBe("x".repeat(501));
+  expect(await readJinxes(page)).toHaveLength(1);
+  expect((await readJinxes(page))[0]?.explanation).toBe("x".repeat(501));
   const nav = page.getByRole("navigation", { name: "Script sections" });
   await nav.getByRole("button", { name: /Chef/ }).click();
   await expect(explanation).toHaveValue("x".repeat(501));
@@ -862,31 +671,37 @@ test("Jinxes share invalid drafts and corrections between endpoints, survive rel
   await expect(explanation).toHaveValue("The Chef learns about the Imp.");
   await expect(jinxes.getByRole("button", { name: "Add Jinx" })).toBeDisabled();
 
-  api.failSaves = true;
+  const restoreNetwork2 = await failRpc(page, ["Jinx.create", "Jinx.update", "Jinx.delete"]);
   await explanation.fill("Unsaved Jinx draft");
   await expect(page.getByRole("status")).toContainText("Couldn’t save your changes");
   await page.getByRole("link", { name: "Your Scripts" }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Stay" }).click();
   await nav.getByRole("button", { name: "Chef", exact: true }).click();
   await expect(explanation).toHaveValue("Unsaved Jinx draft");
-  api.failSaves = false;
+  expect(await readJinxes(page)).toEqual([
+    expect.objectContaining({ explanation: "The Chef learns about the Imp." }),
+  ]);
+  await restoreNetwork2();
   await page.getByRole("button", { name: "Retry save" }).click();
   await expect(page.getByRole("status")).toContainText("All changes saved");
-  api.failSaves = true;
+  const restoreNetwork3 = await failRpc(page, ["Jinx.create", "Jinx.update", "Jinx.delete"]);
   await jinxes.getByRole("button", { name: /Delete Jinx between/ }).click();
   await expect(jinxes).toContainText("Couldn’t delete the Jinx. Try again.");
   await expect(explanation).toHaveValue("Unsaved Jinx draft");
-  api.failSaves = false;
+  expect(await readJinxes(page)).toEqual([
+    expect.objectContaining({ explanation: "Unsaved Jinx draft" }),
+  ]);
+  await restoreNetwork3();
   await jinxes.getByRole("button", { name: /Delete Jinx between/ }).focus();
   await page.keyboard.press("Enter");
   await expect(explanation).toHaveCount(0);
-  expect(api.jinxes).toEqual([]);
+  expect(await readJinxes(page)).toEqual([]);
   await page.reload();
   await expect(preview.getByRole("region", { name: "Jinxes" })).toHaveCount(0);
 });
 
 test("Jinx creation, editing, and preview fit a narrow screen", async ({ page }) => {
-  await ownerApi(page);
+  await signIn(page, { name: "Ada Lovelace" });
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/");
   await page.getByRole("button", { name: "New Script" }).click();
@@ -911,7 +726,7 @@ test("Jinx creation, editing, and preview fit a narrow screen", async ({ page })
 test("Reminder Tokens, setup and flavor support keyboard edits, duplicate ordering and saved invalid drafts", async ({
   page,
 }) => {
-  const api = await ownerApi(page);
+  await signIn(page, { name: "Ada Lovelace" });
   await page.goto("/");
   await page.getByRole("button", { name: "New Script" }).click();
   await addCharacter(page, "Townsfolk");
@@ -957,7 +772,7 @@ test("Reminder Tokens, setup and flavor support keyboard edits, duplicate orderi
   );
   await chooseTeam(page, "Traveller");
   await expect(page.getByRole("status")).toContainText("All changes saved");
-  expect(api.characters[0]).toMatchObject({
+  expect((await readCharacters(page))[0]).toMatchObject({
     reminders: ["x".repeat(31), "Dead"],
     remindersGlobal: ["x".repeat(26)],
     setup: true,
@@ -989,7 +804,7 @@ test("Reminder Tokens, setup and flavor support keyboard edits, duplicate orderi
   await global.getByRole("textbox", { name: "Token 1", exact: true }).fill("Drunk");
   await page.getByRole("textbox", { name: "Flavor text" }).fill("");
   await expect(page.getByRole("button", { name: "1 problem blocks export" })).toBeVisible();
-  api.failSaves = true;
+  const restoreNetwork = await failRpc(page, ["Character.update"]);
   await ordinary
     .getByRole("textbox", { name: "Token 1", exact: true })
     .fill("Retained after failure");
@@ -997,14 +812,14 @@ test("Reminder Tokens, setup and flavor support keyboard edits, duplicate orderi
   await expect(ordinary.getByRole("textbox", { name: "Token 1", exact: true })).toHaveValue(
     "Retained after failure",
   );
-  api.failSaves = false;
+  await restoreNetwork();
   await page.getByRole("button", { name: "Retry save" }).click();
   await expect(page.getByRole("status")).toContainText("All changes saved");
-  expect(api.characters[0]?.reminders).toEqual(["Retained after failure", "Dead"]);
+  expect((await readCharacters(page))[0]?.reminders).toEqual(["Retained after failure", "Dead"]);
 });
 
 test("Reminder Token count errors remain editable on a narrow screen", async ({ page }) => {
-  await ownerApi(page);
+  await signIn(page, { name: "Ada Lovelace" });
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/");
   await page.getByRole("button", { name: "New Script" }).click();
@@ -1039,23 +854,13 @@ test("JSON export requires saved edits and copies or downloads the saved Script 
   context,
 }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  const api = await ownerApi(page);
-  const id = "01k8ae00000000000000000001";
-  api.scripts.push({ id, name: "Saved Script", authorCredit: "Ada", updatedAt: 0 });
-
-  for (let i = 1; i <= 4; i++)
-    api.characters.push({
-      id: `01k8af0000000000000000000${i}`,
-      name: `Character ${i}`,
-      team: i === 4 ? "traveller" : "townsfolk",
-      ability: `Ability ${i}`,
-      reminders: ["Same", "Same"],
-      remindersGlobal: ["Global"],
-      setup: true,
-      flavor: "Flavor",
-      firstNightInstructions: "First",
-      otherNightInstructions: "Other",
-    });
+  let exportRequests = 0;
+  page.on("request", (request) => {
+    if (rpc.test(request.url()) && request.postDataJSON()?.tag === "Script.export")
+      exportRequests++;
+  });
+  await signIn(page, { name: "Ada Lovelace" });
+  const id = await seedScript(page, 4);
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto(`/scripts/${id}/edit`);
   await expect(page.getByText("Ready to export")).toBeVisible();
@@ -1064,15 +869,15 @@ test("JSON export requires saved edits and copies or downloads the saved Script 
   await page.getByRole("button", { name: "Export JSON" }).click();
   await page.getByRole("menuitem", { name: "Copy JSON" }).click();
   await expect(page.getByRole("alert")).toContainText("Wait for all changes to save");
-  expect(api.exports).toBe(0);
+  expect(exportRequests).toBe(0);
   await expect(page.getByRole("status")).toContainText("All changes saved");
-  api.failSaves = true;
+  const restoreNetwork = await failRpc(page, ["Script.updateDetails"]);
   await name.fill("Retained after failure");
   await expect(page.getByRole("status")).toContainText("Couldn’t save");
   await page.getByRole("button", { name: "Export JSON" }).click();
   await page.getByRole("menuitem", { name: "Download JSON" }).click();
-  expect(api.exports).toBe(0);
-  api.failSaves = false;
+  expect(exportRequests).toBe(0);
+  await restoreNetwork();
   await page.getByRole("button", { name: "Retry save" }).click();
   await expect(page.getByRole("status")).toContainText("All changes saved");
   await page.getByRole("button", { name: "Export JSON" }).focus();
@@ -1082,7 +887,7 @@ test("JSON export requires saved edits and copies or downloads the saved Script 
   await page.keyboard.press("Enter");
   await expect(page.getByText("JSON copied to clipboard", { exact: true })).toBeVisible();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
-  expect(api.exports).toBe(1);
+  expect(exportRequests).toBe(1);
 
   // Clipboard failures leave downloading available as an alternative.
   await page.evaluate(() => {
@@ -1097,7 +902,7 @@ test("JSON export requires saved edits and copies or downloads the saved Script 
   await page.getByRole("button", { name: "Export JSON" }).click();
   await page.getByRole("menuitem", { name: "Download JSON" }).click();
   const file = await downloaded;
-  expect(file.suggestedFilename()).toBe("saved-script.json");
+  expect(file.suggestedFilename()).toMatch(/\.json$/);
   const path = await file.path();
 
   if (path === null) throw new Error("Download did not produce a file");
@@ -1118,26 +923,18 @@ test("JSON export requires saved edits and copies or downloads the saved Script 
     "Character 3",
     "Character 4",
   ]);
-  expect(api.exports).toBe(3);
+  expect(exportRequests).toBe(3);
   expect(await noHorizontalScroll(page)).toBe(true);
 });
 
 test("an owner downloads sheet PNGs of the live draft from the preview", async ({ page }) => {
-  const api = await ownerApi(page);
-  const id = "01k8ae00000000000000000001";
-  api.scripts.push({ id, name: "Saved Script", authorCredit: "Ada", updatedAt: 0 });
-  api.characters.push({
-    id: "01k8af00000000000000000001",
-    name: "Chef",
-    team: "townsfolk",
-    ability: "You start knowing a number.",
-    reminders: [],
-    remindersGlobal: [],
-    setup: false,
-    flavor: "",
-    firstNightInstructions: "",
-    otherNightInstructions: "",
+  let exportRequests = 0;
+  page.on("request", (request) => {
+    if (rpc.test(request.url()) && request.postDataJSON()?.tag === "Script.export")
+      exportRequests++;
   });
+  await signIn(page, { name: "Ada Lovelace" });
+  const id = await seedScript(page, 1);
   await page.goto(`/scripts/${id}/edit`);
   await page.getByRole("textbox", { name: "Script name" }).fill("Draft Name");
   await expect(page.getByRole("region", { name: "Character sheet" })).toContainText("Draft Name");
@@ -1147,11 +944,11 @@ test("an owner downloads sheet PNGs of the live draft from the preview", async (
   expect((await downloaded).suggestedFilename()).toBe("Draft-Name-character.png");
   await expect(page.getByText("Downloaded Draft-Name-character.png.")).toBeVisible();
   // PNGs come from the browser alone: no export or render request.
-  expect(api.exports).toBe(0);
+  expect(exportRequests).toBe(0);
 });
 
 test("export blockers and counters use Unicode code points", async ({ page }) => {
-  const api = await ownerApi(page);
+  await signIn(page, { name: "Ada Lovelace" });
   await page.goto("/");
   await page.getByRole("button", { name: "New Script" }).click();
   await addCharacter(page, "Townsfolk");
@@ -1164,8 +961,8 @@ test("export blockers and counters use Unicode code points", async ({ page }) =>
   await reminders.getByRole("textbox", { name: "Token 1", exact: true }).fill("😀".repeat(30));
   await expect(reminders.getByText("30/30 characters", { exact: true })).toBeVisible();
   await expect(page.getByRole("status")).toContainText("All changes saved");
-  expect(api.characters[0]?.name).toBe("😀".repeat(30));
-  expect(api.characters[0]?.ability).toBe("😀".repeat(250));
+  expect((await readCharacters(page))[0]?.name).toBe("😀".repeat(30));
+  expect((await readCharacters(page))[0]?.ability).toBe("😀".repeat(250));
   await expect(page.getByRole("button", { name: "1 problem blocks export" })).toBeVisible();
   await reminders.getByRole("textbox", { name: "Token 1", exact: true }).fill("😀".repeat(31));
   await expect(reminders.getByText("31/30 characters", { exact: true })).toBeVisible();

@@ -67,7 +67,7 @@ Automated checks for this slice:
 - HTTP RPC serialization, concurrent identity isolation, cookies, sign-out and cross-origin rejection use the real HTTP application with swapped Effect service layers, a controlled identity provider, and a controlled clock. They do not start a Worker emulator.
 - Three focused persistence tests use Miniflare solely for real workerd-backed D1 migrations, atomic `DELETE … RETURNING`, identity upsert/session SQL, and batch rollback. Swapping `AuthStore` proves workflow behavior but cannot establish those SQL/driver semantics. Miniflare is test-only.
 - `bun run build`: production SPA build passes. The Alchemy local Worker starts, applies migrations and serves the built SPA.
-- `bun run test:e2e` against `APP_ORIGIN=http://localhost:1337 bun run dev:worker`: 15 passing checks, including native Worker configuration/cookie checks, keyboard/narrow-screen account editing, blank-name validation, retained failed input/retry, loading/failure states, sign-out, and existing public reads. Browser profile states use controlled RPC responses; persistence/authorization are tested against real D1 separately.
+- `bun run test:e2e` now owns a separate local Alchemy stack on `http://localhost:1338`. Browser journeys use the real Worker, RPCs, sessions, authorization, and migrated D1; only the Google identity adapter is replaced through its Effect service. Account edits and other writes are checked after reload, and anonymous/non-owner access uses separate browser contexts. RPC responses are not fabricated. See [E2E testing](e2e-testing.md).
 
 External prerequisite: real Google credentials and an exactly registered callback have not been supplied. After configuring them, perform this manual smoke test before production promotion:
 
@@ -76,6 +76,6 @@ External prerequisite: real Google credentials and an exactly registered callbac
 3. Sign in through another browser profile. Sign out of the first browser; confirm the second stays signed in and the first loses account access immediately.
 4. Inspect browser cookies for the flags above. Confirm the callback cannot be replayed and a denied Google consent does not sign in.
 
-The local Effect Worker was checked with placeholder credentials loaded from `.env` through constructor configuration binding. Missing configuration fails during construction. The configured check exercises the real D1 OAuth-start batch and exact redirect/cookie behavior without contacting Google. The secret stays `Redacted` until the token-exchange adapter builds its request body.
+The normal local Effect Worker still uses real Google-provider wiring with credentials loaded through constructor configuration binding; missing configuration fails during construction. The separate E2E Worker needs no Google credentials, and its stack rejects live deployment. The real Google secret stays `Redacted` until the token-exchange adapter builds its request body.
 
 The Google network exchange and deployed production bindings remain external smoke checks; automated tests do not claim to establish those.

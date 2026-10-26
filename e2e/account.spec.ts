@@ -1,10 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const accountRpc = /\/api\/rpc\/?$/;
+import { signIn } from "./support/api.ts";
 
-// Controlled wire response for browser states; persistence/authorization are covered by real D1 tests.
-const fulfillUser = (displayName: string, requestId: string) =>
-  `{"_tag":"Exit","requestId":${JSON.stringify(requestId)},"exit":{"_tag":"Success","value":${JSON.stringify({ id: "user", displayName })}}}\n`;
+const accountRpc = /\/api\/rpc\/?$/;
 
 const signInLink = (page: Page) =>
   page.getByRole("main").getByRole("link", { name: "Sign in with Google" });
@@ -34,13 +32,7 @@ test("anonymous account page asks the visitor to sign in", async ({ page }) => {
 });
 
 test("signed-in header menu opens account settings with the keyboard", async ({ page }) => {
-  await page.route(accountRpc, async (route) => {
-    const body = route.request().postDataJSON();
-    await route.fulfill({
-      contentType: "application/x-ndjson",
-      body: fulfillUser("Ada Lovelace", body.id),
-    });
-  });
+  await signIn(page, { name: "Ada Lovelace" });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Welcome back, Ada Lovelace" })).toBeVisible();
   const menu = page.getByRole("button", { name: "Account menu for Ada Lovelace" });
@@ -56,22 +48,18 @@ test("signed-in header menu opens account settings with the keyboard", async ({ 
 test("profile edit validates, retains failed input, retries with the keyboard, and signs out", async ({
   page,
 }) => {
-  let name = "Google name";
+  await signIn(page, { name: "Google name" });
   let fail = true;
   await page.route(accountRpc, async (route) => {
     const body = route.request().postDataJSON();
 
-    if (body.tag === "Account.rename") {
-      if (fail) {
-        await route.abort();
+    if (body.tag === "Account.rename" && fail) {
+      await route.abort();
 
-        return;
-      }
-
-      name = body.payload.displayName;
+      return;
     }
 
-    await route.fulfill({ contentType: "application/x-ndjson", body: fulfillUser(name, body.id) });
+    await route.continue();
   });
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/account");
@@ -96,6 +84,8 @@ test("profile edit validates, retains failed input, retries with the keyboard, a
     true,
   );
   await page.unroute(accountRpc);
+  await page.reload();
+  await expect(input).toHaveValue("Chosen name");
   await page.getByRole("button", { name: "Sign out of this browser" }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(signInLink(page)).toBeVisible();

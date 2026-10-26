@@ -1,16 +1,7 @@
 // Sheet Scripts served anonymously through the public read, shared by the sheet specs.
-import {
-  Character,
-  NightOrders,
-  ScriptExportInvalid,
-  botcDocument,
-  scriptExportProblems,
-} from "@alchemist/domain";
-import { Schema } from "effect";
+import { OwnedScript } from "@alchemist/domain";
+import { callRpc, signIn } from "./api.ts";
 import { expect, type Page } from "@playwright/test";
-
-const rpc = /\/api\/rpc\/?$/;
-const id = "01k8ag00000000000000000001";
 
 interface Sample {
   readonly id: string;
@@ -33,7 +24,7 @@ export const character = (
   next += 1;
 
   return {
-    id: `01k8ah${String(next).padStart(20, "0")}`,
+    id: `sheetcharacter${next}`,
     name,
     ability,
     team,
@@ -47,7 +38,6 @@ export const sheetScript = (
   nightOrders: { firstNight: string[]; otherNight: string[] },
   jinxes: ReadonlyArray<{ first: string; second: string; explanation: string }> = [],
 ) => ({
-  id,
   name: "Brimstone & Brine",
   authorCredit: "Sample Author",
   characters,
@@ -55,48 +45,48 @@ export const sheetScript = (
   jinxes,
 });
 
-// Anonymous public read, served with the given Script.
+// Import through persistence, then exercise the public read without an owner session.
 export const serve = async (page: Page, script: ReturnType<typeof sheetScript>) => {
-  await page.route(rpc, async (route) => {
-    const body = route.request().postDataJSON();
+  await signIn(page, { sub: `sheets-${crypto.randomUUID()}`, name: "Sheet Owner" });
 
-    if (body.tag === "Script.exportPublic") {
-      const source = {
-        script,
-        characters: script.characters.map((c) =>
-          Schema.decodeUnknownSync(Character)({
-            ...c,
-            reminders: [],
-            remindersGlobal: [],
-            setup: false,
-            flavor: "",
-          }),
-        ),
-        nightOrders: Schema.decodeSync(NightOrders)(script.nightOrders),
-        jinxes: [],
-      };
+  const json = JSON.stringify([
+    {
+      id: "_meta",
+      name: script.name,
+      author: script.authorCredit,
+      ...script.nightOrders,
+    },
+    ...script.characters.map((c) => ({
+      id: c.id,
+      name: c.name,
+      team: c.team,
+      ability: c.ability,
+      firstNightReminder: c.firstNightInstructions,
+      otherNightReminder: c.otherNightInstructions,
+      jinxes: script.jinxes
+        .filter((jinx) => jinx.first === c.id)
+        .map((jinx) => ({ id: jinx.second, reason: jinx.explanation })),
+    })),
+  ]);
 
-      const problems = scriptExportProblems(source);
+  // Import remaps external Character IDs and metadata night-order references together.
+  const saved = await callRpc(
+    page,
+    "Script.import",
+    { json, acknowledgeDiscard: false },
+    OwnedScript,
+  );
 
-      // Deliberate NDJSON wire fixtures, matching the RPC transport.
-      const exit = problems.length
-        ? `{"_tag":"Failure","cause":[{"_tag":"Fail","error":${JSON.stringify(new ScriptExportInvalid({ problems }))}}]}`
-        : `{"_tag":"Success","value":${JSON.stringify({ filename: "fixture.json", json: JSON.stringify(botcDocument(source, "https://alchemist.example")) })}}`;
-
-      return route.fulfill({
-        contentType: "application/x-ndjson",
-        body: `{"_tag":"Exit","requestId":${JSON.stringify(body.id)},"exit":${exit}}\n`,
-      });
-    }
-
-    return body.tag === "Script.readPublic"
-      ? route.fulfill({
-          contentType: "application/x-ndjson",
-          body: `{"_tag":"Exit","requestId":${JSON.stringify(body.id)},"exit":{"_tag":"Success","value":${JSON.stringify(script)}}}\n`,
-        })
-      : route.abort();
+  // The real sign-out endpoint enforces same-origin POSTs and redirects on success.
+  const response = await page.request.post("/auth/sign-out", {
+    headers: { Origin: new URL(page.url()).origin },
+    maxRedirects: 0,
   });
-  await page.goto(`/scripts/${id}`);
+
+  expect(response.status()).toBe(303);
+  // A deliberately stalled font must not stall navigation before capture can
+  // exercise its own resource timeout (Firefox includes fonts in the load event).
+  await page.goto(`/scripts/${saved.id}`, { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Brimstone & Brine" })).toBeVisible();
 };
 
@@ -110,7 +100,13 @@ export const short = () => {
   const chef = character("townsfolk", "Chef", "You start knowing a number.", "Show the number.");
   const imp = character("demon", "Imp", "Each night*, choose a player: they die.", "", "");
 
-  return sheetScript([chef, imp], {
+  // Public sheets require an exportable Script (at least four Characters).
+  // Keep the extra Characters out of the explicit orders and retain one Demon
+  // so the blank-instruction rows and icon-fallback counts stay under test.
+  const washerwoman = character("townsfolk", "Washerwoman", "You start knowing a Townsfolk.");
+  const librarian = character("townsfolk", "Librarian", "You start knowing an Outsider.");
+
+  return sheetScript([chef, washerwoman, librarian, imp], {
     firstNight: ["dusk", "minioninfo", "demoninfo", chef.id, "dawn", imp.id],
     otherNight: ["dusk", imp.id, "dawn"],
   });
@@ -147,11 +143,15 @@ export const dense = () => {
 };
 
 export const long = () => {
-  const wordy = "x ".repeat(240).trim();
+  // Overflow with many valid Characters, not abilities blocked by public-read validation.
+  const wordy = "x ".repeat(125).trim();
 
-  const characters = Array.from({ length: 30 }, (_, i) =>
-    character(i < 20 ? "townsfolk" : "minion", `Long ${i + 1}`, wordy),
+  const characters = Array.from({ length: 60 }, (_, i) =>
+    character(i < 40 ? "townsfolk" : "minion", `Long ${i + 1}`, wordy),
   );
 
-  return sheetScript(characters, { firstNight: ["dusk", "dawn"], otherNight: ["dusk", "dawn"] });
+  return sheetScript(characters, {
+    firstNight: ["dusk", "minioninfo", "demoninfo", "dawn"],
+    otherNight: ["dusk", "dawn"],
+  });
 };

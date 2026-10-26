@@ -33,10 +33,21 @@ For Google sign-in configuration and the real-provider smoke check, see
 bun run check
 ```
 
-This runs formatting, lint, typechecking, and unit tests. With the dev server running, run the browser and API tests:
+This runs formatting, lint, typechecking, and unit tests. Run the browser and API tests separately:
 
 ```sh
 bun run test:e2e
 ```
 
-Install the test browser once with `bunx --no-install playwright install chromium`.
+Playwright builds the SPA and starts its own local Alchemy Worker and migrated D1 on
+<http://localhost:1338>. It does not reuse your development server, deploy Cloudflare
+resources, or require Google credentials. Each run gets a fresh stage; each test
+creates its own user and data through real HTTP requests. Alchemy's local artifacts
+remain under `.alchemy/`, separate from your normal development stage.
+
+Install browsers once with `bunx --no-install playwright install chromium firefox`.
+Chromium runs the full suite; Firefox also checks sheet downloads. WebKit is
+currently excluded because its Secure-cookie behavior requires local HTTPS.
+
+See [E2E testing](docs/e2e-testing.md) for the identity stub, test conventions, and
+the boundary between local coverage and deployed smoke checks.

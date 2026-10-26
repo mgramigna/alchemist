@@ -1,67 +1,72 @@
-import { expect, test, type BrowserContext } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { Schema } from "effect";
+import { Character } from "@alchemist/domain";
+import { OwnedScript } from "@alchemist/domain";
+import { callRpc, signIn } from "./support/api.ts";
 import { readFile } from "node:fs/promises";
-import { sharingApplication } from "../packages/api/test/support/sharing.ts";
 
-// Real application handlers, domain rules and migrated D1. Only the identity
-// provider is controlled; the recipient gets a separate context with no cookie.
+// All setup uses authenticated RPCs against the development server. Recipients
+// use a separate browser context with no session.
 const sharing = test.extend<{
   app: {
     id: string;
     invalidate: () => Promise<void>;
     overflow: () => Promise<void>;
-    attach: (context: BrowserContext) => Promise<void>;
-    deleteScript: () => Promise<void>;
   };
 }>({
-  app: async ({ context, baseURL }, use) => {
-    const origin = new URL(baseURL ?? "http://localhost:1337").origin;
-    const app = await sharingApplication(origin);
+  app: async ({ page }, use) => {
+    await signIn(page);
+    const script = await callRpc(page, "Script.create", {}, OwnedScript);
 
-    const attach = async (browserContext: typeof context) => {
-      await browserContext.route(/\/api\/rpc\/?$/, async (route) => {
-        const incoming = route.request();
+    const addCharacter = async (index: number, ability: string) => {
+      const character = await callRpc(
+        page,
+        "Character.create",
+        {
+          scriptId: script.id,
+          team: "townsfolk",
+          nights: [],
+        },
+        Character,
+      );
 
-        const response = await app.request(
-          new Request(incoming.url(), {
-            method: incoming.method(),
-            headers: await incoming.allHeaders(),
-            body: incoming.postData(),
-          }),
-        );
-
-        await route.fulfill({
-          status: response.status,
-          headers: Object.fromEntries(response.headers),
-          body: await response.text(),
-        });
-      });
+      return callRpc(
+        page,
+        "Character.update",
+        {
+          ...character,
+          scriptId: script.id,
+          name: `Character ${index}`,
+          ability,
+        },
+        Character,
+      );
     };
 
-    await attach(context);
+    const characters: Character[] = [];
 
-    try {
-      await context.addCookies([
-        {
-          name: "__Host-alchemist-session",
-          value: "owner-session",
-          url: origin.replace("http:", "https:") + "/",
-          secure: true,
-        },
-      ]);
-      await use({
-        id: app.id,
-        attach,
-        deleteScript: async () => {
-          await app.deleteScript();
-        },
-        invalidate: async () => {
-          await app.invalidate();
-        },
-        overflow: app.overflow,
-      });
-    } finally {
-      await app.dispose();
-    }
+    for (let i = 0; i < 4; i++) characters.push(await addCharacter(i, "You learn a number."));
+    await use({
+      id: script.id,
+      // Empty abilities are valid draft writes but block JSON export.
+      invalidate: async () => {
+        for (const character of characters) {
+          await callRpc(
+            page,
+            "Character.update",
+            {
+              ...character,
+              scriptId: script.id,
+              ability: "",
+            },
+            Character,
+          );
+        }
+      },
+      overflow: async () => {
+        for (let i = 4; i < 65; i++) await addCharacter(i, "Long text ".repeat(24));
+      },
+    });
   },
 });
 
@@ -80,11 +85,10 @@ sharing(
     const link = await page.evaluate(() => navigator.clipboard.readText());
 
     const anonymous = await browser.newContext({
-      baseURL: baseURL ?? "http://localhost:1337",
+      baseURL: baseURL ?? "http://localhost:1338",
       viewport: { width: 375, height: 812 },
     });
 
-    await app.attach(anonymous);
     const recipient = await anonymous.newPage();
 
     try {
@@ -140,7 +144,32 @@ sharing(
       }, app.id);
 
       expect(denied.exit.cause[0].error._tag).toBe("AuthRejected");
-      await recipient.screenshot({ path: "/tmp/alchemist-34-public.png", fullPage: true });
+
+      const other = await browser.newContext({
+        baseURL: baseURL ?? "http://localhost:1338",
+      });
+
+      try {
+        const otherPage = await other.newPage();
+        await signIn(otherPage);
+        await expect(
+          callRpc(
+            otherPage,
+            "Script.updateDetails",
+            {
+              id: app.id,
+              name: "Tampered",
+              authorCredit: "",
+            },
+            OwnedScript,
+          ),
+        ).rejects.toThrow();
+        expect(await callRpc(otherPage, "Script.listOwned", {}, Schema.Array(OwnedScript))).toEqual(
+          [],
+        );
+      } finally {
+        await other.close();
+      }
 
       for (const label of ["Character sheet", "Night sheet"]) {
         const png = recipient.waitForEvent("download");
@@ -157,6 +186,21 @@ sharing(
       ).toBe(true);
       await page.getByRole("textbox", { name: "Script name" }).fill("Saved Alchemy");
       await expect(page.getByRole("status")).toContainText("All changes saved");
+      await expect
+        .poll(
+          async () =>
+            (
+              await callRpc(
+                page,
+                "Script.readOwned",
+                {
+                  id: app.id,
+                },
+                OwnedScript,
+              )
+            ).name,
+        )
+        .toBe("Saved Alchemy");
       await recipient.reload();
       await expect(recipient.getByRole("heading", { name: "Saved Alchemy" })).toBeVisible();
       const updated = recipient.waitForEvent("download");
@@ -165,9 +209,8 @@ sharing(
       expect(JSON.parse(await readFile(await (await updated).path(), "utf8"))[0].name).toBe(
         "Saved Alchemy",
       );
-      await app.deleteScript();
-      await recipient.reload();
-      await expect(recipient.getByRole("heading", { name: "Script not found" })).toBeVisible();
+      // No Script deletion API exists: do not simulate deletion by mutating D1.
+      // Unknown public links are exercised separately below.
     } finally {
       await anonymous.close();
     }
@@ -175,8 +218,8 @@ sharing(
 );
 
 sharing("JSON blockers leave PNG downloads available", async ({ page, context, app }) => {
-  await context.clearCookies();
   await app.invalidate();
+  await context.clearCookies();
   await page.goto(`/scripts/${app.id}`);
   await expect(page.getByRole("list", { name: "JSON validation problems" })).toContainText(
     "Ability",
@@ -191,8 +234,8 @@ sharing("JSON blockers leave PNG downloads available", async ({ page, context, a
 sharing(
   "an overflowing Character sheet leaves valid JSON and the night sheet available",
   async ({ page, context, app }) => {
-    await context.clearCookies();
     await app.overflow();
+    await context.clearCookies();
     await page.goto(`/scripts/${app.id}`);
     await expect(page.getByRole("button", { name: "Export JSON" })).toBeEnabled();
     const file = page.waitForEvent("download");

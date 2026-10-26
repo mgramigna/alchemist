@@ -1,133 +1,45 @@
 import { expect, test, type Page } from "@playwright/test";
-import {
-  botcDocument,
-  reviewImport,
-  OwnedScript,
-  ScriptId,
-  type ImportDraft,
-} from "@alchemist/domain";
+import { Character, OwnedScript } from "@alchemist/domain";
+import { Schema } from "effect";
 import { readFileSync } from "node:fs";
+import { callRpc, signIn } from "./support/api.ts";
 
 const fixture = readFileSync(
   new URL("../packages/domain/test/fixtures/import-script.json", import.meta.url),
   "utf8",
 );
 
-const id = ScriptId.make("01k8aj00000000000000000009");
-
-interface ImportSession {
-  draft: ImportDraft | null;
-  saved: OwnedScript | null;
-  failReview: boolean;
-  failCommit: boolean;
-  commits: number;
-  externalRequests: Array<string>;
-}
+const owned = (page: Page) => callRpc(page, "Script.listOwned", {}, Schema.Array(OwnedScript));
 
 const setupImport = async (page: Page) => {
-  const state: ImportSession = {
-    draft: null,
-    saved: null,
-    failReview: false,
-    failCommit: false,
-    commits: 0,
-    externalRequests: [],
-  };
-
-  page.on("request", (request) => {
-    if (request.url().includes("example.org")) state.externalRequests.push(request.url());
-  });
-  await page.route(/\/api\/rpc\/?$/, async (route) => {
-    const body = route.request().postDataJSON();
-
-    const reply = <A>(value: A) =>
-      route.fulfill({
-        contentType: "application/x-ndjson",
-        body: `{"_tag":"Exit","requestId":${JSON.stringify(body.id)},"exit":{"_tag":"Success","value":${JSON.stringify(value)}}}\n`,
-      });
-
-    switch (body.tag) {
-      case "Account.current":
-        return reply({ id: "alice", displayName: "Alice" });
-      case "Script.listOwned":
-        return reply(state.saved === null ? [] : [state.saved]);
-      case "Script.reviewImport":
-        if (state.failReview) return route.abort();
-
-        return reply(reviewImport(body.payload.json, "Alice"));
-      case "Script.import": {
-        if (state.failCommit) return route.abort();
-        const reviewed = reviewImport(body.payload.json, "Alice");
-
-        if (
-          reviewed.draft === null ||
-          (reviewed.discarded.length && !body.payload.acknowledgeDiscard)
-        )
-          throw new Error("Rejected preflight was committed");
-        state.commits++;
-        state.draft = reviewed.draft;
-        state.saved = OwnedScript.make({ id, ...reviewed.draft.script, updatedAt: 1 });
-
-        return reply(state.saved);
-      }
-
-      case "Script.readOwned":
-        return reply(state.saved);
-      case "Script.readImported":
-        return reply(state.draft?.imported ?? null);
-      case "Character.list":
-        return reply(state.draft?.characters ?? []);
-      case "Jinx.list":
-        return reply(state.draft?.jinxes ?? []);
-      case "NightOrder.read":
-        return reply(state.draft?.nightOrders);
-      case "Script.useGenericArtwork": {
-        const draft = state.draft;
-
-        if (draft === null) throw new Error("No import");
-        state.draft = {
-          ...draft,
-          imported: {
-            ...draft.imported,
-            artwork: draft.imported.artwork.filter(
-              (art) =>
-                art.field !== body.payload.field ||
-                (art.characterId ?? null) !== body.payload.characterId,
-            ),
-          },
-        };
-
-        return reply(id);
-      }
-
-      case "Script.export": {
-        if (state.draft === null) throw new Error("No import");
-
-        return reply({
-          filename: "borrowed-moon.json",
-          json: JSON.stringify(botcDocument(state.draft, "http://localhost:5173")),
-        });
-      }
-
-      default:
-        throw new Error(`Unexpected RPC ${body.tag}`);
-    }
-  });
+  await signIn(page, { sub: `import-${crypto.randomUUID()}`, name: "Alice" });
   await page.goto("/");
   await page.getByRole("button", { name: "Import JSON" }).click();
+};
 
-  return state;
+const imported = async (page: Page) => {
+  await expect(page).toHaveURL(/\/scripts\/[^/]+\/edit$/);
+  const scripts = await owned(page);
+  expect(scripts).toHaveLength(1);
+  const script = scripts[0];
+
+  if (!script) throw new Error("Expected persisted Script");
+  expect(new URL(page.url()).pathname).toBe(`/scripts/${script.id}/edit`);
+
+  return script;
 };
 
 test("keyboard review, commit, reload and artwork fallback preserve an editable imported Script", async ({
   page,
 }) => {
-  const state = await setupImport(page);
+  const externalRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("example.org")) externalRequests.push(request.url());
+  });
+  await setupImport(page);
   await page.getByLabel("Or paste JSON").fill(fixture);
-  const review = page.getByRole("button", { name: "Review import" });
-  await review.focus();
+  await page.getByRole("button", { name: "Review import" }).focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("heading", { name: "A Borrowed Moon", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "A Borrowed Moon", exact: true })).toBeFocused();
   await expect(page.getByText("Author Credit: Original Designer")).toBeVisible();
   await expect(page.getByText("4 Characters", { exact: true })).toBeVisible();
@@ -135,54 +47,67 @@ test("keyboard review, commit, reload and artwork fallback preserve an editable 
   await expect(page.getByLabel("Original JSON")).toHaveValue(fixture);
   await page.screenshot({ path: test.info().outputPath("import-review-desktop.png") });
   await page.getByRole("button", { name: "Import Script", exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/scripts/${id}/edit$`));
+  const saved = await imported(page);
   await expect(
     page.getByRole("heading", { name: "Imported artwork needs attention" }),
   ).toBeVisible();
   await expect(page.getByText("Seer · Character icons · Pending copy")).toBeVisible();
-  expect(state.commits).toBe(1);
   await page.reload();
   await expect(page.getByRole("heading", { name: "A Borrowed Moon", exact: true })).toBeVisible();
   await expect(page.getByText("Seer · Character icons · Pending copy")).toBeVisible();
-
-  const seerRow = page
+  await page
     .getByRole("region", { name: "Imported artwork" })
     .getByRole("listitem")
-    .filter({ hasText: "Seer · Character icons" });
-
-  await seerRow.getByRole("button", { name: "Use generic icons for Seer" }).click();
+    .filter({ hasText: "Seer · Character icons" })
+    .getByRole("button", { name: "Use generic icons for Seer" })
+    .click();
+  await expect(page.getByText("Seer · Character icons · Pending copy")).toHaveCount(0);
+  await page.reload();
   await expect(page.getByText("Seer · Character icons · Pending copy")).toHaveCount(0);
   await expect(page.getByText("Shade · Character icons · Failed reference")).toBeVisible();
-  expect(state.externalRequests).toEqual([]);
+
+  const exported = await callRpc(
+    page,
+    "Script.export",
+    { id: saved.id },
+    Schema.Struct({ filename: Schema.String, json: Schema.String }),
+  );
+
+  expect(JSON.parse(exported.json)).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: "_meta", name: "A Borrowed Moon" }),
+      expect.objectContaining({ name: "Seer" }),
+    ]),
+  );
+  expect(externalRequests).toEqual([]);
 });
 
 test("preflight rejects malformed JSON and ambiguous references without creating a Script", async ({
   page,
 }) => {
-  const state = await setupImport(page);
+  await setupImport(page);
   await page.getByLabel("Or paste JSON").fill("{");
   await page.getByRole("button", { name: "Review import" }).click();
   await expect(page.getByRole("heading", { name: "Cannot import yet" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Import Script", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Back to JSON" }).click();
   await expect(page.getByLabel("Or paste JSON")).toBeFocused();
-
-  const duplicate =
-    '[{"id":"a","name":"A","team":"townsfolk","ability":"A"},{"id":"a","name":"B","team":"minion","ability":"B"}]';
-
-  await page.getByLabel("Or paste JSON").fill(duplicate);
+  await page
+    .getByLabel("Or paste JSON")
+    .fill(
+      '[{"id":"a","name":"A","team":"townsfolk","ability":"A"},{"id":"a","name":"B","team":"minion","ability":"B"}]',
+    );
   await page.getByRole("button", { name: "Review import" }).click();
   await expect(page.getByText(/Duplicate Character ID/).first()).toBeVisible();
-  expect(state.commits).toBe(0);
+  expect(await owned(page)).toEqual([]);
 });
 
 test("file review fits mobile, requires keyboard acknowledgement of extras, and permits blocked drafts", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  const state = await setupImport(page);
-  const dialog = await page.getByRole("dialog").boundingBox();
-  expect(dialog?.width).toBeCloseTo(375, 1);
+  await setupImport(page);
+  expect((await page.getByRole("dialog").boundingBox())?.width).toBeCloseTo(375, 1);
   const json = '[{"id":"custom","name":"","team":"townsfolk","ability":"","bloodstar":true}]';
   await page
     .getByLabel("Choose a JSON file")
@@ -192,8 +117,7 @@ test("file review fits mobile, requires keyboard acknowledgement of extras, and 
   await expect(page.getByRole("heading", { name: /problems block export/ })).toBeVisible();
   const commit = page.getByRole("button", { name: "Import Script", exact: true });
   await expect(commit).toBeDisabled();
-  const acknowledge = page.getByRole("checkbox");
-  await acknowledge.focus();
+  await page.getByRole("checkbox").focus();
   await page.keyboard.press("Space");
   await expect(commit).toBeEnabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -202,35 +126,48 @@ test("file review fits mobile, requires keyboard acknowledgement of extras, and 
     fullPage: true,
   });
   await commit.click();
-  await expect(page).toHaveURL(new RegExp(`/scripts/${id}/edit$`));
-  expect(state.commits).toBe(1);
-  expect(state.draft?.characters[0]?.ability).toBe("");
+  const saved = await imported(page);
+
+  const characters = await callRpc(
+    page,
+    "Character.list",
+    { scriptId: saved.id },
+    Schema.Array(Character),
+  );
+
+  expect(characters[0]?.ability).toBe("");
+  await page.reload();
+  await expect(page).toHaveURL(new RegExp(`/scripts/${saved.id}/edit$`));
 });
 
 test("review and commit failures keep the original input and allow retry", async ({ page }) => {
-  const state = await setupImport(page);
-  state.failReview = true;
+  await setupImport(page);
+  let failing: string | null = "Script.reviewImport";
+  await page.route(/\/api\/rpc\/?$/, (route) =>
+    route.request().postDataJSON().tag === failing ? route.abort() : route.continue(),
+  );
   await page.getByLabel("Or paste JSON").fill(fixture);
   await page.getByRole("button", { name: "Review import" }).click();
   await expect(page.getByRole("alert")).toContainText("Couldn’t review");
   await expect(page.getByLabel("Or paste JSON")).toHaveValue(fixture);
-  state.failReview = false;
+  failing = null;
   await page.getByRole("button", { name: "Review import" }).click();
-  state.failCommit = true;
+  await expect(page.getByRole("button", { name: "Import Script", exact: true })).toBeVisible();
+  failing = "Script.import";
   await page.getByRole("button", { name: "Import Script", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Couldn’t import");
-  state.failCommit = false;
+  expect(await owned(page)).toEqual([]);
+  failing = null;
   await page.getByRole("button", { name: "Import Script", exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/scripts/${id}/edit$`));
-  expect(state.commits).toBe(1);
+  await imported(page);
 });
 
 test("Escape cancels and returns keyboard focus to the dashboard trigger", async ({ page }) => {
-  const state = await setupImport(page);
+  await setupImport(page);
   await page.getByLabel("Or paste JSON").fill(fixture);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Import JSON" })).toBeFocused();
-  expect(state.commits).toBe(0);
+  expect(await owned(page)).toEqual([]);
 });
 
 for (const width of [375, 1280]) {
