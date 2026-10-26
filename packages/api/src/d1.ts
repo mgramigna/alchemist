@@ -183,9 +183,14 @@ export const D1ScriptStore = Layer.effect(
       }, readUnavailable),
       findPublic: Effect.fn("D1ScriptStore.findPublic")(function* (id) {
         // One batch, so the Script and its Characters come from the same snapshot.
-        const [scripts, characters, jinxes] = yield* d1.batch([
+        const [scripts, characters, entries, jinxes] = yield* d1.batch([
           sql`SELECT id, name, author_credit FROM scripts WHERE id = ${id}`,
-          sql`SELECT id, name, ability, team FROM characters WHERE script_id = ${id} ORDER BY id`,
+          sql`SELECT id, name, ability, team,
+            first_night_instructions AS firstNightInstructions,
+            other_night_instructions AS otherNightInstructions
+          FROM characters WHERE script_id = ${id} ORDER BY id`,
+          sql`SELECT night, step, character_id FROM night_order_entries
+          WHERE script_id = ${id} ORDER BY night, position`,
           sql`SELECT first, second, explanation FROM jinxes WHERE script_id = ${id} ORDER BY first, second`,
         ]);
 
@@ -199,6 +204,7 @@ export const D1ScriptStore = Layer.effect(
             name: row.name,
             authorCredit: row.author_credit,
             characters: yield* Schema.decodeEffect(Schema.Array(PublicCharacter))(characters),
+            nightOrders: nightOrders(yield* Schema.decodeUnknownEffect(NightEntryRows)(entries)),
             jinxes: yield* Schema.decodeEffect(JinxRows)(jinxes),
           }),
         );

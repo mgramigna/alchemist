@@ -1,6 +1,7 @@
 import {
   CharacterNotFound,
   NightOrderInvalid,
+  defaultNightOrders,
   type Character,
   PublicScript,
   ScriptId,
@@ -24,8 +25,15 @@ const noInstructions = {
   otherNightInstructions: "",
 };
 
-// Night Instructions are not part of the public projection yet.
-const publicView = ({ id, name, ability, team }: Character) => ({ id, name, ability, team });
+// The public projection carries sheet content only.
+const publicView = ({
+  id,
+  name,
+  ability,
+  team,
+  firstNightInstructions,
+  otherNightInstructions,
+}: Character) => ({ id, name, ability, team, firstNightInstructions, otherNightInstructions });
 
 const id = ScriptId.make("01k8ac00000000000000000001");
 
@@ -34,6 +42,7 @@ const fixture = {
   name: "The Midnight Alchemist",
   authorCredit: "Independent credit",
   characters: [],
+  nightOrders: defaultNightOrders,
   jinxes: [],
   ownerId: "private",
   session: "secret",
@@ -51,6 +60,7 @@ it.effect("anonymous read projects only public data and preserves independent Au
         name: fixture.name,
         authorCredit: fixture.authorCredit,
         characters: [],
+        nightOrders: defaultNightOrders,
         jinxes: [],
       }),
     );
@@ -171,6 +181,7 @@ it.effect(
           name: "Night of Mirrors",
           authorCredit: "",
           characters: [],
+          nightOrders: defaultNightOrders,
           jinxes: [],
         });
       }).pipe(Effect.provide(f.layer));
@@ -391,6 +402,8 @@ it.effect(
         });
         assert.deepStrictEqual(yield* scripts.readNightOrders(script.id).pipe(as(alice)), moved);
         assert.deepStrictEqual(f.nightOrders.get(script.id), moved);
+        // Anonymous viewers read the same orders for the night sheet.
+        assert.deepStrictEqual((yield* scripts.readPublic(script.id)).nightOrders, moved);
       }).pipe(Effect.provide(f.layer));
     }),
 );
