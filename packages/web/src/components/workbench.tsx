@@ -44,6 +44,7 @@ import { useJinxes } from "../hooks/use-jinxes.ts";
 import { JinxEditor } from "./jinxes.tsx";
 import { useCharacters } from "../hooks/use-characters.ts";
 import { useNightOrders } from "../hooks/use-night-orders.ts";
+import { downloadBlob } from "../lib/download.ts";
 import { characterTitle } from "../lib/characters.ts";
 import { fieldLabel } from "../lib/fields.ts";
 import { NIGHT_LABELS } from "../lib/night.ts";
@@ -222,12 +223,7 @@ export function Workbench({
         return;
       }
 
-      const url = URL.createObjectURL(new Blob([exit.value.json], { type: "application/json" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = exit.value.filename;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadBlob(new Blob([exit.value.json], { type: "application/json" }), exit.value.filename);
     } finally {
       setExporting(false);
     }

@@ -1,4 +1,10 @@
-import { jinxKey, type CharacterId, type NightStep, type PublicCharacter } from "@alchemist/domain";
+import {
+  genericIcons,
+  jinxKey,
+  type CharacterId,
+  type NightStep,
+  type PublicCharacter,
+} from "@alchemist/domain";
 import {
   MoonIcon,
   SkullIcon,
@@ -14,6 +20,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { showFallbackIcon } from "../lib/capture.ts";
 import { characterTitle, teamPluralLabel } from "../lib/characters.ts";
 import { NIGHT_LABELS, STEP_DESCRIPTIONS, STEP_LABELS } from "../lib/night.ts";
 import {
@@ -21,13 +28,13 @@ import {
   FIT_STEPS,
   PAPERS,
   characterSheetColumns,
+  fallbackIcon,
   nightRows,
   railOf,
   type Paper,
   type SheetContent,
   type TeamGroup,
 } from "../lib/sheets.ts";
-import { CharacterToken } from "./character-token.tsx";
 import "./sheets.css";
 
 /** How a sheet fits its page: the scale used, and whether it still overflows at the floor. */
@@ -52,8 +59,22 @@ const overflowing = (sheet: HTMLElement) =>
 
 /**
  * Steps text and icons down until the sheet fits one page, stopping at the
- * legibility floor. Re-measures after each render and when fonts load.
+ * legibility floor. Never scales up: a short Script stays top-aligned at 100%.
  */
+export const fitSheet = (node: HTMLElement): SheetFit => {
+  let scale = 1;
+
+  for (const step of FIT_STEPS) {
+    scale = step;
+    node.style.setProperty("--fit", String(step));
+
+    if (!overflowing(node)) break;
+  }
+
+  return { scale, overflowing: overflowing(node) };
+};
+
+/** Fits the sheet after each render and when fonts load, reporting changes. */
 function useFit(sheet: RefObject<HTMLElement | null>, onFit: SheetProps["onFit"]) {
   const reported = useRef<SheetFit | null>(null);
   const report = useRef(onFit);
@@ -65,16 +86,7 @@ function useFit(sheet: RefObject<HTMLElement | null>, onFit: SheetProps["onFit"]
     if (node === null) return;
 
     const measure = () => {
-      let scale = 1;
-
-      for (const step of FIT_STEPS) {
-        scale = step;
-        node.style.setProperty("--fit", String(step));
-
-        if (!overflowing(node)) break;
-      }
-
-      const fit = { scale, overflowing: overflowing(node) };
+      const fit = fitSheet(node);
       const last = reported.current;
 
       if (last?.scale === fit.scale && last.overflowing === fit.overflowing) return;
@@ -118,9 +130,19 @@ function Page({
   );
 }
 
-/** The regular (or unaligned) generic icon every sheet uses. */
+/**
+ * The regular (or unaligned) icon every sheet uses. One that fails to load
+ * shows a plain Team token instead, here and in the captured PNG.
+ */
 const SheetIcon = ({ character }: { readonly character: PublicCharacter }) => (
-  <CharacterToken team={character.team} />
+  <img
+    src={genericIcons(character.team)[0]?.path}
+    alt=""
+    width={400}
+    height={400}
+    data-fallback={fallbackIcon(character.team)}
+    onError={(event) => showFallbackIcon(event.currentTarget)}
+  />
 );
 
 function Row({

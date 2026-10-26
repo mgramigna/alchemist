@@ -27,6 +27,7 @@ import {
   ScriptWriteUnavailable,
   addBeforeDawn,
   nightOrderProblem,
+  scriptFileStem,
   type AuthoredTeam,
   type CharacterDetails,
   type Night,
@@ -348,7 +349,7 @@ export const ScriptsLive = Layer.effect(
           return yield* new ScriptExportInvalid({ problems: schemaProblems });
 
         return {
-          filename: `${script.value.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "script"}.json`,
+          filename: `${scriptFileStem(script.value.name)}.json`,
           json: JSON.stringify(document, null, 2),
         };
       }),

@@ -12,6 +12,7 @@ import {
   type SheetContent,
   type SheetView,
 } from "../lib/sheets.ts";
+import { SheetDownload } from "./sheet-download.tsx";
 import { CharacterSheet, NightSheet, type SheetFit } from "./sheets.tsx";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx";
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group.tsx";
@@ -132,6 +133,7 @@ export function SheetPreview({
           <ToggleGroupItem value="actual">100%</ToggleGroupItem>
         </ToggleGroup>
       </div>
+      <SheetDownload content={content} paper={paper} />
       <FitNotice fit={fit} />
       {VIEWS.map(({ value }) => (
         <TabsContent key={value} value={value}>
