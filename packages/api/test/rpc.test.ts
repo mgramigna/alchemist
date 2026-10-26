@@ -32,6 +32,7 @@ const fixture = PublicScript.make({
   name: "Saved Script",
   authorCredit: "Saved credit",
   characters: [],
+  jinxes: [],
 });
 
 const scripts = Layer.mock(Scripts, {
@@ -290,4 +291,65 @@ it.effect(
         }),
       ).pipe(Effect.provide(Layer.provideMerge(server, Layer.merge(a.layer, s.layer))));
     }),
+);
+
+it.effect("Jinx RPCs require authentication and round-trip one pair from either endpoint", () =>
+  Effect.gen(function* () {
+    const a = yield* authFixture;
+    const s = yield* scriptsFixture;
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const client = yield* RpcTest.makeClient(Rpcs);
+        const alice = yield* signIn("alice");
+        const script = yield* client["Script.create"]().pipe(session(alice));
+
+        const first = yield* client["Character.create"]({
+          scriptId: script.id,
+          team: "townsfolk",
+          nights: [],
+        }).pipe(session(alice));
+
+        const second = yield* client["Character.create"]({
+          scriptId: script.id,
+          team: "demon",
+          nights: [],
+        }).pipe(session(alice));
+
+        const payload = { scriptId: script.id, first: first.id, second: second.id };
+        assert.instanceOf(
+          yield* client["Jinx.list"]({ scriptId: script.id }).pipe(Effect.flip),
+          AuthRejected,
+        );
+        assert.instanceOf(yield* client["Jinx.create"](payload).pipe(Effect.flip), AuthRejected);
+        assert.instanceOf(
+          yield* client["Jinx.update"]({ ...payload, explanation: "x" }).pipe(Effect.flip),
+          AuthRejected,
+        );
+        assert.instanceOf(yield* client["Jinx.delete"](payload).pipe(Effect.flip), AuthRejected);
+        const created = yield* client["Jinx.create"](payload).pipe(session(alice));
+        assert.strictEqual(created.explanation, "");
+
+        const saved = yield* client["Jinx.update"]({
+          ...payload,
+          first: second.id,
+          second: first.id,
+          explanation: "A shared rule.",
+        }).pipe(session(alice));
+
+        assert.deepStrictEqual(
+          yield* client["Jinx.list"]({ scriptId: script.id }).pipe(session(alice)),
+          [saved],
+        );
+        assert.deepStrictEqual((yield* client["Script.readPublic"]({ id: script.id })).jinxes, [
+          saved,
+        ]);
+        assert.deepStrictEqual(
+          yield* client["Jinx.delete"]({ ...payload, first: second.id, second: first.id }).pipe(
+            session(alice),
+          ),
+          { first: saved.first, second: saved.second },
+        );
+      }),
+    ).pipe(Effect.provide(Layer.provideMerge(server, Layer.merge(a.layer, s.layer))));
+  }),
 );

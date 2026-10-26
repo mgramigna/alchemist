@@ -40,6 +40,10 @@ export const Handlers = Rpcs.toLayer(
       "Character.update": ({ scriptId, id, ...details }) =>
         scripts.updateCharacter(scriptId, id, details),
       "Character.delete": ({ scriptId, id }) => scripts.deleteCharacter(scriptId, id),
+      "Jinx.list": ({ scriptId }) => scripts.listJinxes(scriptId),
+      "Jinx.create": ({ scriptId, ...pair }) => scripts.createJinx(scriptId, pair),
+      "Jinx.update": ({ scriptId, ...jinx }) => scripts.updateJinx(scriptId, jinx),
+      "Jinx.delete": ({ scriptId, ...pair }) => scripts.deleteJinx(scriptId, pair),
       "NightOrder.read": ({ scriptId }) => scripts.readNightOrders(scriptId),
       "NightOrder.replace": ({ scriptId, night, order }) =>
         scripts.replaceNightOrder(scriptId, night, order),

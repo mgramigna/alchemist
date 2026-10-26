@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { Jinx } from "./jinx.ts";
 import { PublicCharacter } from "./character.ts";
 
 export const ScriptId = Schema.String.check(Schema.isPattern(/^[0-7][0-9a-hjkmnp-tv-z]{25}$/)).pipe(
@@ -39,6 +40,7 @@ export const PublicScript = Schema.Struct({
   name: Schema.String,
   authorCredit: Schema.String,
   characters: Schema.Array(PublicCharacter),
+  jinxes: Schema.Array(Jinx),
 });
 
 export interface PublicScript extends Schema.Schema.Type<typeof PublicScript> {}

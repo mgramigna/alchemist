@@ -9,6 +9,14 @@ import {
   CharacterNotFound,
   NightInstructions,
 } from "./character.ts";
+import {
+  Jinx,
+  JinxPair,
+  JinxExplanation,
+  JinxInvalid,
+  JinxConflict,
+  JinxNotFound,
+} from "./jinx.ts";
 import { Night, NightOrder, NightOrderInvalid, NightOrders } from "./night.ts";
 import { AuthRejected, AuthUnavailable, DisplayName, User } from "./auth.ts";
 import {
@@ -92,6 +100,26 @@ export const Rpcs = RpcGroup.make(
     // The deleted ID: JSON cannot carry a void result.
     success: CharacterId,
     error: Schema.Union([CharacterNotFound, ScriptWriteUnavailable]),
+  }).middleware(Authentication),
+  Rpc.make("Jinx.list", {
+    payload: { scriptId: ScriptId },
+    success: Schema.Array(Jinx),
+    error: Schema.Union([ScriptNotFound, ScriptReadUnavailable]),
+  }).middleware(Authentication),
+  Rpc.make("Jinx.create", {
+    payload: { scriptId: ScriptId, ...JinxPair.fields },
+    success: Jinx,
+    error: Schema.Union([ScriptNotFound, JinxInvalid, JinxConflict, ScriptWriteUnavailable]),
+  }).middleware(Authentication),
+  Rpc.make("Jinx.update", {
+    payload: { scriptId: ScriptId, ...JinxPair.fields, explanation: JinxExplanation },
+    success: Jinx,
+    error: Schema.Union([JinxNotFound, ScriptWriteUnavailable]),
+  }).middleware(Authentication),
+  Rpc.make("Jinx.delete", {
+    payload: { scriptId: ScriptId, ...JinxPair.fields },
+    success: JinxPair,
+    error: Schema.Union([JinxNotFound, ScriptWriteUnavailable]),
   }).middleware(Authentication),
   Rpc.make("NightOrder.read", {
     payload: { scriptId: ScriptId },

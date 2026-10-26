@@ -170,6 +170,7 @@ it.effect("public reads stay anonymous through the shared RPC endpoint", () =>
       name: "Public",
       authorCredit: "Credit",
       characters: [],
+      jinxes: [],
     });
   }).pipe(
     Effect.provide([
@@ -177,7 +178,13 @@ it.effect("public reads stay anonymous through the shared RPC endpoint", () =>
       config,
       Layer.mock(Scripts, {
         readPublic: (id) =>
-          Effect.succeed({ id, name: "Public", authorCredit: "Credit", characters: [] }),
+          Effect.succeed({
+            id,
+            name: "Public",
+            authorCredit: "Credit",
+            characters: [],
+            jinxes: [],
+          }),
       }),
     ]),
   ),

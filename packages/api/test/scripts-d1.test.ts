@@ -101,6 +101,7 @@ test("D1 owner queries are scoped by owner, ordered by last change, and updates 
         name: "Renamed",
         authorCredit: "Credit",
         characters: [],
+        jinxes: [],
       });
       // Migrated rows (the fixture) remain readable after the change-tracking migration.
       expect(
@@ -297,3 +298,123 @@ test("D1 Night Orders default on creation, replace atomically, refuse other Scri
       });
     }),
   ));
+
+test("D1 Jinxes enforce concurrent uniqueness, Script membership, ownership, and atomic Character deletion rollback", async () => {
+  const mine = script("01k8ag00000000000000000001", 10);
+  const other = script("01k8ag00000000000000000002", 10);
+
+  const character = (id: string) =>
+    Character.make({
+      id: CharacterId.make(id),
+      name: "Draft",
+      ability: "",
+      team: "townsfolk",
+      ...noInstructions,
+    });
+
+  const a = character("01k8ag10000000000000000001");
+  const b = character("01k8ag10000000000000000002");
+  const foreign = character("01k8ag10000000000000000003");
+  const jinx = { first: a.id, second: b.id, explanation: "" };
+  await run(
+    Effect.gen(function* () {
+      const scripts = yield* ScriptStore;
+      yield* scripts.insert("alice", mine);
+      yield* scripts.insert("alice", other);
+      yield* scripts.insertCharacter(
+        "alice",
+        mine.id,
+        a,
+        {
+          otherNight: defaultNightOrders.otherNight,
+          firstNight: [...defaultNightOrders.firstNight, a.id],
+        },
+        20,
+      );
+      yield* scripts.insertCharacter(
+        "alice",
+        mine.id,
+        b,
+        {
+          otherNight: defaultNightOrders.otherNight,
+          firstNight: [...defaultNightOrders.firstNight, a.id],
+        },
+        20,
+      );
+      yield* scripts.insertCharacter("alice", other.id, foreign, defaultNightOrders, 20);
+
+      const attempts = yield* Effect.all(
+        [
+          scripts.insertJinx("alice", mine.id, jinx, 30),
+          scripts.insertJinx("alice", mine.id, jinx, 30),
+        ],
+        { concurrency: "unbounded" },
+      );
+
+      expect(attempts.filter(Option.isSome)).toHaveLength(1);
+      expect(yield* scripts.listJinxes("alice", mine.id)).toEqual([jinx]);
+      expect(
+        (yield* Effect.flip(
+          scripts.insertJinx("alice", mine.id, { ...jinx, second: foreign.id }, 40),
+        ))._tag,
+      ).toBe("ScriptWriteUnavailable");
+      expect(
+        (yield* Effect.flip(scripts.insertJinx("alice", mine.id, { ...jinx, second: a.id }, 40)))
+          ._tag,
+      ).toBe("ScriptWriteUnavailable");
+      expect(Option.isNone(yield* scripts.insertJinx("bob", mine.id, jinx, 40))).toBe(true);
+      expect(
+        Option.isNone(
+          yield* scripts.updateJinx("bob", mine.id, { ...jinx, explanation: "Hijack" }, 40),
+        ),
+      ).toBe(true);
+      expect(yield* scripts.deleteJinx("bob", mine.id, jinx, 40)).toBe(false);
+      expect(yield* scripts.listJinxes("bob", mine.id)).toEqual([]);
+      expect(Option.getOrThrow(yield* scripts.findOwned("alice", mine.id)).updatedAt).toBe(30);
+      const saved = { ...jinx, explanation: "x".repeat(501) };
+      expect(Option.getOrThrow(yield* scripts.updateJinx("alice", mine.id, saved, 50))).toEqual(
+        saved,
+      );
+      expect(Option.getOrThrow(yield* scripts.findPublic(mine.id)).jinxes).toEqual([saved]);
+    }),
+  );
+  // Force the final statement of Character deletion to fail, after Jinx and night removal.
+  await db
+    .prepare(
+      `CREATE TRIGGER refuse_jinx_character_delete BEFORE DELETE ON characters WHEN OLD.id = '${a.id}' BEGIN SELECT RAISE(ABORT, 'injected deletion failure'); END`,
+    )
+    .run();
+
+  try {
+    await run(
+      Effect.gen(function* () {
+        const scripts = yield* ScriptStore;
+        expect((yield* Effect.flip(scripts.deleteCharacter("alice", mine.id, a.id, 60)))._tag).toBe(
+          "ScriptWriteUnavailable",
+        );
+        expect((yield* scripts.listCharacters("alice", mine.id)).map((c) => c.id)).toContain(a.id);
+        expect(yield* scripts.listJinxes("alice", mine.id)).toEqual([
+          { ...jinx, explanation: "x".repeat(501) },
+        ]);
+        expect(
+          Option.getOrThrow(yield* scripts.findNightOrders("alice", mine.id)).firstNight,
+        ).toContain(a.id);
+        expect(Option.getOrThrow(yield* scripts.findOwned("alice", mine.id)).updatedAt).toBe(50);
+      }),
+    );
+  } finally {
+    await db.prepare("DROP TRIGGER refuse_jinx_character_delete").run();
+  }
+
+  await run(
+    Effect.gen(function* () {
+      const scripts = yield* ScriptStore;
+      expect(yield* scripts.deleteCharacter("alice", mine.id, a.id, 70)).toBe(true);
+      expect(yield* scripts.listJinxes("alice", mine.id)).toEqual([]);
+      expect(
+        Option.getOrThrow(yield* scripts.findNightOrders("alice", mine.id)).firstNight,
+      ).not.toContain(a.id);
+      expect(Option.getOrThrow(yield* scripts.findOwned("alice", mine.id)).updatedAt).toBe(70);
+    }),
+  );
+});

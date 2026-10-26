@@ -1,3 +1,4 @@
+import { JinxPreview } from "../../../components/jinxes.tsx";
 import { ScriptId } from "@alchemist/domain";
 import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-router";
 import { Effect, Option, Schema } from "effect";
@@ -128,6 +129,7 @@ function PublicScript() {
           </div>
         )}
       </section>
+      <JinxPreview jinxes={script.jinxes} characters={script.characters} />
     </article>
   );
 }
