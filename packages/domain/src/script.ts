@@ -3,9 +3,7 @@ import { Jinx } from "./jinx.ts";
 import { PublicCharacter } from "./character.ts";
 import { NightOrders } from "./night.ts";
 
-export const ScriptId = Schema.String.check(Schema.isPattern(/^[0-7][0-9a-hjkmnp-tv-z]{25}$/)).pipe(
-  Schema.brand("ScriptId"),
-);
+export const ScriptId = Schema.String.pipe(Schema.brand("ScriptId"));
 
 export type ScriptId = typeof ScriptId.Type;
 

@@ -18,6 +18,78 @@ const character = <A extends Readonly<Record<string, unknown>>>(overrides: A) =>
 const characterFixtures = () => ["a", "b", "c", "d"].map((id) => character({ id, name: id }));
 
 describe("JSON import preflight", () => {
+  test("normalizes Bloodstar IDs and preserves references through export and reimport", () => {
+    const result = review([
+      {
+        id: "_meta",
+        name: "Animalia",
+        author: "Dyln",
+        otherNight: ["dusk", "falcon_animalia", "ant_animalia", "dawn"],
+      },
+      character({
+        id: "falcon_animalia",
+        name: "Falcon",
+        firstNight: 16,
+        image: "https://example.org/falcon_animalia.png",
+        jinxes: [{ id: "ant_animalia", reason: "Rule" }],
+        edition: "animalia",
+      }),
+      character({ id: "ant_animalia", name: "Ant", firstNight: 17 }),
+      character({ id: "bear_animalia", name: "Bear", firstNight: 13 }),
+      character({ id: "bull_animalia", name: "Bull", firstNight: 18 }),
+    ]);
+
+    expect(result.errors).toEqual([]);
+    expect(result.blockers).toEqual([]);
+    const draft = result.draft;
+    expect(draft).not.toBeNull();
+
+    if (draft === null) return;
+    expect(draft.characters.map((entry) => entry.id)).toEqual([
+      "falconanimalia",
+      "antanimalia",
+      "bearanimalia",
+      "bullanimalia",
+    ]);
+    expect(draft.nightOrders.firstNight).toEqual([
+      "dusk",
+      "minioninfo",
+      "demoninfo",
+      "bearanimalia",
+      "falconanimalia",
+      "antanimalia",
+      "bullanimalia",
+      "dawn",
+    ]);
+    expect(draft.nightOrders.otherNight).toEqual(["dusk", "falconanimalia", "antanimalia", "dawn"]);
+    expect(draft.jinxes).toEqual([
+      { first: "antanimalia", second: "falconanimalia", explanation: "Rule" },
+    ]);
+    expect(draft.imported.characters[0]).toEqual({ id: "falconanimalia", edition: "animalia" });
+    expect(draft.imported.artwork[0]).toMatchObject({
+      characterId: "falconanimalia",
+      slots: [{ source: "https://example.org/falcon_animalia.png", state: "pending" }],
+    });
+    expect(result.warnings.join(" ")).toContain("falcon_animalia");
+    const exported = botcDocument(draft, "https://alchemist.example");
+    expect(botcSchemaProblems(exported)).toEqual([]);
+    expect(review(exported).draft?.nightOrders).toEqual(draft.nightOrders);
+    expect(review(exported).draft?.jinxes).toEqual(draft.jinxes);
+  });
+
+  test.each([
+    [character({ id: "a_b" }), character({ id: "ab" })],
+    [character({ id: "a_b" }), character({ id: "a__b" })],
+    [character({ id: "___" })],
+    [character({ id: "du_sk" })],
+    [character({ id: "a_b", jinxes: [{ id: "ab", reason: "Unknown reference" }] })],
+    [{ id: "_meta", name: "Test", otherNight: ["dusk", "ab", "dawn"] }, character({ id: "a_b" })],
+  ])("rejects ambiguous or unusable normalized IDs and unknown references (%#)", (...entries) => {
+    const result = review(entries);
+    expect(result.draft).toBeNull();
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+
   test("preserves fields, independent explicit orders, stable priority ties, one-sided Jinxes and artwork slots", () => {
     const result = review(fixture);
     expect(result.errors).toEqual([]);

@@ -107,7 +107,8 @@ export class ScriptImportInvalid extends Schema.TaggedError<
 export const ImportJson = Schema.String.check(Schema.isMaxLength(2_000_000));
 
 const InputCharacter = Schema.Struct({
-  id: CharacterId,
+  // Legacy Bloodstar IDs may contain underscores; normalize after decoding.
+  id: CharacterId.check(Schema.isPattern(/^[a-z0-9_]{1,50}$(?![\s\S])/)),
   name: Character.fields.name,
   team: AuthoredTeam,
   ability: Character.fields.ability,
@@ -177,7 +178,7 @@ export const reviewImport = (json: string, authorCredit: string): ImportReview =
     return failed();
   }
 
-  const input: Array<typeof InputCharacter.Type> = [];
+  const rawInput: Array<typeof InputCharacter.Type> = [];
   let metadata: typeof InputMetadata.Type | undefined;
 
   parsed.success.forEach((entry, index) => {
@@ -226,7 +227,7 @@ export const reviewImport = (json: string, authorCredit: string): ImportReview =
       }
 
       if (Result.isSuccess(result)) {
-        input.push(result.success);
+        rawInput.push(result.success);
         result.success.special?.forEach((_, slot) => {
           // Inspect original nested objects so decoding cannot silently lose extras.
           const raw = Schema.decodeUnknownResult(Schema.Array(Schema.Unknown))(
@@ -254,6 +255,31 @@ export const reviewImport = (json: string, authorCredit: string): ImportReview =
       }
     }
   });
+
+  const normalizedIds = new Map<string, CharacterId>(
+    rawInput.map(({ id }) => [id, CharacterId.make(id.replaceAll("_", ""))]),
+  );
+
+  const input = rawInput.map((character) => {
+    const id = normalizedIds.get(character.id) ?? character.id;
+
+    if (id === "") errors.push(`Character ID “${character.id}” must contain a letter or digit.`);
+
+    if (id !== character.id)
+      warnings.push(`Character ID “${character.id}” normalized to “${id}” for BOTC compatibility.`);
+
+    return {
+      ...character,
+      id,
+      jinxes: character.jinxes?.map((jinx) => {
+        if (!normalizedIds.has(jinx.id))
+          errors.push(`Jinx from “${character.id}” references unknown Character “${jinx.id}”.`);
+
+        return { ...jinx, id: normalizedIds.get(jinx.id) ?? jinx.id };
+      }),
+    };
+  });
+
   const ids = input.map((character) => character.id);
 
   for (const id of ids) {
@@ -280,7 +306,12 @@ export const reviewImport = (json: string, authorCredit: string): ImportReview =
   );
 
   const order = (night: Night) => {
-    const explicit = metadata?.[night];
+    const explicit = metadata?.[night]?.map((entry) => {
+      if (!normalizedIds.has(entry) && !NIGHT_STEPS[night].some((step) => step === entry))
+        errors.push(`${night}: Unknown Character ID “${entry}”.`);
+
+      return normalizedIds.get(entry) ?? entry;
+    });
 
     if (explicit !== undefined) {
       const problem = nightOrderProblem(night, explicit, ids);

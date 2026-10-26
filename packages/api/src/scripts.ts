@@ -36,7 +36,7 @@ import {
 } from "@alchemist/domain";
 import { CurrentUser } from "@alchemist/domain/rpc";
 import { Clock, Context, Effect, Layer, Option, Schema } from "effect";
-import { ulid } from "./ids.ts";
+import { createId } from "./ids.ts";
 
 export class ScriptStore extends Context.Service<
   ScriptStore,
@@ -290,7 +290,7 @@ export const ScriptsLive = Layer.effect(
         const now = yield* Clock.currentTimeMillis;
 
         const script = OwnedScript.make({
-          id: ScriptId.make(ulid(now)),
+          id: ScriptId.make(createId()),
           ...review.draft.script,
           updatedAt: now,
         });
@@ -358,7 +358,7 @@ export const ScriptsLive = Layer.effect(
 
         // Author Credit is copied once; later display name changes never rewrite it.
         const script = OwnedScript.make({
-          id: ScriptId.make(ulid(now)),
+          id: ScriptId.make(createId()),
           name: "Untitled Script",
           authorCredit: user.displayName,
           updatedAt: now,
@@ -409,7 +409,7 @@ export const ScriptsLive = Layer.effect(
 
         // Blank drafts are valid; problems surface in the editor and block export only.
         const character = Character.make({
-          id: CharacterId.make(ulid(now)),
+          id: CharacterId.make(createId()),
           name: "",
           ability: "",
           team,
