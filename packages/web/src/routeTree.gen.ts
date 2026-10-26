@@ -11,7 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AccountRouteImport } from './routes/account'
-import { Route as ScriptsScriptIdRouteImport } from './routes/scripts/$scriptId'
+import { Route as ScriptsScriptIdIndexRouteImport } from './routes/scripts/$scriptId/index'
+import { Route as ScriptsScriptIdEditRouteImport } from './routes/scripts/$scriptId/edit'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -23,40 +24,55 @@ const AccountRoute = AccountRouteImport.update({
   path: '/account',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ScriptsScriptIdRoute = ScriptsScriptIdRouteImport.update({
-  id: '/scripts/$scriptId',
-  path: '/scripts/$scriptId',
+const ScriptsScriptIdIndexRoute = ScriptsScriptIdIndexRouteImport.update({
+  id: '/scripts/$scriptId/',
+  path: '/scripts/$scriptId/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ScriptsScriptIdEditRoute = ScriptsScriptIdEditRouteImport.update({
+  id: '/scripts/$scriptId/edit',
+  path: '/scripts/$scriptId/edit',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
-  '/scripts/$scriptId': typeof ScriptsScriptIdRoute
+  '/scripts/$scriptId/edit': typeof ScriptsScriptIdEditRoute
+  '/scripts/$scriptId/': typeof ScriptsScriptIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
-  '/scripts/$scriptId': typeof ScriptsScriptIdRoute
+  '/scripts/$scriptId/edit': typeof ScriptsScriptIdEditRoute
+  '/scripts/$scriptId': typeof ScriptsScriptIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
-  '/scripts/$scriptId': typeof ScriptsScriptIdRoute
+  '/scripts/$scriptId/edit': typeof ScriptsScriptIdEditRoute
+  '/scripts/$scriptId/': typeof ScriptsScriptIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/account' | '/scripts/$scriptId'
+  fullPaths:
+    '/' | '/account' | '/scripts/$scriptId/edit' | '/scripts/$scriptId/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/account' | '/scripts/$scriptId'
-  id: '__root__' | '/' | '/account' | '/scripts/$scriptId'
+  to: '/' | '/account' | '/scripts/$scriptId/edit' | '/scripts/$scriptId'
+  id:
+    | '__root__'
+    | '/'
+    | '/account'
+    | '/scripts/$scriptId/edit'
+    | '/scripts/$scriptId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccountRoute: typeof AccountRoute
-  ScriptsScriptIdRoute: typeof ScriptsScriptIdRoute
+  ScriptsScriptIdEditRoute: typeof ScriptsScriptIdEditRoute
+  ScriptsScriptIdIndexRoute: typeof ScriptsScriptIdIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -75,11 +91,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/scripts/$scriptId': {
-      id: '/scripts/$scriptId'
+    '/scripts/$scriptId/': {
+      id: '/scripts/$scriptId/'
       path: '/scripts/$scriptId'
-      fullPath: '/scripts/$scriptId'
-      preLoaderRoute: typeof ScriptsScriptIdRouteImport
+      fullPath: '/scripts/$scriptId/'
+      preLoaderRoute: typeof ScriptsScriptIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/scripts/$scriptId/edit': {
+      id: '/scripts/$scriptId/edit'
+      path: '/scripts/$scriptId/edit'
+      fullPath: '/scripts/$scriptId/edit'
+      preLoaderRoute: typeof ScriptsScriptIdEditRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -88,7 +111,8 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccountRoute: AccountRoute,
-  ScriptsScriptIdRoute: ScriptsScriptIdRoute,
+  ScriptsScriptIdEditRoute: ScriptsScriptIdEditRoute,
+  ScriptsScriptIdIndexRoute: ScriptsScriptIdIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
