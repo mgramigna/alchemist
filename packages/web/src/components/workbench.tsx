@@ -1,5 +1,7 @@
 import { useAtomSet } from "@effect/atom-react";
 import {
+  type Jinx,
+  jinxExportBlockers,
   AuthorCredit,
   NIGHTS,
   ScriptName,
@@ -29,6 +31,8 @@ import { useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { ScriptKeys, updateScriptDetails } from "../api.ts";
 import { useAppForm } from "../hooks/form.ts";
+import { useJinxes } from "../hooks/use-jinxes.ts";
+import { JinxEditor } from "./jinxes.tsx";
 import { useCharacters } from "../hooks/use-characters.ts";
 import { useNightOrders } from "../hooks/use-night-orders.ts";
 import { characterTitle } from "../lib/characters.ts";
@@ -81,10 +85,12 @@ export function Workbench({
   script,
   characters: initialCharacters,
   nightOrders: initialNightOrders,
+  jinxes: initialJinxes,
 }: {
   readonly script: OwnedScript;
   readonly characters: ReadonlyArray<Character>;
   readonly nightOrders: NightOrders;
+  readonly jinxes: ReadonlyArray<Jinx>;
 }) {
   const update = useAtomSet(updateScriptDetails, { mode: "promiseExit" });
   const updateRef = useRef(update);
@@ -106,10 +112,13 @@ export function Workbench({
   const detailsStatus = useSyncExternalStore(autosave.subscribe, autosave.status);
   const roster = useCharacters(script.id, initialCharacters, SAVE_DELAY_MS);
   const nights = useNightOrders(script.id, initialNightOrders, SAVE_DELAY_MS);
-  const status = combinedStatus(detailsStatus, roster.status, nights.status);
+  const relationships = useJinxes(script.id, initialJinxes, SAVE_DELAY_MS);
+  const status = combinedStatus(detailsStatus, roster.status, nights.status, relationships.status);
 
   const unsaved = () =>
-    [autosave, roster.autosave, nights.autosave].some((saver) => saver.status() !== "saved");
+    [autosave, roster.autosave, nights.autosave, relationships.autosave].some(
+      (saver) => saver.status() !== "saved",
+    );
 
   const [page, setPage] = useState<Page>({ kind: "script" });
   const [preview, setPreview] = useState<PreviewSheet>("characters");
@@ -145,7 +154,7 @@ export function Workbench({
   });
 
   const { characters } = roster;
-  const blockers = exportBlockers(characters);
+  const blockers = [...exportBlockers(characters), ...jinxExportBlockers(relationships.jinxes)];
   const selected = characters.find((character) => character.id === selectedId);
 
   const add = async (team: AuthoredTeam, chosen: ReadonlyArray<Night>) => {
@@ -174,6 +183,7 @@ export function Workbench({
     }
 
     nights.deleted(character.id);
+    relationships.deletedCharacter(character.id);
     setDeleteTarget(null);
     setSelectedId(null);
     toast.success(`Deleted ${characterTitle(character)}`);
@@ -198,6 +208,7 @@ export function Workbench({
             autosave.retry();
             roster.autosave.retry();
             nights.autosave.retry();
+            relationships.autosave.retry();
           }}
         />
       </header>
@@ -320,6 +331,16 @@ export function Workbench({
         ) : (
           <CharacterForm
             key={selected.id}
+            jinxEditor={
+              <JinxEditor
+                characterId={selected.id}
+                characters={characters}
+                jinxes={relationships.jinxes}
+                onAdd={relationships.add}
+                onChange={relationships.edit}
+                onDelete={relationships.remove}
+              />
+            }
             character={selected}
             characters={characters}
             nightOrders={nights.orders}
@@ -363,6 +384,7 @@ export function Workbench({
                 name={values.name}
                 authorCredit={values.authorCredit}
                 characters={characters}
+                jinxes={relationships.jinxes}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
               />

@@ -3,7 +3,7 @@ import { LockIcon } from "@phosphor-icons/react";
 import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-router";
 import { Effect, Option, Schema } from "effect";
 import { AtomRegistry } from "effect/reactivity";
-import { ownedCharacters, ownedNightOrders, ownedScript } from "../../../api.ts";
+import { ownedJinxes, ownedCharacters, ownedNightOrders, ownedScript } from "../../../api.ts";
 import { SignInWithGoogle } from "../../../components/account.tsx";
 import { Button, buttonVariants } from "../../../components/ui/button.tsx";
 import {
@@ -25,14 +25,17 @@ export const Route = createFileRoute("/scripts/$scriptId/edit")({
 
     const script = ownedScript(id.value);
     const characters = ownedCharacters(id.value);
+    const jinxes = ownedJinxes(id.value);
     const nightOrders = ownedNightOrders(id.value);
     // Reopening always starts from the latest saved state.
     context.registry.refresh(script);
     context.registry.refresh(characters);
     context.registry.refresh(nightOrders);
+    context.registry.refresh(jinxes);
 
     return Effect.runPromise(
       Effect.all({
+        jinxes: AtomRegistry.getResult(context.registry, jinxes, { suspendOnWaiting: true }),
         script: AtomRegistry.getResult(context.registry, script, { suspendOnWaiting: true }),
         characters: AtomRegistry.getResult(context.registry, characters, {
           suspendOnWaiting: true,
@@ -69,6 +72,7 @@ function EditScript() {
       script={loaded.script}
       characters={loaded.characters}
       nightOrders={loaded.nightOrders}
+      jinxes={loaded.jinxes}
     />
   );
 }

@@ -58,6 +58,7 @@ test("public RPC reads persisted data, exposes only public fields, and reports t
     "authorCredit",
     "characters",
     "id",
+    "jinxes",
     "name",
   ]);
   expect(message.exit.value.id).toBe(scriptId);

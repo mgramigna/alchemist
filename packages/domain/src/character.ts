@@ -128,7 +128,8 @@ export const instructionsBlocker = (instructions: string): string | undefined =>
 
 export interface ExportBlocker {
   readonly characterId: CharacterId;
-  readonly field: "name" | "ability" | InstructionsField;
+  readonly field: "name" | "ability" | InstructionsField | "jinx";
+  readonly otherCharacterId?: CharacterId;
   readonly message: string;
 }
 

@@ -58,3 +58,17 @@ export {
   setNightOrder,
   type NightPosition,
 } from "./night.ts";
+
+export {
+  Jinx,
+  JinxPair,
+  JinxExplanation,
+  JinxInvalid,
+  JinxConflict,
+  JinxNotFound,
+  JINX_EXPLANATION_EXPORT_LIMIT,
+  jinxPair,
+  jinxKey,
+  explanationBlocker,
+  jinxExportBlockers,
+} from "./jinx.ts";

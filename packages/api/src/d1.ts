@@ -1,4 +1,5 @@
 import {
+  Jinx,
   Character,
   CharacterId,
   NIGHT_STEPS,
@@ -27,6 +28,8 @@ const ScriptRow = Schema.Struct({
 });
 
 const OwnedRows = Schema.Array(OwnedScript);
+
+const JinxRows = Schema.Array(Jinx);
 
 const CharacterRows = Schema.Array(Character);
 
@@ -121,9 +124,10 @@ export const D1ScriptStore = Layer.effect(
     return ScriptStore.of({
       findPublic: Effect.fn("D1ScriptStore.findPublic")(function* (id) {
         // One batch, so the Script and its Characters come from the same snapshot.
-        const [scripts, characters] = yield* d1.batch([
+        const [scripts, characters, jinxes] = yield* d1.batch([
           sql`SELECT id, name, author_credit FROM scripts WHERE id = ${id}`,
           sql`SELECT id, name, ability, team FROM characters WHERE script_id = ${id} ORDER BY id`,
+          sql`SELECT first, second, explanation FROM jinxes WHERE script_id = ${id} ORDER BY first, second`,
         ]);
 
         const row = (yield* Schema.decodeEffect(Schema.Array(ScriptRow))(scripts))[0];
@@ -136,6 +140,7 @@ export const D1ScriptStore = Layer.effect(
             name: row.name,
             authorCredit: row.author_credit,
             characters: yield* Schema.decodeEffect(Schema.Array(PublicCharacter))(characters),
+            jinxes: yield* Schema.decodeEffect(JinxRows)(jinxes),
           }),
         );
       }, readUnavailable),
@@ -235,12 +240,47 @@ export const D1ScriptStore = Layer.effect(
             AND EXISTS (SELECT 1 FROM characters WHERE id = ${id} AND script_id = ${scriptId})`,
           sql`DELETE FROM night_order_entries
           WHERE character_id = ${id} AND script_id IN (SELECT id FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId})`,
+          sql`DELETE FROM jinxes
+          WHERE (first = ${id} OR second = ${id}) AND script_id IN (SELECT id FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId})`,
           sql`DELETE FROM characters
           WHERE id = ${id} AND script_id IN (SELECT id FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId})
           RETURNING id`,
         ]);
 
-        return results[2].length > 0;
+        return results[3].length > 0;
+      }, writeUnavailable),
+      listJinxes: Effect.fn("D1ScriptStore.listJinxes")(function* (ownerId, scriptId) {
+        return yield* Schema.decodeUnknownEffect(JinxRows)(
+          yield* sql`SELECT j.first, j.second, j.explanation FROM jinxes j JOIN scripts s ON s.id = j.script_id WHERE s.id = ${scriptId} AND s.owner_id = ${ownerId} ORDER BY j.first, j.second`,
+        );
+      }, readUnavailable),
+      insertJinx: Effect.fn("D1ScriptStore.insertJinx")(function* (ownerId, scriptId, jinx, now) {
+        const [rows] = yield* d1.batch([
+          sql`INSERT INTO jinxes (script_id, first, second, explanation)
+          SELECT id, ${jinx.first}, ${jinx.second}, ${jinx.explanation} FROM scripts
+          WHERE id = ${scriptId} AND owner_id = ${ownerId}
+          ON CONFLICT (script_id, first, second) DO NOTHING RETURNING first, second, explanation`,
+          sql`UPDATE scripts SET updated_at = ${now} WHERE id = ${scriptId} AND owner_id = ${ownerId} AND changes() > 0`,
+        ]);
+
+        return Option.fromNullishOr((yield* Schema.decodeEffect(JinxRows)(rows))[0]);
+      }, writeUnavailable),
+      updateJinx: Effect.fn("D1ScriptStore.updateJinx")(function* (ownerId, scriptId, jinx, now) {
+        const [rows] = yield* d1.batch([
+          sql`UPDATE jinxes SET explanation = ${jinx.explanation}
+          WHERE first = ${jinx.first} AND second = ${jinx.second} AND script_id IN (SELECT id FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId}) RETURNING first, second, explanation`,
+          sql`UPDATE scripts SET updated_at = ${now} WHERE id = ${scriptId} AND owner_id = ${ownerId} AND changes() > 0`,
+        ]);
+
+        return Option.fromNullishOr((yield* Schema.decodeEffect(JinxRows)(rows))[0]);
+      }, writeUnavailable),
+      deleteJinx: Effect.fn("D1ScriptStore.deleteJinx")(function* (ownerId, scriptId, pair, now) {
+        const [rows] = yield* d1.batch([
+          sql`DELETE FROM jinxes WHERE first = ${pair.first} AND second = ${pair.second} AND script_id IN (SELECT id FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId}) RETURNING first`,
+          sql`UPDATE scripts SET updated_at = ${now} WHERE id = ${scriptId} AND owner_id = ${ownerId} AND changes() > 0`,
+        ]);
+
+        return rows.length > 0;
       }, writeUnavailable),
       findNightOrders: Effect.fn("D1ScriptStore.findNightOrders")(function* (ownerId, scriptId) {
         const [scripts, entries] = yield* d1.batch([

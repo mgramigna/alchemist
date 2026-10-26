@@ -27,6 +27,7 @@ const fixture = {
   name: "The Midnight Alchemist",
   authorCredit: "Independent credit",
   characters: [],
+  jinxes: [],
   ownerId: "private",
   session: "secret",
   privateSource: "hidden",
@@ -43,6 +44,7 @@ it.effect("anonymous read projects only public data and preserves independent Au
         name: fixture.name,
         authorCredit: fixture.authorCredit,
         characters: [],
+        jinxes: [],
       }),
     );
   }).pipe(
@@ -162,6 +164,7 @@ it.effect(
           name: "Night of Mirrors",
           authorCredit: "",
           characters: [],
+          jinxes: [],
         });
       }).pipe(Effect.provide(f.layer));
     }),

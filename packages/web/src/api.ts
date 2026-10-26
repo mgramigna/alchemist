@@ -48,3 +48,8 @@ export const ownedNightOrders = (scriptId: ScriptId) =>
   Client.query("NightOrder.read", { scriptId });
 
 export const replaceNightOrder = Client.mutation("NightOrder.replace");
+
+export const ownedJinxes = (scriptId: ScriptId) => Client.query("Jinx.list", { scriptId });
+export const createJinx = Client.mutation("Jinx.create");
+export const updateJinx = Client.mutation("Jinx.update");
+export const deleteJinx = Client.mutation("Jinx.delete");

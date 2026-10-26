@@ -25,7 +25,14 @@ interface NightOrders {
 
 type Night = keyof NightOrders;
 
+interface Jinx {
+  first: string;
+  second: string;
+  explanation: string;
+}
+
 interface OwnerApi {
+  readonly jinxes: Jinx[];
   readonly scripts: Script[];
   readonly characters: Character[];
   nightOrders: NightOrders;
@@ -37,6 +44,9 @@ interface OwnerApi {
 }
 
 type WireValue =
+  | Jinx
+  | ReadonlyArray<Jinx>
+  | { first: string; second: string }
   | Script
   | Character
   | ReadonlyArray<Character>
@@ -44,12 +54,13 @@ type WireValue =
   | ReadonlyArray<Script>
   | NightOrders
   | { readonly id: string; readonly displayName: string }
-  | (Omit<Script, "updatedAt"> & { readonly characters: [] });
+  | (Omit<Script, "updatedAt"> & { readonly characters: Character[]; readonly jinxes: Jinx[] });
 
 // Controlled owner API for browser states. Ownership, persistence and isolation
 // are covered against real D1 and the application service.
 const ownerApi = async (page: Page) => {
   const state: OwnerApi = {
+    jinxes: [],
     scripts: [],
     characters: [],
     nightOrders: {
@@ -113,6 +124,47 @@ const ownerApi = async (page: Page) => {
         return reply(script);
       }
 
+      case "Jinx.list":
+        return reply(state.jinxes);
+      case "Jinx.create": {
+        if (state.failSaves) return route.abort();
+
+        const [first, second] = [body.payload.first, body.payload.second].sort((a, b) =>
+          a.localeCompare(b),
+        );
+
+        const jinx = { first, second, explanation: "" };
+        state.jinxes.push(jinx);
+
+        return reply(jinx);
+      }
+
+      case "Jinx.update": {
+        if (state.failSaves) return route.abort();
+
+        const jinx = state.jinxes.find(
+          (j) => j.first === body.payload.first && j.second === body.payload.second,
+        );
+
+        if (!jinx) return route.abort();
+        jinx.explanation = body.payload.explanation;
+
+        return reply(jinx);
+      }
+
+      case "Jinx.delete": {
+        if (state.failSaves) return route.abort();
+
+        const index = state.jinxes.findIndex(
+          (j) => j.first === body.payload.first && j.second === body.payload.second,
+        );
+
+        if (index < 0) return route.abort();
+        state.jinxes.splice(index, 1);
+
+        return reply({ first: body.payload.first, second: body.payload.second });
+      }
+
       case "Character.list":
         return reply(state.characters);
       case "Character.create": {
@@ -157,6 +209,14 @@ const ownerApi = async (page: Page) => {
           state.characters.findIndex(({ id }) => id === body.payload.id),
           1,
         );
+
+        for (let i = state.jinxes.length - 1; i >= 0; i--) {
+          const jinx = state.jinxes[i];
+
+          if (jinx?.first === body.payload.id || jinx?.second === body.payload.id)
+            state.jinxes.splice(i, 1);
+        }
+
         state.nightOrders = {
           firstNight: state.nightOrders.firstNight.filter((entry) => entry !== body.payload.id),
           otherNight: state.nightOrders.otherNight.filter((entry) => entry !== body.payload.id),
@@ -184,7 +244,8 @@ const ownerApi = async (page: Page) => {
               id: script.id,
               name: script.name,
               authorCredit: script.authorCredit,
-              characters: [],
+              characters: state.characters,
+              jinxes: state.jinxes,
             })
           : route.abort();
       }
@@ -656,4 +717,105 @@ test("night reordering is usable on a narrow screen", async ({ page }) => {
   await page.getByRole("button", { name: "Move Poisoner up" }).click();
   await expect(order.getByRole("listitem").first()).toContainText("Poisoner");
   expect(await noHorizontalScroll(page)).toBe(true);
+});
+
+test("Jinxes share invalid drafts and corrections between endpoints, survive reload, and can be deleted from either end", async ({
+  page,
+}) => {
+  const api = await ownerApi(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "New Script" }).click();
+  await addCharacter(page, "Townsfolk");
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill("Chef");
+  await page.getByRole("textbox", { name: "Ability", exact: true }).fill("Learn a number.");
+  await addCharacter(page, "Demon");
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill("Imp");
+  await page.getByRole("textbox", { name: "Ability", exact: true }).fill("Choose a player.");
+  const jinxes = page.getByRole("region", { name: "Jinxes", exact: true }).first();
+  api.failSaves = true;
+  await jinxes.getByRole("button", { name: "Add Jinx" }).click();
+  await page.getByRole("menuitem", { name: "Chef" }).click();
+  await expect(jinxes.getByRole("alert")).toContainText("Couldn’t add the Jinx.");
+  expect(api.jinxes).toEqual([]);
+  api.failSaves = false;
+  await jinxes.getByRole("button", { name: "Add Jinx" }).focus();
+  await page.keyboard.press("Enter");
+  await page.getByRole("menuitem", { name: "Chef" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(jinxes).toContainText("Explain how these Characters interact.");
+  await expect(jinxes.locator("img")).toHaveCount(2);
+  const explanation = page.getByRole("textbox", { name: "Jinx explanation" });
+  await expect(explanation).toBeFocused();
+  await explanation.fill("x".repeat(501));
+  await expect(jinxes).toContainText("Use 500 characters or fewer.");
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  expect(api.jinxes).toHaveLength(1);
+  expect(api.jinxes[0]?.explanation).toBe("x".repeat(501));
+  const nav = page.getByRole("navigation", { name: "Script sections" });
+  await nav.getByRole("button", { name: /Chef/ }).click();
+  await expect(explanation).toHaveValue("x".repeat(501));
+  await explanation.fill("The Chef learns about the Imp.");
+  const preview = page.getByRole("complementary", { name: "Preview" });
+  await expect(preview.getByRole("region", { name: "Jinxes" })).toContainText(
+    "The Chef learns about the Imp.",
+  );
+  await expect(nav).toContainText("Ready to export");
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  await page.screenshot({ path: test.info().outputPath("jinxes-desktop.png"), fullPage: true });
+  const editUrl = page.url();
+  await page.goto(editUrl.replace(/\/edit$/, ""));
+  const publicJinxes = page.getByRole("region", { name: "Jinxes" });
+  await expect(publicJinxes).toContainText("The Chef learns about the Imp.");
+  await expect(publicJinxes.locator("img")).toHaveCount(2);
+  await expect(page.getByRole("textbox")).toHaveCount(0);
+  await page.goto(editUrl);
+  await page.reload();
+  await nav.getByRole("button", { name: "Imp", exact: true }).click();
+  await expect(explanation).toHaveValue("The Chef learns about the Imp.");
+  await expect(jinxes.getByRole("button", { name: "Add Jinx" })).toBeDisabled();
+
+  api.failSaves = true;
+  await explanation.fill("Unsaved Jinx draft");
+  await expect(page.getByRole("status")).toContainText("Couldn’t save your changes");
+  await page.getByRole("link", { name: "Your Scripts" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Stay" }).click();
+  await nav.getByRole("button", { name: "Chef", exact: true }).click();
+  await expect(explanation).toHaveValue("Unsaved Jinx draft");
+  api.failSaves = false;
+  await page.getByRole("button", { name: "Retry save" }).click();
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  api.failSaves = true;
+  await jinxes.getByRole("button", { name: /Delete Jinx between/ }).click();
+  await expect(jinxes).toContainText("Couldn’t delete the Jinx. Try again.");
+  await expect(explanation).toHaveValue("Unsaved Jinx draft");
+  api.failSaves = false;
+  await jinxes.getByRole("button", { name: /Delete Jinx between/ }).focus();
+  await page.keyboard.press("Enter");
+  await expect(explanation).toHaveCount(0);
+  expect(api.jinxes).toEqual([]);
+  await page.reload();
+  await expect(preview.getByRole("region", { name: "Jinxes" })).toHaveCount(0);
+});
+
+test("Jinx creation, editing, and preview fit a narrow screen", async ({ page }) => {
+  await ownerApi(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "New Script" }).click();
+  await addCharacter(page, "Townsfolk");
+  await page
+    .getByRole("textbox", { name: "Name", exact: true })
+    .fill("A long Character name to wrap");
+  await addCharacter(page, "Demon");
+  await page
+    .getByRole("textbox", { name: "Name", exact: true })
+    .fill("Another long Character name");
+  const editor = page.getByRole("region", { name: "Jinxes" }).first();
+  await editor.getByRole("button", { name: "Add Jinx" }).click();
+  await page.getByRole("menuitem", { name: "A long Character name to wrap" }).click();
+  await page.getByRole("textbox", { name: "Jinx explanation" }).fill("x".repeat(501));
+  await expect(editor).toContainText("Use 500 characters or fewer.");
+  await editor.screenshot({ path: test.info().outputPath("jinxes-mobile.png") });
+  expect(await noHorizontalScroll(page)).toBe(true);
+  await expect(page.getByRole("status")).toContainText("All changes saved");
 });

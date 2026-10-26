@@ -10,18 +10,20 @@ import {
   genericIcons,
   nameBlocker,
   type Alignment,
+  type Jinx,
   type Character,
   type CharacterDetails,
   type CharacterId,
   type ExportBlocker,
-  type IconVariant,
   type Night,
   type NightOrders,
   type PublicCharacter,
 } from "@alchemist/domain";
 import { ArrowRightIcon, PlusIcon, ScrollIcon, TrashIcon } from "@phosphor-icons/react";
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import { cn } from "cn";
+import { CharacterToken } from "./character-token.tsx";
+import { JinxPreview } from "./jinxes.tsx";
 import { useAppForm } from "../hooks/form.ts";
 import {
   ICON_VARIANT_LABELS,
@@ -56,29 +58,7 @@ const NIGHT_CHOICES: ReadonlyArray<{
   { label: "No night action", nights: [] },
 ];
 
-/** A generic icon. Decorative by default: the Character's name labels it. */
-export function CharacterToken({
-  team,
-  variant,
-  className,
-}: {
-  readonly team: AuthoredTeam;
-  readonly variant?: IconVariant;
-  readonly className?: string;
-}) {
-  const icons = genericIcons(team);
-  const icon = icons.find((candidate) => candidate.variant === variant) ?? icons[0];
-
-  return (
-    <img
-      src={icon?.path}
-      alt=""
-      width={400}
-      height={400}
-      className={cn("size-8 shrink-0", className)}
-    />
-  );
-}
+export { CharacterToken } from "./character-token.tsx";
 
 const rowClass =
   "flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none";
@@ -131,7 +111,10 @@ export function CharacterNavigator({
       {members.length > 0 && (
         <ul aria-label={teamPluralLabel(team)} className="flex flex-col gap-0.5">
           {members.map((character) => {
-            const count = blockers.filter(({ characterId }) => characterId === character.id).length;
+            const count = blockers.filter(
+              ({ characterId, otherCharacterId }) =>
+                characterId === character.id || otherCharacterId === character.id,
+            ).length;
 
             return (
               <li key={character.id}>
@@ -189,9 +172,10 @@ export function ExportBlockerList({
         <ul className="-mx-3 flex flex-col">
           {blockers.map((blocker) => {
             const character = characters.find(({ id }) => id === blocker.characterId);
+            const other = characters.find(({ id }) => id === blocker.otherCharacterId);
 
             return (
-              <li key={`${blocker.characterId}-${blocker.field}`}>
+              <li key={`${blocker.characterId}-${blocker.otherCharacterId ?? ""}-${blocker.field}`}>
                 <button
                   type="button"
                   onClick={() => onSelect(blocker.characterId)}
@@ -202,7 +186,12 @@ export function ExportBlockerList({
                     <span className="font-medium">
                       {character ? characterTitle(character) : "Character"}:
                     </span>{" "}
-                    <span className="text-destructive">{blocker.message}</span>
+                    <span className="text-destructive">
+                      {blocker.field === "jinx"
+                        ? `Jinx with ${other ? characterTitle(other) : "another Character"}: `
+                        : ""}
+                      {blocker.message}
+                    </span>
                   </span>
                 </button>
               </li>
@@ -239,7 +228,9 @@ export function CharacterForm({
   onDelete,
   onToggleNight,
   onOpenNight,
+  jinxEditor,
 }: {
+  readonly jinxEditor: ReactNode;
   readonly character: Character;
   readonly characters: ReadonlyArray<Character>;
   readonly nightOrders: NightOrders;
@@ -395,6 +386,7 @@ export function CharacterForm({
             </div>
           ))}
         </section>
+        {jinxEditor}
       </form.Form>
     </form.AppForm>
   );
@@ -452,9 +444,11 @@ export function SheetPreview({
   name,
   authorCredit,
   characters,
+  jinxes = [],
   selectedId = null,
   onSelect,
 }: {
+  readonly jinxes?: ReadonlyArray<Jinx>;
   readonly name: string;
   readonly authorCredit: string;
   readonly characters: ReadonlyArray<PublicCharacter>;
@@ -505,6 +499,7 @@ export function SheetPreview({
           ))}
         </div>
       )}
+      <JinxPreview jinxes={jinxes} characters={characters} />
     </div>
   );
 }

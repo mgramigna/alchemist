@@ -1,4 +1,10 @@
 import {
+  Jinx,
+  JinxPair,
+  JinxInvalid,
+  JinxConflict,
+  JinxNotFound,
+  jinxPair,
   Character,
   CharacterId,
   CharacterNotFound,
@@ -68,12 +74,33 @@ export class ScriptStore extends Context.Service<
       details: CharacterDetails,
       now: number,
     ) => Effect.Effect<Option.Option<Character>, ScriptWriteUnavailable>;
-    // Removes the Character's Night Order memberships in the same atomic write.
-    // Later relationship slices must delete their rows there too.
+    // Removes Night Order memberships and attached Jinxes in the same atomic write.
     readonly deleteCharacter: (
       ownerId: string,
       scriptId: ScriptId,
       id: CharacterId,
+      now: number,
+    ) => Effect.Effect<boolean, ScriptWriteUnavailable>;
+    readonly listJinxes: (
+      ownerId: string,
+      scriptId: ScriptId,
+    ) => Effect.Effect<ReadonlyArray<Jinx>, ScriptReadUnavailable>;
+    readonly insertJinx: (
+      ownerId: string,
+      scriptId: ScriptId,
+      jinx: Jinx,
+      now: number,
+    ) => Effect.Effect<Option.Option<Jinx>, ScriptWriteUnavailable>;
+    readonly updateJinx: (
+      ownerId: string,
+      scriptId: ScriptId,
+      jinx: Jinx,
+      now: number,
+    ) => Effect.Effect<Option.Option<Jinx>, ScriptWriteUnavailable>;
+    readonly deleteJinx: (
+      ownerId: string,
+      scriptId: ScriptId,
+      pair: JinxPair,
       now: number,
     ) => Effect.Effect<boolean, ScriptWriteUnavailable>;
     readonly findNightOrders: (
@@ -132,6 +159,25 @@ export class Scripts extends Context.Service<
       scriptId: ScriptId,
       id: CharacterId,
     ) => Effect.Effect<CharacterId, CharacterNotFound | ScriptWriteUnavailable, CurrentUser>;
+    readonly listJinxes: (
+      scriptId: ScriptId,
+    ) => Effect.Effect<ReadonlyArray<Jinx>, ScriptNotFound | ScriptReadUnavailable, CurrentUser>;
+    readonly createJinx: (
+      scriptId: ScriptId,
+      pair: JinxPair,
+    ) => Effect.Effect<
+      Jinx,
+      ScriptNotFound | JinxInvalid | JinxConflict | ScriptWriteUnavailable,
+      CurrentUser
+    >;
+    readonly updateJinx: (
+      scriptId: ScriptId,
+      jinx: Jinx,
+    ) => Effect.Effect<Jinx, JinxNotFound | ScriptWriteUnavailable, CurrentUser>;
+    readonly deleteJinx: (
+      scriptId: ScriptId,
+      pair: JinxPair,
+    ) => Effect.Effect<JinxPair, JinxNotFound | ScriptWriteUnavailable, CurrentUser>;
     readonly readNightOrders: (
       scriptId: ScriptId,
     ) => Effect.Effect<NightOrders, ScriptNotFound | ScriptReadUnavailable, CurrentUser>;
@@ -290,6 +336,72 @@ export const ScriptsLive = Layer.effect(
         if (!deleted) return yield* new CharacterNotFound({ id });
 
         return id;
+      }),
+      listJinxes: Effect.fn("Scripts.listJinxes")(function* (scriptId) {
+        const user = yield* CurrentUser;
+
+        if (Option.isNone(yield* store.findOwned(user.id, scriptId)))
+          return yield* new ScriptNotFound({ id: scriptId });
+
+        return yield* store.listJinxes(user.id, scriptId);
+      }),
+      createJinx: Effect.fn("Scripts.createJinx")(function* (scriptId, pair) {
+        const user = yield* CurrentUser;
+
+        if (Option.isNone(yield* readForWrite(store.findOwned(user.id, scriptId))))
+          return yield* new ScriptNotFound({ id: scriptId });
+        const characters = yield* readForWrite(store.listCharacters(user.id, scriptId));
+
+        if (
+          pair.first === pair.second ||
+          ![pair.first, pair.second].every((id) => characters.some((c) => c.id === id))
+        )
+          return yield* new JinxInvalid({
+            message: "Choose two distinct Characters from this Script.",
+          });
+        const canonical = jinxPair(pair.first, pair.second);
+        const jinx = { first: canonical.first, second: canonical.second, explanation: "" };
+
+        const saved = yield* store.insertJinx(
+          user.id,
+          scriptId,
+          jinx,
+          yield* Clock.currentTimeMillis,
+        );
+
+        if (Option.isNone(saved)) return yield* new JinxConflict({});
+
+        return saved.value;
+      }),
+      updateJinx: Effect.fn("Scripts.updateJinx")(function* (scriptId, jinx) {
+        const user = yield* CurrentUser;
+        const pair = jinxPair(jinx.first, jinx.second);
+
+        const saved = yield* store.updateJinx(
+          user.id,
+          scriptId,
+          {
+            first: pair.first,
+            second: pair.second,
+            explanation: jinx.explanation,
+          },
+          yield* Clock.currentTimeMillis,
+        );
+
+        if (Option.isNone(saved)) return yield* new JinxNotFound({});
+
+        return saved.value;
+      }),
+      deleteJinx: Effect.fn("Scripts.deleteJinx")(function* (scriptId, pair) {
+        const user = yield* CurrentUser;
+        const canonical = jinxPair(pair.first, pair.second);
+
+        if (
+          !(yield* store.deleteJinx(user.id, scriptId, canonical, yield* Clock.currentTimeMillis))
+        )
+          return yield* new JinxNotFound({});
+
+        return canonical;
       }),
       readNightOrders: Effect.fn("Scripts.readNightOrders")(function* (scriptId) {
         const user = yield* CurrentUser;

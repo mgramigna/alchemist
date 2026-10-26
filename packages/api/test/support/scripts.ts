@@ -1,4 +1,6 @@
 import {
+  type Jinx,
+  jinxKey,
   defaultNightOrders,
   isNightStep,
   setNightOrder,
@@ -25,6 +27,11 @@ export const scriptsFixture = Effect.sync(() => {
     string,
     { readonly scriptId: string; readonly character: Character }
   >();
+
+  const jinxes = new Map<string, { scriptId: string; jinx: Jinx }>();
+
+  const inJinxes = (scriptId: string) =>
+    [...jinxes.values()].flatMap((row) => (row.scriptId === scriptId ? [row.jinx] : []));
 
   const nightOrders = new Map<string, NightOrders>();
 
@@ -59,6 +66,7 @@ export const scriptsFixture = Effect.sync(() => {
             name: row.name,
             authorCredit: row.authorCredit,
             characters: inScript(id),
+            jinxes: inJinxes(id),
           })),
         ),
       ),
@@ -139,6 +147,10 @@ export const scriptsFixture = Effect.sync(() => {
 
         characters.delete(id);
 
+        for (const [key, row] of jinxes)
+          if (row.scriptId === scriptId && (row.jinx.first === id || row.jinx.second === id))
+            jinxes.delete(key);
+
         const orders = nightOrders.get(scriptId) ?? defaultNightOrders;
 
         nightOrders.set(scriptId, {
@@ -148,6 +160,44 @@ export const scriptsFixture = Effect.sync(() => {
         touch(scriptId, now);
 
         return true;
+      }),
+    listJinxes: (ownerId, scriptId) =>
+      Effect.sync(() => (Option.isSome(owned(ownerId, scriptId)) ? inJinxes(scriptId) : [])),
+    insertJinx: (ownerId, scriptId, jinx, now) =>
+      Effect.gen(function* () {
+        if (Option.isNone(owned(ownerId, scriptId))) return Option.none();
+
+        if (
+          ![jinx.first, jinx.second].every((id) => characters.get(id)?.scriptId === scriptId) ||
+          jinx.first >= jinx.second
+        )
+          return yield* new ScriptWriteUnavailable({});
+        const key = `${scriptId}:${jinxKey(jinx)}`;
+
+        if (jinxes.has(key)) return Option.none();
+        jinxes.set(key, { scriptId, jinx });
+        touch(scriptId, now);
+
+        return Option.some(jinx);
+      }),
+    updateJinx: (ownerId, scriptId, jinx, now) =>
+      Effect.sync(() => {
+        const key = `${scriptId}:${jinxKey(jinx)}`;
+
+        if (Option.isNone(owned(ownerId, scriptId)) || !jinxes.has(key)) return Option.none();
+        jinxes.set(key, { scriptId, jinx });
+        touch(scriptId, now);
+
+        return Option.some(jinx);
+      }),
+    deleteJinx: (ownerId, scriptId, pair, now) =>
+      Effect.sync(() => {
+        if (Option.isNone(owned(ownerId, scriptId))) return false;
+        const removed = jinxes.delete(`${scriptId}:${jinxKey(pair)}`);
+
+        if (removed) touch(scriptId, now);
+
+        return removed;
       }),
     findNightOrders: (ownerId, scriptId) =>
       Effect.sync(() =>
