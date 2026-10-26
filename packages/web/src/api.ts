@@ -43,3 +43,8 @@ export const createCharacter = Client.mutation("Character.create");
 export const updateCharacter = Client.mutation("Character.update");
 
 export const deleteCharacter = Client.mutation("Character.delete");
+
+export const ownedNightOrders = (scriptId: ScriptId) =>
+  Client.query("NightOrder.read", { scriptId });
+
+export const replaceNightOrder = Client.mutation("NightOrder.replace");

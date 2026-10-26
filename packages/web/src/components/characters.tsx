@@ -1,8 +1,11 @@
 import {
   ABILITY_EXPORT_LIMIT,
   AuthoredTeam,
+  INSTRUCTIONS_EXPORT_LIMIT,
   NAME_EXPORT_LIMIT,
+  NIGHTS,
   abilityBlocker,
+  instructionsBlocker,
   defaultAlignment,
   genericIcons,
   nameBlocker,
@@ -12,9 +15,12 @@ import {
   type CharacterId,
   type ExportBlocker,
   type IconVariant,
+  type Night,
+  type NightOrders,
   type PublicCharacter,
 } from "@alchemist/domain";
-import { PlusIcon, ScrollIcon, TrashIcon } from "@phosphor-icons/react";
+import { ArrowRightIcon, PlusIcon, ScrollIcon, TrashIcon } from "@phosphor-icons/react";
+import { useId } from "react";
 import { cn } from "cn";
 import { useAppForm } from "../hooks/form.ts";
 import {
@@ -24,9 +30,31 @@ import {
   teamLabel,
   teamPluralLabel,
 } from "../lib/characters.ts";
+import { INSTRUCTIONS_FIELD, NIGHT_LABELS, positionSummary } from "../lib/night.ts";
 import { Badge } from "./ui/badge.tsx";
 import { Button } from "./ui/button.tsx";
+import { Checkbox } from "./ui/checkbox.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx";
+import { Field, FieldLabel } from "./ui/field.tsx";
 import { Spinner } from "./ui/spinner.tsx";
+
+// Creation asks which nights a new Character acts on; some act on neither.
+const NIGHT_CHOICES: ReadonlyArray<{
+  readonly label: string;
+  readonly nights: ReadonlyArray<Night>;
+}> = [
+  { label: "First Night and Other Nights", nights: ["firstNight", "otherNight"] },
+  { label: "First Night only", nights: ["firstNight"] },
+  { label: "Other Nights only", nights: ["otherNight"] },
+  { label: "No night action", nights: [] },
+];
 
 /** A generic icon. Decorative by default: the Character's name labels it. */
 export function CharacterToken({
@@ -69,7 +97,7 @@ export function CharacterNavigator({
   readonly selectedId: CharacterId | null;
   readonly adding: AuthoredTeam | null;
   readonly onSelect: (id: CharacterId) => void;
-  readonly onAdd: (team: AuthoredTeam) => void;
+  readonly onAdd: (team: AuthoredTeam, nights: ReadonlyArray<Night>) => void;
 }) {
   return groupByTeam(characters).map(({ team, characters: members }) => (
     <section key={team} aria-labelledby={`team-${team}`} className="flex flex-col gap-0.5">
@@ -80,16 +108,25 @@ export function CharacterNavigator({
         >
           {teamPluralLabel(team)}
         </h2>
-        <Button
-          variant="ghost"
-          size="xs"
-          aria-label={`Add ${teamLabel(team)}`}
-          disabled={adding !== null}
-          onClick={() => onAdd(team)}
-        >
-          {adding === team ? <Spinner /> : <PlusIcon />}
-          Add
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            disabled={adding !== null}
+            render={<Button variant="ghost" size="xs" aria-label={`Add ${teamLabel(team)}`} />}
+          >
+            {adding === team ? <Spinner /> : <PlusIcon />}
+            Add
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-60">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>When does this {teamLabel(team)} act?</DropdownMenuLabel>
+              {NIGHT_CHOICES.map(({ label, nights }) => (
+                <DropdownMenuItem key={label} onClick={() => onAdd(team, nights)}>
+                  {label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       {members.length > 0 && (
         <ul aria-label={teamPluralLabel(team)} className="flex flex-col gap-0.5">
@@ -189,22 +226,39 @@ function Counter({ value, limit }: { readonly value: string; readonly limit: num
 const selectClass =
   "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30 dark:*:bg-popover";
 
-/** Name, Team and ability for one Character. Edits flow out as they are typed. */
+/**
+ * Name, Team, ability and night actions for one Character. Edits flow out as
+ * they are typed; night membership changes the Script's Night Orders.
+ */
 export function CharacterForm({
   character,
-  otherNames,
+  characters,
+  nightOrders,
   autoFocusName,
   onChange,
   onDelete,
+  onToggleNight,
+  onOpenNight,
 }: {
   readonly character: Character;
-  readonly otherNames: ReadonlyArray<string>;
+  readonly characters: ReadonlyArray<Character>;
+  readonly nightOrders: NightOrders;
   readonly autoFocusName: boolean;
   readonly onChange: (details: CharacterDetails) => void;
   readonly onDelete: () => void;
+  readonly onToggleNight: (night: Night, member: boolean) => void;
+  readonly onOpenNight: (night: Night) => void;
 }) {
+  const otherNames = characters.flatMap(({ id, name }) => (id === character.id ? [] : [name]));
+
   const form = useAppForm({
-    defaultValues: { name: character.name, ability: character.ability, team: character.team },
+    defaultValues: {
+      name: character.name,
+      ability: character.ability,
+      team: character.team,
+      firstNightInstructions: character.firstNightInstructions,
+      otherNightInstructions: character.otherNightInstructions,
+    },
     listeners: {
       onChange: ({ formApi }) => onChange(formApi.state.values),
     },
@@ -297,8 +351,87 @@ export function CharacterForm({
             ))}
           </ul>
         </section>
+        <section aria-labelledby="nights-title" className="flex flex-col gap-5 border-t pt-5">
+          <div className="flex flex-col gap-1">
+            <h3 id="nights-title" className="font-medium">
+              Night actions
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Membership decides who acts. Instructions are kept even when the Character leaves a
+              night.
+            </p>
+          </div>
+          {NIGHTS.map((night) => (
+            <div key={night} className="flex flex-col gap-3">
+              <NightMembership
+                night={night}
+                summary={positionSummary(nightOrders[night], character.id, characters)}
+                onToggle={(member) => onToggleNight(night, member)}
+                onOpen={() => onOpenNight(night)}
+              />
+              <form.AppField
+                name={INSTRUCTIONS_FIELD[night]}
+                validators={{ onChange: ({ value }) => instructionsBlocker(value) }}
+              >
+                {(field) => (
+                  <field.TextareaField
+                    label={`${NIGHT_LABELS[night]} instructions`}
+                    description={
+                      <span className="flex flex-col gap-0.5">
+                        {field.state.value.trim() === "" && (
+                          <span className="text-nudge">
+                            Tell the Storyteller what to do. Blank instructions still keep the
+                            Character in the night.
+                          </span>
+                        )}
+                        <Counter value={field.state.value} limit={INSTRUCTIONS_EXPORT_LIMIT} />
+                      </span>
+                    }
+                    maxLength={2000}
+                    rows={2}
+                  />
+                )}
+              </form.AppField>
+            </div>
+          ))}
+        </section>
       </form.Form>
     </form.AppForm>
+  );
+}
+
+function NightMembership({
+  night,
+  summary,
+  onToggle,
+  onOpen,
+}: {
+  readonly night: Night;
+  readonly summary: string | undefined;
+  readonly onToggle: (member: boolean) => void;
+  readonly onOpen: () => void;
+}) {
+  const id = useId();
+  const label = NIGHT_LABELS[night];
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+      <Field orientation="horizontal" className="w-auto">
+        <Checkbox id={id} checked={summary !== undefined} onCheckedChange={onToggle} />
+        <FieldLabel htmlFor={id} className="font-normal">
+          Acts on {night === "firstNight" ? "the First Night" : "Other Nights"}
+        </FieldLabel>
+      </Field>
+      {summary !== undefined && (
+        <div className="flex flex-wrap items-center gap-x-2 text-sm">
+          <span className="text-muted-foreground">{summary}</span>
+          <Button variant="link" size="sm" className="h-auto px-0" onClick={onOpen}>
+            Reorder {label}
+            <ArrowRightIcon />
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 

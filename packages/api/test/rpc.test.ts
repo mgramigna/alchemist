@@ -2,6 +2,7 @@ import {
   AuthRejected,
   CharacterNotFound,
   AuthUnavailable,
+  NightOrderInvalid,
   ScriptWriteUnavailable,
   PublicScript,
   ScriptId,
@@ -19,6 +20,8 @@ import { AuthenticationLive, Handlers } from "../src/rpc.ts";
 import { Scripts } from "../src/scripts.ts";
 import { authFixture, signIn } from "./support/auth.ts";
 import { scriptsFixture } from "./support/scripts.ts";
+
+const noInstructions = { firstNightInstructions: "", otherNightInstructions: "" };
 
 const id = ScriptId.make("01k8ac00000000000000000001");
 const unavailableId = ScriptId.make("01k8ac00000000000000000002");
@@ -194,6 +197,7 @@ it.effect(
           const character = yield* client["Character.create"]({
             scriptId: script.id,
             team: "minion",
+            nights: ["otherNight"],
           }).pipe(session(alice));
 
           const renamed = yield* client["Character.update"]({
@@ -202,6 +206,7 @@ it.effect(
             name: "Poisoner",
             ability: "Each night, poison a player.",
             team: "minion",
+            ...noInstructions,
           }).pipe(session(alice));
 
           assert.deepStrictEqual(
@@ -222,11 +227,65 @@ it.effect(
             ),
             CharacterNotFound,
           );
+
+          // Night Orders round-trip over the wire; malformed orders and other users are refused.
+          assert.deepStrictEqual(
+            yield* client["NightOrder.read"]({ scriptId: script.id }).pipe(session(alice)),
+            {
+              firstNight: ["dusk", "minioninfo", "demoninfo", "dawn"],
+              otherNight: ["dusk", character.id, "dawn"],
+            },
+          );
+
+          const replaced = yield* client["NightOrder.replace"]({
+            scriptId: script.id,
+            night: "firstNight",
+            order: ["dusk", "minioninfo", "demoninfo", "dawn", character.id],
+          }).pipe(session(alice));
+
+          assert.deepStrictEqual(replaced.firstNight, [
+            "dusk",
+            "minioninfo",
+            "demoninfo",
+            "dawn",
+            character.id,
+          ]);
+          assert.instanceOf(
+            yield* client["NightOrder.replace"]({
+              scriptId: script.id,
+              night: "otherNight",
+              order: ["dusk", "minioninfo", "dawn"],
+            }).pipe(session(alice), Effect.flip),
+            NightOrderInvalid,
+          );
+          assert.instanceOf(
+            yield* client["NightOrder.replace"]({
+              scriptId: script.id,
+              night: "otherNight",
+              order: ["dusk", "dawn"],
+            }).pipe(session(bob), Effect.flip),
+            ScriptNotFound,
+          );
+          assert.instanceOf(
+            yield* client["NightOrder.read"]({ scriptId: script.id }).pipe(
+              session(bob),
+              Effect.flip,
+            ),
+            ScriptNotFound,
+          );
+
           assert.strictEqual(
             yield* client["Character.delete"]({ scriptId: script.id, id: character.id }).pipe(
               session(alice),
             ),
             character.id,
+          );
+          assert.deepStrictEqual(
+            yield* client["NightOrder.read"]({ scriptId: script.id }).pipe(session(alice)),
+            {
+              firstNight: ["dusk", "minioninfo", "demoninfo", "dawn"],
+              otherNight: ["dusk", "dawn"],
+            },
           );
         }),
       ).pipe(Effect.provide(Layer.provideMerge(server, Layer.merge(a.layer, s.layer))));

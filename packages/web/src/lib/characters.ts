@@ -1,6 +1,7 @@
 import {
   AuthoredTeam,
   type Character,
+  type CharacterDetails,
   type CharacterId,
   type IconVariant,
   type PublicCharacter,
@@ -38,16 +39,27 @@ export const groupByTeam = <C extends Pick<PublicCharacter, "team">>(
     characters: characters.filter((character) => character.team === team),
   }));
 
-export const sameDetails = (a: Character, b: Character) =>
-  a.name === b.name && a.ability === b.ability && a.team === b.team;
+export const sameDetails = (a: CharacterDetails, b: CharacterDetails) =>
+  a.name === b.name &&
+  a.ability === b.ability &&
+  a.team === b.team &&
+  a.firstNightInstructions === b.firstNightInstructions &&
+  a.otherNightInstructions === b.otherNightInstructions;
 
 export const replaceCharacter = (
   characters: ReadonlyArray<Character>,
   id: CharacterId,
-  details: Pick<Character, "name" | "ability" | "team">,
-) =>
+  details: CharacterDetails,
+): ReadonlyArray<Character> =>
   characters.map((character) =>
     character.id === id
-      ? { id, name: details.name, ability: details.ability, team: details.team }
+      ? {
+          id,
+          name: details.name,
+          ability: details.ability,
+          team: details.team,
+          firstNightInstructions: details.firstNightInstructions,
+          otherNightInstructions: details.otherNightInstructions,
+        }
       : character,
   );

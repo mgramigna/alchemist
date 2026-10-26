@@ -2,14 +2,20 @@ import {
   Character,
   CharacterId,
   CharacterNotFound,
+  NightOrderInvalid,
   OwnedScript,
   PublicScript,
   ScriptId,
   ScriptNotFound,
   ScriptReadUnavailable,
   ScriptWriteUnavailable,
+  addBeforeDawn,
+  nightOrderProblem,
   type AuthoredTeam,
   type CharacterDetails,
+  type Night,
+  type NightOrder,
+  type NightOrders,
   type ScriptDetails,
 } from "@alchemist/domain";
 import { CurrentUser } from "@alchemist/domain/rpc";
@@ -22,6 +28,7 @@ export class ScriptStore extends Context.Service<
     readonly findPublic: (
       id: ScriptId,
     ) => Effect.Effect<Option.Option<PublicScript>, ScriptReadUnavailable>;
+    // Also stores the default Night Orders, in the same atomic write.
     readonly insert: (
       ownerId: string,
       script: OwnedScript,
@@ -46,10 +53,12 @@ export class ScriptStore extends Context.Service<
       ownerId: string,
       scriptId: ScriptId,
     ) => Effect.Effect<ReadonlyArray<Character>, ScriptReadUnavailable>;
+    // Writes the Character and the Script's resulting Night Orders together.
     readonly insertCharacter: (
       ownerId: string,
       scriptId: ScriptId,
       character: Character,
+      nightOrders: NightOrders,
       now: number,
     ) => Effect.Effect<Option.Option<Character>, ScriptWriteUnavailable>;
     readonly updateCharacter: (
@@ -59,13 +68,26 @@ export class ScriptStore extends Context.Service<
       details: CharacterDetails,
       now: number,
     ) => Effect.Effect<Option.Option<Character>, ScriptWriteUnavailable>;
-    // Later relationship slices must delete their rows in this same atomic write.
+    // Removes the Character's Night Order memberships in the same atomic write.
+    // Later relationship slices must delete their rows there too.
     readonly deleteCharacter: (
       ownerId: string,
       scriptId: ScriptId,
       id: CharacterId,
       now: number,
     ) => Effect.Effect<boolean, ScriptWriteUnavailable>;
+    readonly findNightOrders: (
+      ownerId: string,
+      scriptId: ScriptId,
+    ) => Effect.Effect<Option.Option<NightOrders>, ScriptReadUnavailable>;
+    // Storage refuses entries naming another Script's Characters, failing the whole write.
+    readonly replaceNightOrder: (
+      ownerId: string,
+      scriptId: ScriptId,
+      night: Night,
+      order: NightOrder,
+      now: number,
+    ) => Effect.Effect<Option.Option<NightOrders>, ScriptWriteUnavailable>;
   }
 >()("alchemist/ScriptStore") {}
 
@@ -99,6 +121,7 @@ export class Scripts extends Context.Service<
     readonly createCharacter: (
       scriptId: ScriptId,
       team: AuthoredTeam,
+      nights: ReadonlyArray<Night>,
     ) => Effect.Effect<Character, ScriptNotFound | ScriptWriteUnavailable, CurrentUser>;
     readonly updateCharacter: (
       scriptId: ScriptId,
@@ -109,8 +132,26 @@ export class Scripts extends Context.Service<
       scriptId: ScriptId,
       id: CharacterId,
     ) => Effect.Effect<CharacterId, CharacterNotFound | ScriptWriteUnavailable, CurrentUser>;
+    readonly readNightOrders: (
+      scriptId: ScriptId,
+    ) => Effect.Effect<NightOrders, ScriptNotFound | ScriptReadUnavailable, CurrentUser>;
+    readonly replaceNightOrder: (
+      scriptId: ScriptId,
+      night: Night,
+      order: NightOrder,
+    ) => Effect.Effect<
+      NightOrders,
+      ScriptNotFound | NightOrderInvalid | ScriptWriteUnavailable,
+      CurrentUser
+    >;
   }
 >()("alchemist/Scripts") {}
+
+// A write that needs a fresh read reports a failed read as a failed write.
+const readForWrite = <A, E, R>(effect: Effect.Effect<A, E | ScriptReadUnavailable, R>) =>
+  effect.pipe(
+    Effect.catchTag("ScriptReadUnavailable", () => Effect.fail(new ScriptWriteUnavailable({}))),
+  );
 
 export const ScriptsLive = Layer.effect(
   Scripts,
@@ -180,7 +221,7 @@ export const ScriptsLive = Layer.effect(
 
         return yield* store.listCharacters(user.id, scriptId);
       }),
-      createCharacter: Effect.fn("Scripts.createCharacter")(function* (scriptId, team) {
+      createCharacter: Effect.fn("Scripts.createCharacter")(function* (scriptId, team, nights) {
         const user = yield* CurrentUser;
         const now = yield* Clock.currentTimeMillis;
 
@@ -190,9 +231,26 @@ export const ScriptsLive = Layer.effect(
           name: "",
           ability: "",
           team,
+          firstNightInstructions: "",
+          otherNightInstructions: "",
         });
 
-        const saved = yield* store.insertCharacter(user.id, scriptId, character, now);
+        const orders = yield* readForWrite(store.findNightOrders(user.id, scriptId));
+
+        if (Option.isNone(orders)) return yield* new ScriptNotFound({ id: scriptId });
+
+        const join = (night: Night) =>
+          nights.includes(night)
+            ? addBeforeDawn(orders.value[night], character.id)
+            : orders.value[night];
+
+        const saved = yield* store.insertCharacter(
+          user.id,
+          scriptId,
+          character,
+          { firstNight: join("firstNight"), otherNight: join("otherNight") },
+          now,
+        );
 
         if (Option.isNone(saved)) return yield* new ScriptNotFound({ id: scriptId });
 
@@ -205,7 +263,13 @@ export const ScriptsLive = Layer.effect(
           user.id,
           scriptId,
           id,
-          { name: details.name, ability: details.ability, team: details.team },
+          {
+            name: details.name,
+            ability: details.ability,
+            team: details.team,
+            firstNightInstructions: details.firstNightInstructions,
+            otherNightInstructions: details.otherNightInstructions,
+          },
           yield* Clock.currentTimeMillis,
         );
 
@@ -226,6 +290,42 @@ export const ScriptsLive = Layer.effect(
         if (!deleted) return yield* new CharacterNotFound({ id });
 
         return id;
+      }),
+      readNightOrders: Effect.fn("Scripts.readNightOrders")(function* (scriptId) {
+        const user = yield* CurrentUser;
+        const orders = yield* store.findNightOrders(user.id, scriptId);
+
+        if (Option.isNone(orders)) return yield* new ScriptNotFound({ id: scriptId });
+
+        return orders.value;
+      }),
+      replaceNightOrder: Effect.fn("Scripts.replaceNightOrder")(function* (scriptId, night, order) {
+        const user = yield* CurrentUser;
+        const script = yield* readForWrite(store.findOwned(user.id, scriptId));
+
+        if (Option.isNone(script)) return yield* new ScriptNotFound({ id: scriptId });
+
+        const characters = yield* readForWrite(store.listCharacters(user.id, scriptId));
+
+        const problem = nightOrderProblem(
+          night,
+          order,
+          characters.map(({ id }) => id),
+        );
+
+        if (problem !== undefined) return yield* new NightOrderInvalid({ night, message: problem });
+
+        const saved = yield* store.replaceNightOrder(
+          user.id,
+          scriptId,
+          night,
+          order,
+          yield* Clock.currentTimeMillis,
+        );
+
+        if (Option.isNone(saved)) return yield* new ScriptNotFound({ id: scriptId });
+
+        return saved.value;
       }),
     });
   }),

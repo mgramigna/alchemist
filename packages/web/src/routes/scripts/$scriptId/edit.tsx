@@ -3,7 +3,7 @@ import { LockIcon } from "@phosphor-icons/react";
 import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-router";
 import { Effect, Option, Schema } from "effect";
 import { AtomRegistry } from "effect/reactivity";
-import { ownedCharacters, ownedScript } from "../../../api.ts";
+import { ownedCharacters, ownedNightOrders, ownedScript } from "../../../api.ts";
 import { SignInWithGoogle } from "../../../components/account.tsx";
 import { Button, buttonVariants } from "../../../components/ui/button.tsx";
 import {
@@ -25,14 +25,19 @@ export const Route = createFileRoute("/scripts/$scriptId/edit")({
 
     const script = ownedScript(id.value);
     const characters = ownedCharacters(id.value);
+    const nightOrders = ownedNightOrders(id.value);
     // Reopening always starts from the latest saved state.
     context.registry.refresh(script);
     context.registry.refresh(characters);
+    context.registry.refresh(nightOrders);
 
     return Effect.runPromise(
       Effect.all({
         script: AtomRegistry.getResult(context.registry, script, { suspendOnWaiting: true }),
         characters: AtomRegistry.getResult(context.registry, characters, {
+          suspendOnWaiting: true,
+        }),
+        nightOrders: AtomRegistry.getResult(context.registry, nightOrders, {
           suspendOnWaiting: true,
         }),
       }).pipe(
@@ -59,7 +64,12 @@ function EditScript() {
   return loaded === null ? (
     <SignedOut />
   ) : (
-    <Workbench key={loaded.script.id} script={loaded.script} characters={loaded.characters} />
+    <Workbench
+      key={loaded.script.id}
+      script={loaded.script}
+      characters={loaded.characters}
+      nightOrders={loaded.nightOrders}
+    />
   );
 }
 
