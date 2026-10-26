@@ -1,4 +1,5 @@
 import { AuthRejected, AuthUnavailable, DisplayName, User } from "@alchemist/domain";
+import { CurrentUser } from "@alchemist/domain/rpc";
 import { Clock, Context, Effect, Layer, Schema } from "effect";
 
 export const SESSION_SECONDS = 30 * 24 * 60 * 60;
@@ -46,11 +47,7 @@ export class AuthStore extends Context.Service<
       tokenHash: string,
       now: number,
     ) => Effect.Effect<User | null, AuthUnavailable>;
-    readonly rename: (
-      tokenHash: string,
-      now: number,
-      name: string,
-    ) => Effect.Effect<User | null, AuthUnavailable>;
+    readonly rename: (userId: string, name: string) => Effect.Effect<User | null, AuthUnavailable>;
     readonly signOut: (tokenHash: string) => Effect.Effect<void, AuthUnavailable>;
   }
 >()("alchemist/AuthStore") {}
@@ -99,10 +96,10 @@ export class Auth extends Context.Service<
       code: string,
     ) => Effect.Effect<string, AuthRejected | AuthUnavailable>;
     readonly current: (token: string | null) => Effect.Effect<User | null, AuthUnavailable>;
+    // Renames the signed-in User; only Authentication or an explicit test can provide one.
     readonly rename: (
-      token: string | null,
       name: string,
-    ) => Effect.Effect<User, AuthRejected | AuthUnavailable>;
+    ) => Effect.Effect<User, AuthRejected | AuthUnavailable, CurrentUser>;
     readonly signOut: (token: string | null) => Effect.Effect<void, AuthUnavailable>;
   }
 >()("alchemist/Auth") {}
@@ -166,19 +163,14 @@ export const AuthLive = Layer.effect(
 
         return yield* store.current(yield* hashToken(token), yield* Clock.currentTimeMillis);
       }),
-      rename: Effect.fn("Auth.rename")(function* (token, name) {
+      rename: Effect.fn("Auth.rename")(function* (name) {
+        const current = yield* CurrentUser;
+
         const displayName = yield* Schema.decodeEffect(DisplayName)(name.trim()).pipe(
           Effect.mapError(() => new AuthRejected({})),
         );
 
-        if (token === null || !/^[\w-]{43}$/.test(token)) return yield* new AuthRejected({});
-
-        // Authorize and update in a single statement, including session expiry.
-        const user = yield* store.rename(
-          yield* hashToken(token),
-          yield* Clock.currentTimeMillis,
-          displayName,
-        );
+        const user = yield* store.rename(current.id, displayName);
 
         if (user === null) return yield* new AuthRejected({});
 

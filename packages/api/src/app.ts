@@ -1,18 +1,11 @@
-import { AccountRpcs, PublicRpcs } from "@alchemist/domain/rpc";
+import { Rpcs } from "@alchemist/domain/rpc";
 import { Context, Effect, Layer, Scheduler } from "effect";
 import { HttpRouter, HttpServer } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 import { Auth } from "./auth.ts";
 import { Scripts } from "./scripts.ts";
-import { AccountHandlers, PublicHandlers } from "./rpc.ts";
-import {
-  BrowserSession,
-  SESSION_COOKIE,
-  authResponse,
-  handleAuth,
-  readCookie,
-  sameOrigin,
-} from "./auth-http.ts";
+import { AuthenticationLive, Handlers } from "./rpc.ts";
+import { authResponse, handleAuth, sameOrigin } from "./auth-http.ts";
 
 export class AppConfig extends Context.Service<
   AppConfig,
@@ -23,20 +16,12 @@ export class AppConfig extends Context.Service<
 
 // These values construct routes and handlers. Request services are supplied by
 // handleRequest, so no binding, identity or active SQL client lives in this scope.
-const publicRpc = RpcServer.toHttpEffect(PublicRpcs).pipe(
+const rpc = RpcServer.toHttpEffect(Rpcs).pipe(
   Effect.flatMap((handle) => handle),
-  Effect.provide([PublicHandlers, RpcSerialization.layerNdjson]),
+  Effect.provide([Handlers, AuthenticationLive, RpcSerialization.layerNdjson]),
 );
 
-const accountRpc = RpcServer.toHttpEffect(AccountRpcs).pipe(
-  Effect.flatMap((handle) => handle),
-  Effect.provide([AccountHandlers, RpcSerialization.layerNdjson]),
-);
-
-const Routes = Layer.mergeAll(
-  HttpRouter.add("POST", "/api/public/rpc", publicRpc),
-  HttpRouter.add("POST", "/api/account/rpc", accountRpc),
-).pipe(
+const Routes = HttpRouter.add("POST", "/api/rpc", rpc).pipe(
   Layer.provide(HttpServer.layerServices),
   Layer.provideMerge(Layer.succeed(Scheduler.Scheduler, new Scheduler.MixedScheduler("sync"))),
 );
@@ -45,9 +30,9 @@ const rpcApp = HttpRouter.toWebHandler(Routes);
 
 export const handleRequest = Effect.fn("App.handleRequest")(function* (request: Request) {
   const path = new URL(request.url).pathname.replace(/\/$/, "");
-  const isAccountRpc = path === "/api/account/rpc";
+  const isRpc = path === "/api/rpc";
 
-  if (path.startsWith("/auth/") || isAccountRpc) {
+  if (path.startsWith("/auth/") || isRpc) {
     const config = yield* AppConfig;
 
     if (new URL(request.url).origin !== config.origin)
@@ -60,7 +45,7 @@ export const handleRequest = Effect.fn("App.handleRequest")(function* (request: 
     )
       return authResponse("Cross-origin request rejected.", 403);
 
-    if (!isAccountRpc) {
+    if (!isRpc) {
       return yield* handleAuth(request).pipe(
         Effect.catchTag("AuthUnavailable", () =>
           Effect.succeed(authResponse("Sign-in is temporarily unavailable. Try again.", 503)),
@@ -71,16 +56,9 @@ export const handleRequest = Effect.fn("App.handleRequest")(function* (request: 
 
   const context = yield* Effect.context<Auth | Scripts>();
 
-  const response = yield* Effect.promise(() =>
-    rpcApp.handler(
-      request,
-      Context.add(context, BrowserSession, {
-        token: readCookie(request, SESSION_COOKIE),
-      }),
-    ),
-  );
+  const response = yield* Effect.promise(() => rpcApp.handler(request, context));
 
-  if (isAccountRpc) response.headers.set("Cache-Control", "no-store");
+  if (isRpc) response.headers.set("Cache-Control", "no-store");
 
   return response;
 });

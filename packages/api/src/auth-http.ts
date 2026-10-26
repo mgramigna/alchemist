@@ -1,4 +1,4 @@
-import { Context, Effect } from "effect";
+import { Effect } from "effect";
 import { Auth, FLOW_SECONDS, SESSION_SECONDS } from "./auth.ts";
 
 export const SESSION_COOKIE = "__Host-alchemist-session";
@@ -7,8 +7,11 @@ export const FLOW_COOKIE = "__Host-alchemist-login";
 export const cookie = (name: string, value: string, seconds: number) =>
   `${name}=${value}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${seconds}`;
 
-export const readCookie = (request: Request, name: string): string | null => {
-  const matches = (request.headers.get("Cookie") ?? "")
+export const readCookie = (
+  cookieHeader: string | null | undefined,
+  name: string,
+): string | null => {
+  const matches = (cookieHeader ?? "")
     .split(";")
     .map((part) => part.trim())
     .filter((part) => part.startsWith(`${name}=`));
@@ -16,11 +19,6 @@ export const readCookie = (request: Request, name: string): string | null => {
   // Reject duplicate cookies rather than choosing one from a different scope.
   return matches.length === 1 ? (matches[0]?.slice(name.length + 1) ?? null) : null;
 };
-
-export class BrowserSession extends Context.Service<
-  BrowserSession,
-  { readonly token: string | null }
->()("alchemist/BrowserSession") {}
 
 export const sameOrigin = (request: Request, origin: string) =>
   request.headers.get("Origin") === origin &&
@@ -52,7 +50,7 @@ export const handleAuth = Effect.fn("AuthHttp.handle")(function* (request: Reque
     const clearFlow = cookie(FLOW_COOKIE, "", 0);
     const state = url.searchParams.getAll("state");
     const code = url.searchParams.getAll("code");
-    const browser = readCookie(request, FLOW_COOKIE);
+    const browser = readCookie(request.headers.get("Cookie"), FLOW_COOKIE);
 
     if (
       url.searchParams.has("error") ||
@@ -80,7 +78,7 @@ export const handleAuth = Effect.fn("AuthHttp.handle")(function* (request: Reque
   }
 
   if (url.pathname === "/auth/sign-out" && request.method === "POST") {
-    yield* auth.signOut(readCookie(request, SESSION_COOKIE));
+    yield* auth.signOut(readCookie(request.headers.get("Cookie"), SESSION_COOKIE));
 
     return authResponse(null, 303, { Location: "/", "Set-Cookie": cookie(SESSION_COOKIE, "", 0) });
   }

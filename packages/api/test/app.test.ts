@@ -5,7 +5,7 @@ import { AppConfig, handleRequest } from "../src/app.ts";
 import { Auth, hashToken } from "../src/auth.ts";
 import { FLOW_COOKIE, SESSION_COOKIE } from "../src/auth-http.ts";
 import { Scripts } from "../src/scripts.ts";
-import { authFixture, signIn } from "./support/auth.ts";
+import { asUser, authFixture, signIn } from "./support/auth.ts";
 
 const origin = "https://alchemist.test";
 const config = Layer.succeed(AppConfig, { origin });
@@ -21,7 +21,7 @@ const account = (
   if (token) headers.set("Cookie", `${SESSION_COOKIE}=${token}`);
 
   return handleRequest(
-    new Request(`${origin}/api/account/rpc/`, {
+    new Request(`${origin}/api/rpc/`, {
       method: "POST",
       headers,
       body: `{"_tag":"Request","id":"1","tag":${JSON.stringify(tag)},"payload":${JSON.stringify(payload)},"headers":[]}\n`,
@@ -39,8 +39,8 @@ it.effect(
         const secondAlice = yield* signIn("alice");
         const bob = yield* signIn("bob");
         const auth = yield* Auth;
-        yield* auth.rename(alice, "Alice");
-        yield* auth.rename(bob, "Bob");
+        yield* auth.rename("Alice").pipe(asUser(alice));
+        yield* auth.rename("Bob").pipe(asUser(bob));
 
         const responses = yield* Effect.forEach(
           [alice, bob, null],
@@ -130,14 +130,14 @@ it.effect(
     }),
 );
 
-it.effect("HTTP rejects cross-origin account mutations before accessing auth services", () =>
+it.effect("HTTP rejects cross-origin RPC calls and auth mutations before accessing services", () =>
   Effect.gen(function* () {
     for (const headers of [
       {},
       { Origin: "https://evil.test" },
       { Origin: origin, "Sec-Fetch-Site": "cross-site" },
     ]) {
-      for (const path of ["/auth/sign-out", "/api/account/rpc/"]) {
+      for (const path of ["/auth/sign-out", "/api/rpc/"]) {
         assert.strictEqual(
           (yield* handleRequest(new Request(`${origin}${path}`, { method: "POST", headers })))
             .status,
@@ -153,14 +153,14 @@ it.effect("HTTP rejects cross-origin account mutations before accessing auth ser
   }).pipe(Effect.provide([config, unusedScripts, Layer.mock(Auth, {})])),
 );
 
-it.effect("public reads stay anonymous through the same HTTP app", () =>
+it.effect("public reads stay anonymous through the shared RPC endpoint", () =>
   Effect.gen(function* () {
     const id = ScriptId.make("01k8ac00000000000000000001");
 
     const response = yield* handleRequest(
-      new Request(`${origin}/api/public/rpc/`, {
+      new Request(`${origin}/api/rpc/`, {
         method: "POST",
-        headers: { "Content-Type": "application/x-ndjson" },
+        headers: { Origin: origin, "Content-Type": "application/x-ndjson" },
         body: `{"_tag":"Request","id":"1","tag":"Script.readPublic","payload":{"id":"${id}"},"headers":[]}\n`,
       }),
     );

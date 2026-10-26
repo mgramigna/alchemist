@@ -75,7 +75,7 @@ test("D1 identity upsert preserves names and session queries enforce expiry and 
       const auth = yield* AuthStore;
       const first = { tokenHash: "first-hash", createdAt: 0, expiresAt: 100 };
       yield* auth.signIn({ sub: "alice", name: "Alice" }, "alice-id", first);
-      yield* auth.rename(first.tokenHash, 1, "Chosen Alice");
+      yield* auth.rename("alice-id", "Chosen Alice");
       expect(
         yield* auth.signIn({ sub: "alice", name: "Overwrite" }, "ignored-id", {
           ...first,
@@ -89,7 +89,7 @@ test("D1 identity upsert preserves names and session queries enforce expiry and 
         displayName: "Chosen Alice",
       });
       expect(yield* auth.current("second-hash", 100)).toBeNull();
-      expect(yield* auth.rename("second-hash", 100, "Expired")).toBeNull();
+      expect(yield* auth.rename("missing-id", "Missing")).toBeNull();
     }),
   ));
 

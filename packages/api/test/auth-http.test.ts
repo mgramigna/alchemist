@@ -47,12 +47,5 @@ test("callback rejects duplicate/missing/error query parameters and invalid flow
     ]);
   }
 
-  expect(
-    readCookie(
-      new Request("https://alchemist.test", {
-        headers: { Cookie: `${SESSION_COOKIE}=a; ${SESSION_COOKIE}=b` },
-      }),
-      SESSION_COOKIE,
-    ),
-  ).toBeNull();
+  expect(readCookie(`${SESSION_COOKIE}=a; ${SESSION_COOKIE}=b`, SESSION_COOKIE)).toBeNull();
 });

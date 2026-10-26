@@ -1,4 +1,5 @@
 import { AuthRejected, type User } from "@alchemist/domain";
+import { CurrentUser } from "@alchemist/domain/rpc";
 import { Effect, Layer } from "effect";
 import {
   Auth,
@@ -50,12 +51,11 @@ export const authFixture = Effect.sync(() => {
           ? ([...users.values()].find((user) => user.id === session.userId) ?? null)
           : null;
       }),
-    rename: (hash, now, displayName) =>
+    rename: (userId, displayName) =>
       Effect.sync(() => {
-        const session = sessions.get(hash);
-        const entry = [...users.entries()].find(([, user]) => user.id === session?.userId);
+        const entry = [...users.entries()].find(([, user]) => user.id === userId);
 
-        if (!session || session.expiresAt <= now || !entry) return null;
+        if (!entry) return null;
         const user = { id: entry[1].id, displayName };
         users.set(entry[0], user);
 
@@ -95,3 +95,15 @@ export const signIn = Effect.fn("Test.signIn")(function* (sub: string) {
 
   return yield* auth.callback(state, flow.browser, sub);
 });
+
+// Runs an effect as the User signed in with token, as Authentication would.
+export const asUser =
+  (token: string) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.gen(function* () {
+      const user = yield* (yield* Auth).current(token);
+
+      if (user === null) return yield* Effect.die("asUser: no live session");
+
+      return yield* Effect.provideService(effect, CurrentUser, user);
+    });
