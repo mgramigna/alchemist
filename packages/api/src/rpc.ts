@@ -29,6 +29,11 @@ export const Handlers = Rpcs.toLayer(
 
     return {
       "Script.readPublic": ({ id }) => scripts.readPublic(id),
+      "Script.create": () => scripts.create(),
+      "Script.listOwned": () => scripts.listOwned(),
+      "Script.readOwned": ({ id }) => scripts.readOwned(id),
+      "Script.updateDetails": ({ id, name, authorCredit }) =>
+        scripts.updateDetails(id, { name, authorCredit }),
       "Account.current": (_, { headers }) =>
         auth.current(readCookie(headers.cookie, SESSION_COOKIE)),
       "Account.rename": ({ displayName }) => auth.rename(displayName),

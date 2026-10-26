@@ -2,10 +2,10 @@ import { ScriptId } from "@alchemist/domain";
 import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-router";
 import { Effect, Option, Schema } from "effect";
 import { AtomRegistry } from "effect/reactivity";
-import { publicScript } from "../../api.ts";
-import { Button, buttonVariants } from "../../components/ui/button.tsx";
+import { publicScript } from "../../../api.ts";
+import { Button, buttonVariants } from "../../../components/ui/button.tsx";
 
-export const Route = createFileRoute("/scripts/$scriptId")({
+export const Route = createFileRoute("/scripts/$scriptId/")({
   loader: ({ params, context, abortController }) => {
     const id = Schema.decodeOption(ScriptId)(params.scriptId);
 

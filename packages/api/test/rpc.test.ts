@@ -1,5 +1,7 @@
 import {
   AuthRejected,
+  AuthUnavailable,
+  ScriptWriteUnavailable,
   PublicScript,
   ScriptId,
   ScriptNotFound,
@@ -15,6 +17,7 @@ import { SESSION_COOKIE } from "../src/auth-http.ts";
 import { AuthenticationLive, Handlers } from "../src/rpc.ts";
 import { Scripts } from "../src/scripts.ts";
 import { authFixture, signIn } from "./support/auth.ts";
+import { scriptsFixture } from "./support/scripts.ts";
 
 const id = ScriptId.make("01k8ac00000000000000000001");
 const unavailableId = ScriptId.make("01k8ac00000000000000000002");
@@ -27,7 +30,7 @@ const fixture = PublicScript.make({
   characters: [],
 });
 
-const scripts = Layer.succeed(Scripts, {
+const scripts = Layer.mock(Scripts, {
   readPublic: Effect.fn("TestScripts.readPublic")(function* (requested) {
     if (requested === unavailableId) return yield* new ScriptReadUnavailable({});
 
@@ -102,5 +105,68 @@ it.effect(
           assert.strictEqual(f.users.get("bob")?.displayName, "Google name");
         }),
       ).pipe(Effect.provide(Layer.provideMerge(server, Layer.merge(f.layer, scripts))));
+    }),
+);
+
+it.effect(
+  "owner Script RPCs reject anonymous calls and act as the session's User, never another's",
+  () =>
+    Effect.gen(function* () {
+      const a = yield* authFixture;
+      const s = yield* scriptsFixture;
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const client = yield* RpcTest.makeClient(Rpcs);
+          const alice = yield* signIn("alice");
+          const bob = yield* signIn("bob");
+
+          const anonymous: ReadonlyArray<
+            Effect.Effect<
+              void,
+              | AuthRejected
+              | AuthUnavailable
+              | ScriptNotFound
+              | ScriptReadUnavailable
+              | ScriptWriteUnavailable
+            >
+          > = [
+            client["Script.create"]().pipe(Effect.asVoid),
+            client["Script.listOwned"]().pipe(Effect.asVoid),
+            client["Script.readOwned"]({ id }).pipe(Effect.asVoid),
+            client["Script.updateDetails"]({ id, name: "Anonymous", authorCredit: "" }).pipe(
+              Effect.asVoid,
+            ),
+          ];
+
+          for (const call of anonymous)
+            assert.instanceOf(yield* call.pipe(Effect.flip), AuthRejected);
+          assert.strictEqual(s.rows.size, 0);
+
+          const created = yield* client["Script.create"]().pipe(session(alice));
+          assert.strictEqual(created.authorCredit, "Google name");
+          assert.strictEqual(s.rows.get(created.id)?.ownerId, a.users.get("alice")?.id);
+
+          const saved = yield* client["Script.updateDetails"]({
+            id: created.id,
+            name: "Saved over RPC",
+            authorCredit: "Credit",
+          }).pipe(session(alice));
+
+          assert.strictEqual(saved.name, "Saved over RPC");
+          assert.deepStrictEqual(yield* client["Script.listOwned"]().pipe(session(bob)), []);
+          assert.instanceOf(
+            yield* client["Script.updateDetails"]({
+              id: created.id,
+              name: "Bob was here",
+              authorCredit: "",
+            }).pipe(session(bob), Effect.flip),
+            ScriptNotFound,
+          );
+          assert.deepStrictEqual(
+            yield* client["Script.readOwned"]({ id: created.id }).pipe(session(alice)),
+            saved,
+          );
+        }),
+      ).pipe(Effect.provide(Layer.provideMerge(server, Layer.merge(a.layer, s.layer))));
     }),
 );

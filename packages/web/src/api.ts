@@ -20,3 +20,18 @@ export const currentAccount = Client.query("Account.current", undefined, {
 });
 
 export const renameAccount = Client.mutation("Account.rename");
+
+// Owner reads are scoped to this browser's session; signing out reloads the page and registry.
+export const ScriptKeys = {
+  owned: "Scripts:owned",
+} as const;
+
+export const ownedScripts = Client.query("Script.listOwned", undefined, {
+  reactivityKeys: [ScriptKeys.owned],
+});
+
+export const ownedScript = (id: ScriptId) => Client.query("Script.readOwned", { id });
+
+export const createScript = Client.mutation("Script.create");
+
+export const updateScriptDetails = Client.mutation("Script.updateDetails");
