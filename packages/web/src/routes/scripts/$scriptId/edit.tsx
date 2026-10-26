@@ -18,6 +18,7 @@ import { Skeleton } from "../../../components/ui/skeleton.tsx";
 import { Workbench } from "../../../components/workbench.tsx";
 
 export const Route = createFileRoute("/scripts/$scriptId/edit")({
+  staticData: { wide: true },
   loader: ({ params, context, abortController }) => {
     const id = Schema.decodeOption(ScriptId)(params.scriptId);
 
@@ -83,9 +84,9 @@ function WorkbenchPending() {
       <span className="sr-only">Opening Script…</span>
       <Skeleton className="h-8 w-1/2 max-w-sm" />
       <div className="grid gap-6 lg:grid-cols-12">
-        <Skeleton className="h-40 lg:col-span-3" />
+        <Skeleton className="h-40 lg:col-span-3 xl:col-span-2" />
         <Skeleton className="h-72 lg:col-span-5" />
-        <Skeleton className="h-72 lg:col-span-4" />
+        <Skeleton className="h-72 lg:col-span-4 xl:col-span-5" />
       </div>
     </div>
   );
