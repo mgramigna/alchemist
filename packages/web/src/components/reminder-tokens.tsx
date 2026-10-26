@@ -1,3 +1,4 @@
+import { textLength } from "@alchemist/domain";
 import {
   REMINDER_COUNT_LIMIT,
   REMINDER_LABEL_LIMIT,
@@ -119,7 +120,7 @@ export function ReminderTokenList({
                     }
                   />
                   <FieldDescription id={`${inputId}-count`} className="text-xs">
-                    {label.length}/{REMINDER_LABEL_LIMIT[field]} characters
+                    {textLength(label)}/{REMINDER_LABEL_LIMIT[field]} characters
                   </FieldDescription>
                   {error && <FieldError id={`${inputId}-error`}>{error}</FieldError>}
                 </Field>

@@ -1,3 +1,4 @@
+import { textLength } from "./text.ts";
 import { Schema } from "effect";
 import { CharacterId, type ExportBlocker } from "./character.ts";
 
@@ -25,7 +26,7 @@ export const jinxKey = ({ first, second }: JinxPair): string => {
 export const explanationBlocker = (explanation: string): string | undefined => {
   if (explanation.trim() === "") return "Explain how these Characters interact.";
 
-  if (explanation.length > JINX_EXPLANATION_EXPORT_LIMIT)
+  if (textLength(explanation) > JINX_EXPLANATION_EXPORT_LIMIT)
     return `Use ${JINX_EXPLANATION_EXPORT_LIMIT} characters or fewer.`;
 
   return undefined;

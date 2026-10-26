@@ -16,7 +16,7 @@ import { RpcClient, RpcTest } from "effect/rpc";
 import { TestClock } from "effect/testing";
 import { Auth, SESSION_SECONDS } from "../src/auth.ts";
 import { SESSION_COOKIE } from "../src/auth-http.ts";
-import { AuthenticationLive, Handlers } from "../src/rpc.ts";
+import { AuthenticationLive, Handlers, ExportOrigin } from "../src/rpc.ts";
 import { Scripts } from "../src/scripts.ts";
 import { authFixture, signIn } from "./support/auth.ts";
 import { scriptsFixture } from "./support/scripts.ts";
@@ -52,7 +52,9 @@ const scripts = Layer.mock(Scripts, {
   }),
 });
 
-const server = Layer.mergeAll(Handlers, AuthenticationLive);
+const server = Layer.mergeAll(Handlers, AuthenticationLive).pipe(
+  Layer.provide(Layer.succeed(ExportOrigin, { origin: "https://alchemist.test" })),
+);
 
 const session = (token: string) => RpcClient.withHeaders({ cookie: `${SESSION_COOKIE}=${token}` });
 

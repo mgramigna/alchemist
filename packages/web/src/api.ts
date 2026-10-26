@@ -53,3 +53,5 @@ export const ownedJinxes = (scriptId: ScriptId) => Client.query("Jinx.list", { s
 export const createJinx = Client.mutation("Jinx.create");
 export const updateJinx = Client.mutation("Jinx.update");
 export const deleteJinx = Client.mutation("Jinx.delete");
+
+export const exportScript = Client.mutation("Script.export");

@@ -1,9 +1,14 @@
 import { AuthRejected } from "@alchemist/domain";
 import { Authentication, CurrentUser, Rpcs } from "@alchemist/domain/rpc";
-import { Effect, Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
 import { Scripts } from "./scripts.ts";
 import { Auth } from "./auth.ts";
 import { SESSION_COOKIE, readCookie } from "./auth-http.ts";
+
+// App.handleRequest supplies the configured public origin, never RPC message headers.
+export class ExportOrigin extends Context.Service<ExportOrigin, { readonly origin: string }>()(
+  "alchemist/ExportOrigin",
+) {}
 
 export const AuthenticationLive = Layer.effect(
   Authentication,
@@ -29,6 +34,12 @@ export const Handlers = Rpcs.toLayer(
 
     return {
       "Script.readPublic": ({ id }) => scripts.readPublic(id),
+      "Script.export": ({ id }) =>
+        Effect.gen(function* () {
+          const config = yield* ExportOrigin;
+
+          return yield* scripts.exportJson(id, config.origin);
+        }),
       "Script.create": () => scripts.create(),
       "Script.listOwned": () => scripts.listOwned(),
       "Script.readOwned": ({ id }) => scripts.readOwned(id),

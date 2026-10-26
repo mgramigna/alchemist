@@ -1,4 +1,8 @@
 import {
+  ScriptExportInvalid,
+  botcDocument,
+  botcSchemaProblems,
+  scriptExportProblems,
   Jinx,
   JinxPair,
   JinxInvalid,
@@ -125,6 +129,14 @@ export class Scripts extends Context.Service<
       id: ScriptId,
     ) => Effect.Effect<PublicScript, ScriptNotFound | ScriptReadUnavailable>;
     // Owner operations act as the signed-in User; only Authentication or an explicit test provides one.
+    readonly exportJson: (
+      id: ScriptId,
+      assetOrigin: string,
+    ) => Effect.Effect<
+      { readonly filename: string; readonly json: string },
+      ScriptNotFound | ScriptReadUnavailable | ScriptExportInvalid,
+      CurrentUser
+    >;
     readonly create: () => Effect.Effect<OwnedScript, ScriptWriteUnavailable, CurrentUser>;
     readonly listOwned: () => Effect.Effect<
       ReadonlyArray<OwnedScript>,
@@ -215,6 +227,31 @@ export const ScriptsLive = Layer.effect(
           Effect.tapCause(Effect.logError),
           Effect.mapError(() => new ScriptReadUnavailable({})),
         );
+      }),
+      exportJson: Effect.fn("Scripts.exportJson")(function* (id, assetOrigin) {
+        const user = yield* CurrentUser;
+        const script = yield* store.findOwned(user.id, id);
+
+        if (Option.isNone(script)) return yield* new ScriptNotFound({ id });
+        const characters = yield* store.listCharacters(user.id, id);
+        const orders = yield* store.findNightOrders(user.id, id);
+
+        if (Option.isNone(orders)) return yield* new ScriptNotFound({ id });
+        const jinxes = yield* store.listJinxes(user.id, id);
+        const source = { script: script.value, characters, nightOrders: orders.value, jinxes };
+        const problems = scriptExportProblems(source);
+
+        if (problems.length) return yield* new ScriptExportInvalid({ problems });
+        const document = botcDocument(source, assetOrigin);
+        const schemaProblems = botcSchemaProblems(document);
+
+        if (schemaProblems.length)
+          return yield* new ScriptExportInvalid({ problems: schemaProblems });
+
+        return {
+          filename: `${script.value.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "script"}.json`,
+          json: JSON.stringify(document, null, 2),
+        };
       }),
       create: Effect.fn("Scripts.create")(function* () {
         const user = yield* CurrentUser;

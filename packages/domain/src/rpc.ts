@@ -1,3 +1,4 @@
+import { ScriptExportInvalid } from "./export.ts";
 import { Context, Schema } from "effect";
 import { Rpc, RpcGroup, RpcMiddleware } from "effect/rpc";
 import {
@@ -46,6 +47,11 @@ export const Rpcs = RpcGroup.make(
     error: Schema.Union([ScriptNotFound, ScriptReadUnavailable]),
   }),
   // Owner operations. Another user's Script is indistinguishable from a missing one.
+  Rpc.make("Script.export", {
+    payload: { id: ScriptId },
+    success: Schema.Struct({ filename: Schema.String, json: Schema.String }),
+    error: Schema.Union([ScriptNotFound, ScriptReadUnavailable, ScriptExportInvalid]),
+  }).middleware(Authentication),
   Rpc.make("Script.create", {
     success: OwnedScript,
     error: ScriptWriteUnavailable,

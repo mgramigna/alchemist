@@ -1,3 +1,11 @@
+import {
+  botcDocument,
+  Character as DomainCharacter,
+  NightOrders as DomainNightOrders,
+  Jinx as DomainJinx,
+} from "@alchemist/domain";
+import { Schema } from "effect";
+import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 
 const rpc = /\/api\/rpc\/?$/;
@@ -43,11 +51,13 @@ interface OwnerApi {
   readonly nightSaves: Night[];
   readonly characterSaves: string[];
   readonly saves: string[];
+  exports: number;
   failSaves: boolean;
   created: number;
 }
 
 type WireValue =
+  | { filename: string; json: string }
   | Jinx
   | ReadonlyArray<Jinx>
   | { first: string; second: string }
@@ -74,6 +84,7 @@ const ownerApi = async (page: Page) => {
     nightSaves: [],
     characterSaves: [],
     saves: [],
+    exports: 0,
     failSaves: false,
     created: 0,
   };
@@ -107,6 +118,30 @@ const ownerApi = async (page: Page) => {
         state.scripts.push(script);
 
         return reply(script);
+      }
+
+      case "Script.export": {
+        state.exports += 1;
+        const script = find();
+
+        if (!script || state.failSaves) return route.abort();
+
+        return reply({
+          filename: "saved-script.json",
+          json: JSON.stringify(
+            botcDocument(
+              {
+                script,
+                characters: state.characters.map((character) =>
+                  Schema.decodeUnknownSync(DomainCharacter)(character),
+                ),
+                nightOrders: Schema.decodeSync(DomainNightOrders)(state.nightOrders),
+                jinxes: state.jinxes.map((jinx) => Schema.decodeSync(DomainJinx)(jinx)),
+              },
+              "https://alchemist.example",
+            ),
+          ),
+        });
       }
 
       case "Script.readOwned": {
@@ -446,7 +481,7 @@ test("an owner adds Characters by Team and finds and fixes what blocks export", 
   await page.goto("/");
   await page.getByRole("button", { name: "New Script" }).click();
   const nav = page.getByRole("navigation", { name: "Script sections" });
-  await expect(nav).toContainText("Ready to export");
+  await expect(nav.getByRole("button", { name: "1 problem blocks export" })).toBeVisible();
 
   // A new blank draft is saved, selected, and named from the keyboard.
   await addCharacter(page, "Townsfolk");
@@ -470,7 +505,7 @@ test("an owner adds Characters by Team and finds and fixes what blocks export", 
   await expect(nav.getByRole("list", { name: "Townsfolk" })).toContainText("2 problems");
 
   // Script-wide problem navigation leads back to the Character.
-  await nav.getByRole("button", { name: "2 problems block export" }).click();
+  await nav.getByRole("button", { name: "3 problems block export" }).click();
   const blockers = page.getByRole("region", { name: "Before you can export" });
   await expect(blockers.getByRole("button")).toHaveCount(2);
   await blockers.getByRole("button", { name: /Enter an ability/ }).click();
@@ -486,7 +521,7 @@ test("an owner adds Characters by Team and finds and fixes what blocks export", 
   await name.fill("Washerwoman");
   await page.getByRole("textbox", { name: "Ability" }).fill("You start knowing a Townsfolk.");
   await expect(page.getByRole("status")).toContainText("All changes saved");
-  await expect(nav).toContainText("Ready to export");
+  await expect(nav.getByRole("button", { name: "1 problem blocks export" })).toBeVisible();
 
   // Names must be unique, ignoring case and surrounding spaces.
   await addCharacter(page, "Demon");
@@ -775,7 +810,7 @@ test("Jinxes share invalid drafts and corrections between endpoints, survive rel
   await expect(preview.getByRole("region", { name: "Jinxes" })).toContainText(
     "The Chef learns about the Imp.",
   );
-  await expect(nav).toContainText("Ready to export");
+  await expect(nav.getByRole("button", { name: "1 problem blocks export" })).toBeVisible();
   await expect(page.getByRole("status")).toContainText("All changes saved");
   await page.screenshot({ path: test.info().outputPath("jinxes-desktop.png"), fullPage: true });
   const editUrl = page.url();
@@ -904,7 +939,7 @@ test("Reminder Tokens, setup and flavor support keyboard edits, duplicate orderi
   await expect(page.getByRole("checkbox", { name: "Affects setup" })).toBeChecked();
   await expect(page.getByRole("textbox", { name: "Flavor text" })).toHaveValue("x".repeat(501));
   // The shared summary identifies the separate list and position.
-  await page.getByRole("button", { name: "3 problems block export" }).click();
+  await page.getByRole("button", { name: "4 problems block export" }).click();
   await expect(
     page.getByText("Reminder Tokens, token 1: Use 30 characters or fewer.", { exact: false }),
   ).toBeVisible();
@@ -916,7 +951,7 @@ test("Reminder Tokens, setup and flavor support keyboard edits, duplicate orderi
   await ordinary.getByRole("textbox", { name: "Token 1", exact: true }).fill("Chosen");
   await global.getByRole("textbox", { name: "Token 1", exact: true }).fill("Drunk");
   await page.getByRole("textbox", { name: "Flavor text" }).fill("");
-  await expect(page.getByText("Ready to export")).toBeVisible();
+  await expect(page.getByRole("button", { name: "1 problem blocks export" })).toBeVisible();
   api.failSaves = true;
   await ordinary
     .getByRole("textbox", { name: "Token 1", exact: true })
@@ -945,7 +980,7 @@ test("Reminder Token count errors remain editable on a narrow screen", async ({ 
   }
 
   await expect(ordinary.getByText("Use 20 tokens or fewer.")).toBeVisible();
-  await page.getByRole("button", { name: "3 problems block export" }).click();
+  await page.getByRole("button", { name: "4 problems block export" }).click();
   await expect(
     page.getByText("Reminder Tokens: Use 20 tokens or fewer.", { exact: false }),
   ).toBeVisible();
@@ -960,4 +995,90 @@ test("Reminder Token count errors remain editable on a narrow screen", async ({ 
   await expect(ordinary.getByText("Use 20 tokens or fewer.")).toHaveCount(0);
   expect(await noHorizontalScroll(page)).toBe(true);
   await ordinary.screenshot({ path: test.info().outputPath("reminders-mobile.png") });
+});
+
+test("JSON download requires saved edits and downloads the saved Script on a narrow screen", async ({
+  page,
+}) => {
+  const api = await ownerApi(page);
+  const id = "01k8ae00000000000000000001";
+  api.scripts.push({ id, name: "Saved Script", authorCredit: "Ada", updatedAt: 0 });
+
+  for (let i = 1; i <= 4; i++)
+    api.characters.push({
+      id: `01k8af0000000000000000000${i}`,
+      name: `Character ${i}`,
+      team: i === 4 ? "traveller" : "townsfolk",
+      ability: `Ability ${i}`,
+      reminders: ["Same", "Same"],
+      remindersGlobal: ["Global"],
+      setup: true,
+      flavor: "Flavor",
+      firstNightInstructions: "First",
+      otherNightInstructions: "Other",
+    });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`/scripts/${id}/edit`);
+  await expect(page.getByText("Ready to export")).toBeVisible();
+  const name = page.getByRole("textbox", { name: "Script name" });
+  await name.fill("Just edited");
+  await page.getByRole("button", { name: "Download JSON" }).click();
+  await expect(page.getByRole("alert")).toContainText("Wait for all changes to save");
+  expect(api.exports).toBe(0);
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  api.failSaves = true;
+  await name.fill("Retained after failure");
+  await expect(page.getByRole("status")).toContainText("Couldn’t save");
+  await page.getByRole("button", { name: "Download JSON" }).click();
+  expect(api.exports).toBe(0);
+  api.failSaves = false;
+  await page.getByRole("button", { name: "Retry save" }).click();
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  const downloaded = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download JSON" }).focus();
+  await page.keyboard.press("Enter");
+  const file = await downloaded;
+  expect(file.suggestedFilename()).toBe("saved-script.json");
+  const path = await file.path();
+
+  if (path === null) throw new Error("Download did not produce a file");
+  const document = JSON.parse(await readFile(path, "utf8"));
+  expect(document[0]).toEqual({
+    id: "_meta",
+    name: "Retained after failure",
+    author: "Ada",
+    firstNight: ["dusk", "minioninfo", "demoninfo", "dawn"],
+    otherNight: ["dusk", "dawn"],
+  });
+  expect(document.slice(1).map((character: { name: string }) => character.name)).toEqual([
+    "Character 1",
+    "Character 2",
+    "Character 3",
+    "Character 4",
+  ]);
+  expect(api.exports).toBe(1);
+  expect(await noHorizontalScroll(page)).toBe(true);
+});
+
+test("export blockers and counters use Unicode code points", async ({ page }) => {
+  const api = await ownerApi(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "New Script" }).click();
+  await addCharacter(page, "Townsfolk");
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill("😀".repeat(30));
+  await page.getByRole("textbox", { name: "Ability", exact: true }).fill("😀".repeat(250));
+  await expect(page.getByText("30/30 characters", { exact: true })).toBeVisible();
+  await expect(page.getByText("250/250 characters", { exact: true })).toBeVisible();
+  const reminders = page.getByRole("region", { name: "Reminder Tokens", exact: true });
+  await reminders.getByRole("button", { name: "Add Reminder Token" }).click();
+  await reminders.getByRole("textbox", { name: "Token 1", exact: true }).fill("😀".repeat(30));
+  await expect(reminders.getByText("30/30 characters", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  expect(api.characters[0]?.name).toBe("😀".repeat(30));
+  expect(api.characters[0]?.ability).toBe("😀".repeat(250));
+  await expect(page.getByRole("button", { name: "1 problem blocks export" })).toBeVisible();
+  await reminders.getByRole("textbox", { name: "Token 1", exact: true }).fill("😀".repeat(31));
+  await expect(reminders.getByText("31/30 characters", { exact: true })).toBeVisible();
+  await expect(reminders.getByText("Use 30 characters or fewer.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "2 problems block export" })).toBeVisible();
 });
