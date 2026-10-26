@@ -1,12 +1,20 @@
 import type { PublicScript, ScriptExportProblem } from "@alchemist/domain";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
-import { DownloadSimpleIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, CopyIcon, DownloadSimpleIcon } from "@phosphor-icons/react";
 import { Predicate } from "effect";
+import { toast } from "sonner";
 import { AsyncResult } from "effect/reactivity";
 import { publicScriptExport } from "../api.ts";
 import { downloadBlob } from "../lib/download.ts";
 import { fieldLabel } from "../lib/fields.ts";
 import { Button } from "./ui/button.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx";
 
 /** JSON eligibility is independent of sheet layout, fonts and capture. */
 export function PublicJsonDownload({ script }: { readonly script: PublicScript }) {
@@ -16,7 +24,7 @@ export function PublicJsonDownload({ script }: { readonly script: PublicScript }
 
   const retry = (
     <div role="alert" className="flex flex-col items-start gap-2">
-      <p>Couldn’t check the JSON download. Check your connection and try again.</p>
+      <p>Couldn’t check the JSON export. Check your connection and try again.</p>
       <Button variant="outline" size="sm" onClick={refresh}>
         Retry JSON
       </Button>
@@ -37,9 +45,9 @@ export function PublicJsonDownload({ script }: { readonly script: PublicScript }
             Predicate.isTagged(error, "ScriptExportInvalid") ? (
               <>
                 <Button variant="outline" size="sm" disabled aria-describedby="json-blocked">
-                  <DownloadSimpleIcon /> Download JSON
+                  <DownloadSimpleIcon /> Export JSON <CaretDownIcon />
                 </Button>
-                <p id="json-blocked">JSON download is blocked. Ask the Script Owner to fix:</p>
+                <p id="json-blocked">JSON export is blocked. Ask the Script Owner to fix:</p>
                 <ul
                   aria-label="JSON validation problems"
                   className="list-disc space-y-1 pl-5 text-sm"
@@ -62,17 +70,30 @@ export function PublicJsonDownload({ script }: { readonly script: PublicScript }
           onDefect: () => retry,
           onSuccess: ({ value }) => (
             <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  downloadBlob(new Blob([value.json], { type: "application/json" }), value.filename)
-                }
-              >
-                <DownloadSimpleIcon /> Download JSON
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+                  <DownloadSimpleIcon /> Export JSON <CaretDownIcon />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem onClick={() => void copyJson(value.json)}>
+                      <CopyIcon /> Copy JSON
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() =>
+                        downloadBlob(
+                          new Blob([value.json], { type: "application/json" }),
+                          value.filename,
+                        )
+                      }
+                    >
+                      <DownloadSimpleIcon /> Download JSON
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <p className="text-sm text-muted-foreground">
-                Download the current saved Script in BOTC JSON format.
+                Copy or download the current saved Script in BOTC JSON format.
               </p>
             </>
           ),
@@ -91,4 +112,13 @@ function problemLabel(problem: ScriptExportProblem, script: PublicScript) {
   const token = problem.tokenIndex === undefined ? "" : ` ${problem.tokenIndex + 1}`;
 
   return `${prefix}${problem.field === "name" && !prefix ? "Script name" : fieldLabel(problem.field)}${token}`;
+}
+
+async function copyJson(json: string) {
+  try {
+    await navigator.clipboard.writeText(json);
+    toast.success("JSON copied");
+  } catch {
+    toast.error("Couldn’t copy JSON. Try again or download it instead.");
+  }
 }
