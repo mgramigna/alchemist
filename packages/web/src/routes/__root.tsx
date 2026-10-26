@@ -2,9 +2,11 @@ import {
   createRootRouteWithContext,
   Link,
   Outlet,
+  useMatches,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
+import { cn } from "cn";
 
 import { AccountMenu } from "../components/account.tsx";
 import { Button, buttonVariants } from "../components/ui/button.tsx";
@@ -18,6 +20,8 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 });
 
 function RootLayout() {
+  const wide = useMatches({ select: (matches) => matches.some((match) => match.staticData.wide) });
+
   return (
     <div className="flex min-h-screen flex-col font-sans">
       <a
@@ -27,7 +31,12 @@ function RootLayout() {
         Skip to content
       </a>
       <header className="border-b border-border">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-6 md:px-12">
+        <div
+          className={cn(
+            "mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-6 md:px-12",
+            wide && "max-w-screen-2xl",
+          )}
+        >
           <Link
             className="font-heading text-lg tracking-brand no-underline"
             to="/"
@@ -41,11 +50,22 @@ function RootLayout() {
           <AccountMenu />
         </div>
       </header>
-      <main id="main" className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-12 md:px-12">
+      <main
+        id="main"
+        className={cn(
+          "mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-12 md:px-12",
+          wide && "max-w-screen-2xl",
+        )}
+      >
         <Outlet />
       </main>
       <footer className="border-t border-border">
-        <div className="mx-auto w-full max-w-6xl px-6 py-6 text-sm text-muted-foreground md:px-12">
+        <div
+          className={cn(
+            "mx-auto w-full max-w-6xl px-6 py-6 text-sm text-muted-foreground md:px-12",
+            wide && "max-w-screen-2xl",
+          )}
+        >
           Alchemist is not affiliated with The Pandemonium Institute.
         </div>
       </footer>

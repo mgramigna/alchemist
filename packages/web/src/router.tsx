@@ -15,4 +15,9 @@ declare module "@tanstack/react-router" {
   interface Register {
     router: ReturnType<typeof createAppRouter>;
   }
+
+  interface StaticDataRouteOption {
+    /** Lets a page use the full width instead of the reading-width column. */
+    readonly wide?: boolean;
+  }
 }

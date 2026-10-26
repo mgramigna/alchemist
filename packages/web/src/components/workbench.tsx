@@ -290,7 +290,7 @@ export function Workbench({
       <div className="grid gap-6 lg:grid-cols-12">
         <nav
           aria-label="Script sections"
-          className="flex min-w-0 flex-col gap-4 text-sm lg:col-span-3"
+          className="flex min-w-0 flex-col gap-4 text-sm lg:col-span-3 xl:col-span-2"
         >
           <button
             type="button"
@@ -485,7 +485,7 @@ export function Workbench({
         )}
         <aside
           aria-labelledby="preview-title"
-          className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-4 lg:col-span-4 lg:self-start"
+          className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-4 lg:col-span-4 lg:self-start xl:col-span-5"
         >
           <h2 id="preview-title" className="text-sm font-medium text-muted-foreground">
             Preview
