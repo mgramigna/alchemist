@@ -220,8 +220,7 @@ export function ExportBlockerList({
   );
 }
 
-const selectClass =
-  "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30 dark:*:bg-popover";
+const TEAM_OPTIONS = AuthoredTeam.literals.map((team) => ({ value: team, label: teamLabel(team) }));
 
 /**
  * Name, Team, ability and night actions for one Character. Edits flow out as
@@ -302,30 +301,7 @@ export function CharacterForm({
             )}
           </form.AppField>
           <form.AppField name="team">
-            {(field) => (
-              <field.Control label="Team">
-                {(control) => (
-                  <select
-                    {...control}
-                    className={selectClass}
-                    value={field.state.value}
-                    onChange={(event) => {
-                      const team = AuthoredTeam.literals.find(
-                        (candidate) => candidate === event.target.value,
-                      );
-
-                      if (team) field.handleChange(team);
-                    }}
-                  >
-                    {AuthoredTeam.literals.map((team) => (
-                      <option key={team} value={team}>
-                        {teamLabel(team)}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </field.Control>
-            )}
+            {(field) => <field.SelectField label="Team" options={TEAM_OPTIONS} />}
           </form.AppField>
         </div>
         <form.AppField

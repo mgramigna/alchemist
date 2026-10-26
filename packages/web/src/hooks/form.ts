@@ -2,6 +2,7 @@ import { createFormHook } from "@tanstack/react-form";
 import { CheckboxField } from "../components/form/checkbox-field.tsx";
 import { FieldControl } from "../components/form/field-control.tsx";
 import { Form } from "../components/form/form.tsx";
+import { SelectField } from "../components/form/select-field.tsx";
 import { SubmitButton } from "../components/form/submit-button.tsx";
 import { SwitchField } from "../components/form/switch-field.tsx";
 import { TextareaField } from "../components/form/textarea-field.tsx";
@@ -19,6 +20,7 @@ export const { useAppForm, withForm, withFieldGroup, useTypedAppFormContext } = 
     Control: FieldControl,
     TextField,
     TextareaField,
+    SelectField,
     SwitchField,
     CheckboxField,
   },

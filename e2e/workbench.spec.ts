@@ -323,6 +323,11 @@ const addCharacter = async (page: Page, team: string, nights: NightChoice = "No 
   await page.getByRole("menuitem", { name: nights }).click();
 };
 
+const chooseTeam = async (page: Page, team: string) => {
+  await page.getByRole("combobox", { name: "Team" }).click();
+  await page.getByRole("option", { name: team }).click();
+};
+
 const noHorizontalScroll = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 
@@ -564,7 +569,11 @@ test("a Team change keeps the Character's content and survives reload; deleting 
   await page.getByRole("textbox", { name: "Name" }).fill("Drunk");
   await page.getByRole("textbox", { name: "Ability" }).fill("You think you are a Townsfolk.");
 
-  await page.getByRole("combobox", { name: "Team" }).selectOption("traveller");
+  await page.getByRole("combobox", { name: "Team" }).focus();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("combobox", { name: "Team" })).toContainText("Traveller");
   await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue("Drunk");
   await expect(page.getByRole("textbox", { name: "Ability" })).toHaveValue(
     "You think you are a Townsfolk.",
@@ -581,7 +590,7 @@ test("a Team change keeps the Character's content and survives reload; deleting 
 
   await page.reload();
   await nav.getByRole("button", { name: "Drunk" }).click();
-  await expect(page.getByRole("combobox", { name: "Team" })).toHaveValue("traveller");
+  await expect(page.getByRole("combobox", { name: "Team" })).toContainText("Traveller");
   await expect(page.getByRole("textbox", { name: "Ability" })).toHaveValue(
     "You think you are a Townsfolk.",
   );
@@ -921,7 +930,7 @@ test("Reminder Tokens, setup and flavor support keyboard edits, duplicate orderi
     "aria-invalid",
     "true",
   );
-  await page.getByRole("combobox", { name: "Team" }).selectOption("traveller");
+  await chooseTeam(page, "Traveller");
   await expect(page.getByRole("status")).toContainText("All changes saved");
   expect(api.characters[0]).toMatchObject({
     reminders: ["x".repeat(31), "Dead"],
