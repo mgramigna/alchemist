@@ -22,11 +22,9 @@ const run = <A, E>(effect: Effect.Effect<A, E, AuthStore>) =>
   Effect.runPromise(effect.pipe(Effect.provide(store)));
 
 beforeAll(async () => {
-  for (const filename of ["0001_scripts.sql", "0002_auth.sql"]) {
-    const sql = await readFile(new URL(`../migrations/${filename}`, import.meta.url), "utf8");
+  const sql = await readFile(new URL("../migrations/0001_initial.sql", import.meta.url), "utf8");
 
-    for (const statement of sql.split(";")) if (statement.trim()) await db.prepare(statement).run();
-  }
+  for (const statement of sql.split(";")) if (statement.trim()) await db.prepare(statement).run();
 });
 
 afterAll(() => mf.dispose());

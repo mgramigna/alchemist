@@ -1,4 +1,5 @@
 import {
+  ImportedData,
   ReminderTokens,
   Jinx,
   Character,
@@ -135,6 +136,51 @@ export const D1ScriptStore = Layer.effect(
       ORDER BY e.night, e.position`;
 
     return ScriptStore.of({
+      useGenericArtwork: Effect.fn("D1ScriptStore.useGenericArtwork")(function* (
+        ownerId,
+        id,
+        field,
+        characterId,
+        now,
+      ) {
+        const [rows] = yield* d1.batch([
+          sql`UPDATE script_imports SET data = json_set(data, '$.artwork', json(COALESCE((
+            SELECT json_group_array(json(value)) FROM json_each(script_imports.data, '$.artwork')
+            WHERE NOT (json_extract(value, '$.field') = ${field} AND json_extract(value, '$.characterId') IS ${characterId})
+          ), '[]'))) WHERE script_id IN (SELECT id FROM scripts WHERE id = ${id} AND owner_id = ${ownerId}) RETURNING script_id`,
+          sql`UPDATE scripts SET updated_at = ${now} WHERE id = ${id} AND owner_id = ${ownerId} AND changes() > 0`,
+        ]);
+
+        return rows.length > 0;
+      }, writeUnavailable),
+      insertImport: Effect.fn("D1ScriptStore.insertImport")(function* (ownerId, script, draft) {
+        // One atomic D1 batch, including the final integration/artwork write.
+        yield* d1.batch([
+          sql`INSERT INTO scripts (id, owner_id, name, author_credit, created_at, updated_at)
+            VALUES (${script.id}, ${ownerId}, ${script.name}, ${script.authorCredit}, ${script.updatedAt}, ${script.updatedAt})`,
+          sql`INSERT INTO characters (id, script_id, name, ability, team, first_night_instructions, other_night_instructions, reminders, reminders_global, setup, flavor)
+            SELECT json_extract(value, '$.id'), ${script.id}, json_extract(value, '$.name'), json_extract(value, '$.ability'), json_extract(value, '$.team'),
+              json_extract(value, '$.firstNightInstructions'), json_extract(value, '$.otherNightInstructions'),
+              json_extract(value, '$.reminders'), json_extract(value, '$.remindersGlobal'), json_extract(value, '$.setup'), json_extract(value, '$.flavor')
+            FROM json_each(${JSON.stringify(draft.characters)})`,
+          ...writeNightOrder(ownerId, script.id, "firstNight", draft.nightOrders.firstNight),
+          ...writeNightOrder(ownerId, script.id, "otherNight", draft.nightOrders.otherNight),
+          sql`INSERT INTO jinxes (script_id, first, second, explanation)
+            SELECT ${script.id}, json_extract(value, '$.first'), json_extract(value, '$.second'), json_extract(value, '$.explanation')
+            FROM json_each(${JSON.stringify(draft.jinxes)})`,
+          sql`INSERT INTO script_imports (script_id, data) VALUES (${script.id}, ${JSON.stringify(draft.imported)})`,
+        ]);
+      }, writeUnavailable),
+      readImported: Effect.fn("D1ScriptStore.readImported")(function* (ownerId, scriptId) {
+        const rows =
+          yield* sql`SELECT i.data FROM script_imports i JOIN scripts s ON s.id = i.script_id WHERE s.id = ${scriptId} AND s.owner_id = ${ownerId}`;
+
+        const decoded = yield* Schema.decodeUnknownEffect(
+          Schema.Array(Schema.Struct({ data: Schema.fromJsonString(ImportedData) })),
+        )(rows);
+
+        return decoded[0]?.data ?? null;
+      }, readUnavailable),
       findPublic: Effect.fn("D1ScriptStore.findPublic")(function* (id) {
         // One batch, so the Script and its Characters come from the same snapshot.
         const [scripts, characters, jinxes] = yield* d1.batch([
@@ -216,7 +262,7 @@ export const D1ScriptStore = Layer.effect(
           WHERE id = ${scriptId} AND owner_id = ${ownerId}`,
           ...writeNightOrder(ownerId, scriptId, "firstNight", orders.firstNight),
           ...writeNightOrder(ownerId, scriptId, "otherNight", orders.otherNight),
-          sql`SELECT ${sql.literal(CHARACTER_COLUMNS)} FROM characters WHERE id = ${character.id}`,
+          sql`SELECT ${sql.literal(CHARACTER_COLUMNS)} FROM characters WHERE id = ${character.id} AND script_id = ${scriptId}`,
         ]);
 
         return yield* firstCharacter(results[6]);

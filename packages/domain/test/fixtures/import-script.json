@@ -1,0 +1,53 @@
+[
+  {
+    "id": "_meta",
+    "name": "A Borrowed Moon",
+    "author": "Original Designer",
+    "firstNight": ["dusk", "minioninfo", "demoninfo", "seer", "dawn", "shade"],
+    "hideTitle": false,
+    "bootlegger": ["Use the optional rule."],
+    "almanac": "https://example.org/rules",
+    "logo": "https://example.org/logo.png"
+  },
+  {
+    "id": "seer",
+    "name": "Seer",
+    "team": "townsfolk",
+    "ability": "You start knowing a player.",
+    "edition": "borrowedmoon",
+    "special": [{ "type": "signal", "name": "card", "value": "Moon", "time": "night" }],
+    "firstNight": 99,
+    "otherNight": 5,
+    "firstNightReminder": "Show a player.",
+    "reminders": ["Known", "Known"],
+    "remindersGlobal": ["Moon"],
+    "setup": true,
+    "flavor": "The moon remembers.",
+    "image": "https://example.org/seer.png",
+    "jinxes": [{ "id": "shade", "reason": "They know one another." }]
+  },
+  {
+    "id": "shade",
+    "name": "Shade",
+    "team": "minion",
+    "ability": "Each night, choose a player.",
+    "firstNight": 1,
+    "otherNight": 5,
+    "image": ["https://example.org/shade.png", "broken image"]
+  },
+  {
+    "id": "moth",
+    "name": "Moth",
+    "team": "outsider",
+    "ability": "You might be drunk.",
+    "firstNight": 0,
+    "otherNight": -1
+  },
+  {
+    "id": "moon",
+    "name": "Moon",
+    "team": "demon",
+    "ability": "Each night*, a player dies.",
+    "otherNight": 2
+  }
+]

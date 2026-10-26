@@ -1,3 +1,4 @@
+import type { ImportedData } from "./import.ts";
 import { textLength } from "./text.ts";
 import { Result, Schema } from "effect";
 import { exportBlockers, genericIcons, type Character } from "./character.ts";
@@ -25,6 +26,7 @@ export class ScriptExportInvalid extends Schema.TaggedError<
 >()("ScriptExportInvalid", { problems: Schema.Array(ScriptExportProblem) }) {}
 
 export interface ScriptExportSource {
+  readonly imported?: ImportedData | undefined;
   readonly script: ScriptDetails;
   readonly characters: ReadonlyArray<Character>;
   readonly nightOrders: NightOrders;
@@ -105,10 +107,11 @@ export const scriptExportProblems = ({
 };
 
 export const botcDocument = (
-  { script, characters, nightOrders, jinxes }: ScriptExportSource,
+  { script, characters, nightOrders, jinxes, imported }: ScriptExportSource,
   assetOrigin: string,
 ) => [
   {
+    ...imported?.metadata,
     id: "_meta",
     name: script.name,
     author: script.authorCredit,
@@ -116,11 +119,12 @@ export const botcDocument = (
     otherNight: nightOrders.otherNight,
   },
   ...characters.map((character) => ({
+    ...imported?.characters.find(({ id }) => id === character.id),
     id: character.id,
     name: character.name,
     team: character.team,
     ability: character.ability,
-    image: genericIcons(character.team).map((icon) => new URL(icon.path, assetOrigin).href),
+    image: exportImages(character, imported, assetOrigin),
     reminders: character.reminders,
     remindersGlobal: character.remindersGlobal,
     setup: character.setup,
@@ -146,4 +150,23 @@ export const botcSchemaProblems = (document: unknown): ReadonlyArray<ScriptExpor
   const result = decodeBotcDocument(document);
 
   return Result.isSuccess(result) ? [] : [{ field: "schema", message: result.failure.message }];
+};
+
+// Preserve imported slot shape/cardinality while every unresolved slot uses a
+// local generic. Private external sources never enter the export document.
+const exportImages = (
+  character: Character,
+  imported: ImportedData | undefined,
+  assetOrigin: string,
+) => {
+  const icons = genericIcons(character.team).map((icon) => new URL(icon.path, assetOrigin).href);
+
+  const artwork = imported?.artwork.find(
+    (art) => art.characterId === character.id && art.field === "image",
+  );
+
+  if (artwork === undefined) return icons;
+  const slots = artwork.slots.map((_, index) => icons[index % icons.length] ?? icons[0]);
+
+  return artwork.format === "single" ? slots[0] : slots;
 };

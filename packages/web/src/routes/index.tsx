@@ -1,3 +1,4 @@
+import { ImportScriptButton } from "../components/import-script.tsx";
 import { useAtom, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import type { User } from "@alchemist/domain";
 import { PlusIcon, ScrollIcon, WarningCircleIcon } from "@phosphor-icons/react";
@@ -79,7 +80,10 @@ function Dashboard({ user }: { readonly user: User }) {
           </h1>
           <p className="text-muted-foreground">Pick up a Script where you left off.</p>
         </div>
-        <NewScriptButton />
+        <div className="flex flex-wrap items-start gap-2">
+          <ImportScriptButton />
+          <NewScriptButton />
+        </div>
       </header>
       <ScriptList />
     </section>

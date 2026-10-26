@@ -1,4 +1,10 @@
 import {
+  ImportedArtwork,
+  ImportedData,
+  ImportDraft,
+  ImportReview,
+  ScriptImportInvalid,
+  reviewImport,
   ScriptExportInvalid,
   botcDocument,
   botcSchemaProblems,
@@ -35,6 +41,22 @@ import { ulid } from "./ids.ts";
 export class ScriptStore extends Context.Service<
   ScriptStore,
   {
+    readonly useGenericArtwork: (
+      ownerId: string,
+      id: ScriptId,
+      field: typeof ImportedArtwork.Type.field,
+      characterId: CharacterId | null,
+      now: number,
+    ) => Effect.Effect<boolean, ScriptWriteUnavailable>;
+    readonly insertImport: (
+      ownerId: string,
+      script: OwnedScript,
+      draft: ImportDraft,
+    ) => Effect.Effect<void, ScriptWriteUnavailable>;
+    readonly readImported: (
+      ownerId: string,
+      scriptId: ScriptId,
+    ) => Effect.Effect<ImportedData | null, ScriptReadUnavailable>;
     readonly findPublic: (
       id: ScriptId,
     ) => Effect.Effect<Option.Option<PublicScript>, ScriptReadUnavailable>;
@@ -125,6 +147,19 @@ export class ScriptStore extends Context.Service<
 export class Scripts extends Context.Service<
   Scripts,
   {
+    readonly useGenericArtwork: (
+      id: ScriptId,
+      field: typeof ImportedArtwork.Type.field,
+      characterId: CharacterId | null,
+    ) => Effect.Effect<ScriptId, ScriptNotFound | ScriptWriteUnavailable, CurrentUser>;
+    readonly reviewImport: (json: string) => Effect.Effect<ImportReview, never, CurrentUser>;
+    readonly importJson: (
+      json: string,
+      acknowledgeDiscard: boolean,
+    ) => Effect.Effect<OwnedScript, ScriptImportInvalid | ScriptWriteUnavailable, CurrentUser>;
+    readonly readImported: (
+      id: ScriptId,
+    ) => Effect.Effect<ImportedData | null, ScriptNotFound | ScriptReadUnavailable, CurrentUser>;
     readonly readPublic: (
       id: ScriptId,
     ) => Effect.Effect<PublicScript, ScriptNotFound | ScriptReadUnavailable>;
@@ -217,6 +252,61 @@ export const ScriptsLive = Layer.effect(
     const store = yield* ScriptStore;
 
     return Scripts.of({
+      useGenericArtwork: Effect.fn("Scripts.useGenericArtwork")(function* (id, field, characterId) {
+        const user = yield* CurrentUser;
+
+        if (
+          !(yield* store.useGenericArtwork(
+            user.id,
+            id,
+            field,
+            characterId,
+            yield* Clock.currentTimeMillis,
+          ))
+        )
+          return yield* new ScriptNotFound({ id });
+
+        return id;
+      }),
+      reviewImport: Effect.fn("Scripts.reviewImport")(function* (json) {
+        const user = yield* CurrentUser;
+
+        return reviewImport(json, user.displayName);
+      }),
+      importJson: Effect.fn("Scripts.importJson")(function* (json, acknowledgeDiscard) {
+        const user = yield* CurrentUser;
+        const review = reviewImport(json, user.displayName);
+
+        if (review.draft === null)
+          return yield* new ScriptImportInvalid({ messages: review.errors });
+
+        if (review.discarded.length && !acknowledgeDiscard)
+          return yield* new ScriptImportInvalid({
+            messages: [
+              "Acknowledge the listed unsupported fields before discarding them.",
+              ...review.discarded,
+            ],
+          });
+        const now = yield* Clock.currentTimeMillis;
+
+        const script = OwnedScript.make({
+          id: ScriptId.make(ulid(now)),
+          ...review.draft.script,
+          updatedAt: now,
+        });
+
+        yield* store.insertImport(user.id, script, review.draft);
+
+        return script;
+      }),
+      readImported: Effect.fn("Scripts.readImported")(function* (id) {
+        const user = yield* CurrentUser;
+
+        if (Option.isNone(yield* store.findOwned(user.id, id)))
+          return yield* new ScriptNotFound({ id });
+
+        return yield* store.readImported(user.id, id);
+      }),
       readPublic: Effect.fn("Scripts.readPublic")(function* (id) {
         const script = yield* store.findPublic(id);
 
@@ -238,7 +328,16 @@ export const ScriptsLive = Layer.effect(
 
         if (Option.isNone(orders)) return yield* new ScriptNotFound({ id });
         const jinxes = yield* store.listJinxes(user.id, id);
-        const source = { script: script.value, characters, nightOrders: orders.value, jinxes };
+        const imported = yield* store.readImported(user.id, id);
+
+        const source = {
+          script: script.value,
+          characters,
+          nightOrders: orders.value,
+          jinxes,
+          imported: imported ?? undefined,
+        };
+
         const problems = scriptExportProblems(source);
 
         if (problems.length) return yield* new ScriptExportInvalid({ problems });
