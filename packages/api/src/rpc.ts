@@ -34,6 +34,11 @@ export const Handlers = Rpcs.toLayer(
       "Script.readOwned": ({ id }) => scripts.readOwned(id),
       "Script.updateDetails": ({ id, name, authorCredit }) =>
         scripts.updateDetails(id, { name, authorCredit }),
+      "Character.list": ({ scriptId }) => scripts.listCharacters(scriptId),
+      "Character.create": ({ scriptId, team }) => scripts.createCharacter(scriptId, team),
+      "Character.update": ({ scriptId, id, name, ability, team }) =>
+        scripts.updateCharacter(scriptId, id, { name, ability, team }),
+      "Character.delete": ({ scriptId, id }) => scripts.deleteCharacter(scriptId, id),
       "Account.current": (_, { headers }) =>
         auth.current(readCookie(headers.cookie, SESSION_COOKIE)),
       "Account.rename": ({ displayName }) => auth.rename(displayName),

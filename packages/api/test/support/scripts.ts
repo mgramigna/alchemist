@@ -1,4 +1,4 @@
-import type { OwnedScript } from "@alchemist/domain";
+import type { Character, OwnedScript } from "@alchemist/domain";
 import { Effect, Layer, Option } from "effect";
 import { ScriptStore, ScriptsLive } from "../../src/scripts.ts";
 
@@ -13,6 +13,30 @@ export const scriptsFixture = Effect.sync(() => {
     updatedAt: row.updatedAt,
   });
 
+  const characters = new Map<
+    string,
+    { readonly scriptId: string; readonly character: Character }
+  >();
+
+  const inScript = (scriptId: string) =>
+    [...characters.values()]
+      .flatMap((row) => (row.scriptId === scriptId ? [row.character] : []))
+      .sort((a, b) => a.id.localeCompare(b.id));
+
+  // Callers have already checked ownership.
+  const touch = (scriptId: string, now: number) => {
+    const row = rows.get(scriptId);
+
+    if (row !== undefined)
+      rows.set(scriptId, {
+        ownerId: row.ownerId,
+        id: row.id,
+        name: row.name,
+        authorCredit: row.authorCredit,
+        updatedAt: now,
+      });
+  };
+
   const owned = (ownerId: string, id: string) =>
     Option.fromNullishOr(rows.get(id)).pipe(Option.filter((row) => row.ownerId === ownerId));
 
@@ -24,7 +48,7 @@ export const scriptsFixture = Effect.sync(() => {
             id: row.id,
             name: row.name,
             authorCredit: row.authorCredit,
-            characters: [],
+            characters: inScript(id),
           })),
         ),
       ),
@@ -64,7 +88,42 @@ export const scriptsFixture = Effect.sync(() => {
           }),
         ),
       ),
+    listCharacters: (ownerId, scriptId) =>
+      Effect.sync(() => (Option.isSome(owned(ownerId, scriptId)) ? inScript(scriptId) : [])),
+    insertCharacter: (ownerId, scriptId, character, now) =>
+      Effect.sync(() => {
+        if (Option.isNone(owned(ownerId, scriptId))) return Option.none();
+
+        characters.set(character.id, { scriptId, character });
+        touch(scriptId, now);
+
+        return Option.some(character);
+      }),
+    updateCharacter: (ownerId, scriptId, id, details, now) =>
+      Effect.sync(() => {
+        const row = characters.get(id);
+
+        if (Option.isNone(owned(ownerId, scriptId)) || row?.scriptId !== scriptId)
+          return Option.none();
+
+        const character = { id, name: details.name, ability: details.ability, team: details.team };
+
+        characters.set(id, { scriptId, character });
+        touch(scriptId, now);
+
+        return Option.some(character);
+      }),
+    deleteCharacter: (ownerId, scriptId, id, now) =>
+      Effect.sync(() => {
+        if (Option.isNone(owned(ownerId, scriptId)) || characters.get(id)?.scriptId !== scriptId)
+          return false;
+
+        characters.delete(id);
+        touch(scriptId, now);
+
+        return true;
+      }),
   });
 
-  return { rows, layer: ScriptsLive.pipe(Layer.provide(store)) };
+  return { rows, characters, layer: ScriptsLive.pipe(Layer.provide(store)) };
 });

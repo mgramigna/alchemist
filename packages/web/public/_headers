@@ -1,0 +1,5 @@
+# Published generic icons are versioned and never change in place; a new design
+# ships under a new version directory so earlier exports keep their meaning.
+/icons/generic/v1/*
+  Cache-Control: public, max-age=31536000, immutable
+  Access-Control-Allow-Origin: *

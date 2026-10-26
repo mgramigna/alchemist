@@ -9,8 +9,17 @@ interface Script {
   updatedAt: number;
 }
 
+interface Character {
+  id: string;
+  name: string;
+  ability: string;
+  team: string;
+}
+
 interface OwnerApi {
   readonly scripts: Script[];
+  readonly characters: Character[];
+  readonly characterSaves: string[];
   readonly saves: string[];
   failSaves: boolean;
   created: number;
@@ -18,6 +27,9 @@ interface OwnerApi {
 
 type WireValue =
   | Script
+  | Character
+  | ReadonlyArray<Character>
+  | string
   | ReadonlyArray<Script>
   | { readonly id: string; readonly displayName: string }
   | (Omit<Script, "updatedAt"> & { readonly characters: [] });
@@ -25,7 +37,14 @@ type WireValue =
 // Controlled owner API for browser states. Ownership, persistence and isolation
 // are covered against real D1 and the application service.
 const ownerApi = async (page: Page) => {
-  const state: OwnerApi = { scripts: [], saves: [], failSaves: false, created: 0 };
+  const state: OwnerApi = {
+    scripts: [],
+    characters: [],
+    characterSaves: [],
+    saves: [],
+    failSaves: false,
+    created: 0,
+  };
 
   const success = (requestId: string, value: WireValue) =>
     `{"_tag":"Exit","requestId":${JSON.stringify(requestId)},"exit":{"_tag":"Success","value":${JSON.stringify(value)}}}\n`;
@@ -75,6 +94,43 @@ const ownerApi = async (page: Page) => {
         state.saves.push(script.name);
 
         return reply(script);
+      }
+
+      case "Character.list":
+        return reply(state.characters);
+      case "Character.create": {
+        const character = {
+          id: `01k8af0000000000000000000${state.characters.length + 1}`,
+          name: "",
+          ability: "",
+          team: body.payload.team,
+        };
+
+        state.characters.push(character);
+
+        return reply(character);
+      }
+
+      case "Character.update": {
+        const character = state.characters.find(({ id }) => id === body.payload.id);
+
+        if (state.failSaves || !character) return route.abort();
+
+        character.name = body.payload.name;
+        character.ability = body.payload.ability;
+        character.team = body.payload.team;
+        state.characterSaves.push(character.name);
+
+        return reply(character);
+      }
+
+      case "Character.delete": {
+        state.characters.splice(
+          state.characters.findIndex(({ id }) => id === body.payload.id),
+          1,
+        );
+
+        return reply(body.payload.id);
       }
 
       case "Script.readPublic": {
@@ -250,4 +306,128 @@ test("opening a Script announces loading and offers a retry after a transport fa
   });
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(page.getByRole("textbox", { name: "Script name" })).toHaveValue("Recovered Script");
+});
+
+test("an owner adds Characters by Team and finds and fixes what blocks export", async ({
+  page,
+}) => {
+  const api = await ownerApi(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "New Script" }).click();
+  const nav = page.getByRole("navigation", { name: "Script sections" });
+  await expect(nav).toContainText("Ready to export");
+
+  // A new blank draft is saved, selected, and named from the keyboard.
+  await nav.getByRole("button", { name: "Add Townsfolk" }).click();
+  await expect(page.getByRole("heading", { name: "Unnamed Townsfolk" })).toBeVisible();
+  const name = page.getByRole("textbox", { name: "Name" });
+  await expect(name).toBeFocused();
+  expect(api.characters).toEqual([
+    { id: expect.any(String), name: "", ability: "", team: "townsfolk" },
+  ]);
+  await expect(nav.getByRole("list", { name: "Townsfolk" })).toContainText("2 problems");
+
+  // Script-wide problem navigation leads back to the Character.
+  await nav.getByRole("button", { name: "2 problems block export" }).click();
+  const blockers = page.getByRole("region", { name: "Before you can export" });
+  await expect(blockers.getByRole("button")).toHaveCount(2);
+  await blockers.getByRole("button", { name: /Enter an ability/ }).click();
+  await expect(page.getByRole("heading", { name: "Unnamed Townsfolk" })).toBeVisible();
+
+  // Over-limit drafts are kept, not truncated, and explain the limit.
+  await name.fill("N".repeat(31));
+  await expect(page.getByText("Use 30 characters or fewer.")).toBeVisible();
+  await expect(page.getByText("31/30 characters")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  expect(api.characters[0]?.name).toBe("N".repeat(31));
+
+  await name.fill("Washerwoman");
+  await page.getByRole("textbox", { name: "Ability" }).fill("You start knowing a Townsfolk.");
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  await expect(nav).toContainText("Ready to export");
+
+  // Names must be unique, ignoring case and surrounding spaces.
+  await nav.getByRole("button", { name: "Add Demon" }).click();
+  await name.fill(" washerwoman ");
+  await expect(
+    page.getByText("Another Character has this name. Names must be unique."),
+  ).toBeVisible();
+  await name.fill("Imp");
+  await page
+    .getByRole("textbox", { name: "Ability" })
+    .fill("Each night*, choose a player: they die.");
+
+  // The preview follows edits with each Team's generic icon; clicking selects.
+  const preview = page.getByRole("complementary", { name: "Preview" });
+  await expect(preview.getByRole("button", { name: /Washerwoman/ }).locator("img")).toHaveAttribute(
+    "src",
+    "/icons/generic/v1/townsfolk-good.svg",
+  );
+  await expect(preview.getByRole("button", { name: /Imp/ }).locator("img")).toHaveAttribute(
+    "src",
+    "/icons/generic/v1/demon-evil.svg",
+  );
+  await preview.getByRole("button", { name: /Washerwoman/ }).click();
+  await expect(page.getByRole("heading", { name: "Washerwoman" })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  expect(api.characters.map(({ name: saved }) => saved)).toEqual(["Washerwoman", "Imp"]);
+});
+
+test("a Team change keeps the Character's content and survives reload; deleting returns to the Script", async ({
+  page,
+}) => {
+  const api = await ownerApi(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "New Script" }).click();
+  const nav = page.getByRole("navigation", { name: "Script sections" });
+  await nav.getByRole("button", { name: "Add Outsider" }).click();
+  await page.getByRole("textbox", { name: "Name" }).fill("Drunk");
+  await page.getByRole("textbox", { name: "Ability" }).fill("You think you are a Townsfolk.");
+
+  await page.getByRole("combobox", { name: "Team" }).selectOption("traveller");
+  await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue("Drunk");
+  await expect(page.getByRole("textbox", { name: "Ability" })).toHaveValue(
+    "You think you are a Townsfolk.",
+  );
+  await expect(nav.getByRole("list", { name: "Travellers" })).toContainText("Drunk");
+  await expect(nav.getByRole("list", { name: "Outsiders" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Icon" }).getByRole("listitem")).toHaveText([
+    "Unaligned",
+    "Good",
+    "Evil",
+  ]);
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  const [saved] = api.characters;
+
+  await page.reload();
+  await nav.getByRole("button", { name: "Drunk" }).click();
+  await expect(page.getByRole("combobox", { name: "Team" })).toHaveValue("traveller");
+  await expect(page.getByRole("textbox", { name: "Ability" })).toHaveValue(
+    "You think you are a Townsfolk.",
+  );
+  expect(api.characters).toEqual([saved]);
+
+  await page.getByRole("button", { name: "Delete Character" }).focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("alertdialog", { name: "Delete this Character?" });
+  await dialog.getByRole("button", { name: "Keep" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Drunk" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Delete Character" }).click();
+  await dialog.getByRole("button", { name: "Delete Character" }).click();
+  await expect(page.getByRole("heading", { name: "Script details" })).toBeVisible();
+  await expect(nav.getByRole("list", { name: "Travellers" })).toHaveCount(0);
+  expect(api.characters).toEqual([]);
+});
+
+test("Character editing is usable on a narrow screen", async ({ page }) => {
+  await ownerApi(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "New Script" }).click();
+  await page.getByRole("button", { name: "Add Minion" }).click();
+  await page.getByRole("textbox", { name: "Name" }).fill("Poisoner");
+  await expect(page.getByRole("complementary", { name: "Preview" })).toContainText("Poisoner");
+  expect(await noHorizontalScroll(page)).toBe(true);
 });

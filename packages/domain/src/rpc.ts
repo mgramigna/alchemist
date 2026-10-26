@@ -1,5 +1,13 @@
 import { Context, Schema } from "effect";
 import { Rpc, RpcGroup, RpcMiddleware } from "effect/rpc";
+import {
+  AuthoredTeam,
+  Character,
+  CharacterAbility,
+  CharacterId,
+  CharacterName,
+  CharacterNotFound,
+} from "./character.ts";
 import { AuthRejected, AuthUnavailable, DisplayName, User } from "./auth.ts";
 import {
   AuthorCredit,
@@ -47,6 +55,34 @@ export const Rpcs = RpcGroup.make(
     payload: { id: ScriptId, name: ScriptName, authorCredit: AuthorCredit },
     success: OwnedScript,
     error: Schema.Union([ScriptNotFound, ScriptWriteUnavailable]),
+  }).middleware(Authentication),
+  Rpc.make("Character.list", {
+    payload: { scriptId: ScriptId },
+    success: Schema.Array(Character),
+    error: Schema.Union([ScriptNotFound, ScriptReadUnavailable]),
+  }).middleware(Authentication),
+  Rpc.make("Character.create", {
+    payload: { scriptId: ScriptId, team: AuthoredTeam },
+    success: Character,
+    error: Schema.Union([ScriptNotFound, ScriptWriteUnavailable]),
+  }).middleware(Authentication),
+  // Replaces every authored field at once, so a Team change keeps all other content.
+  Rpc.make("Character.update", {
+    payload: {
+      scriptId: ScriptId,
+      id: CharacterId,
+      name: CharacterName,
+      ability: CharacterAbility,
+      team: AuthoredTeam,
+    },
+    success: Character,
+    error: Schema.Union([CharacterNotFound, ScriptWriteUnavailable]),
+  }).middleware(Authentication),
+  Rpc.make("Character.delete", {
+    payload: { scriptId: ScriptId, id: CharacterId },
+    // The deleted ID: JSON cannot carry a void result.
+    success: CharacterId,
+    error: Schema.Union([CharacterNotFound, ScriptWriteUnavailable]),
   }).middleware(Authentication),
   // Anonymous browsers get null rather than an error, so this stays outside Authentication.
   Rpc.make("Account.current", {

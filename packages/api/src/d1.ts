@@ -1,10 +1,12 @@
 import {
+  Character,
   OwnedScript,
   PublicScript,
   ScriptId,
   ScriptReadUnavailable,
   ScriptWriteUnavailable,
 } from "@alchemist/domain";
+import { D1Client } from "@effect/sql-d1/D1Client";
 import { Effect, Layer, Option, Schema } from "effect";
 import { SqlClient } from "effect/sql";
 import { ScriptStore } from "./scripts.ts";
@@ -17,8 +19,15 @@ const ScriptRow = Schema.Struct({
 
 const OwnedRows = Schema.Array(OwnedScript);
 
+const CharacterRows = Schema.Array(Character);
+
 const owned = (rows: ReadonlyArray<object>) =>
   Schema.decodeUnknownEffect(OwnedRows)(rows).pipe(
+    Effect.map((decoded) => Option.fromNullishOr(decoded[0])),
+  );
+
+const firstCharacter = (rows: ReadonlyArray<object>) =>
+  Schema.decodeUnknownEffect(CharacterRows)(rows).pipe(
     Effect.map((decoded) => Option.fromNullishOr(decoded[0])),
   );
 
@@ -39,23 +48,30 @@ export const D1ScriptStore = Layer.effect(
   ScriptStore,
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    // D1's atomic batch is a driver extension; SqlClient has no equivalent.
+    // Both tags come from the same D1 layer.
+    const d1 = yield* D1Client;
 
     return ScriptStore.of({
       findPublic: Effect.fn("D1ScriptStore.findPublic")(function* (id) {
-        const rows = yield* sql`SELECT id, name, author_credit FROM scripts WHERE id = ${id}`;
-        const decoded = yield* Schema.decodeUnknownEffect(Schema.Array(ScriptRow))(rows);
-        const row = decoded[0];
+        // One batch, so the Script and its Characters come from the same snapshot.
+        const [scripts, characters] = yield* d1.batch([
+          sql`SELECT id, name, author_credit FROM scripts WHERE id = ${id}`,
+          sql`SELECT id, name, ability, team FROM characters WHERE script_id = ${id} ORDER BY id`,
+        ]);
 
-        return row === undefined
-          ? Option.none()
-          : Option.some(
-              PublicScript.make({
-                id: row.id,
-                name: row.name,
-                authorCredit: row.author_credit,
-                characters: [],
-              }),
-            );
+        const row = (yield* Schema.decodeEffect(Schema.Array(ScriptRow))(scripts))[0];
+
+        if (row === undefined) return Option.none();
+
+        return Option.some(
+          PublicScript.make({
+            id: row.id,
+            name: row.name,
+            authorCredit: row.author_credit,
+            characters: yield* Schema.decodeEffect(CharacterRows)(characters),
+          }),
+        );
       }, readUnavailable),
       insert: Effect.fn("D1ScriptStore.insert")(function* (ownerId, script) {
         yield* sql`INSERT INTO scripts (id, owner_id, name, author_credit, created_at, updated_at)
@@ -85,6 +101,65 @@ export const D1ScriptStore = Layer.effect(
             WHERE id = ${id} AND owner_id = ${ownerId}
             RETURNING id, name, author_credit AS authorCredit, updated_at AS updatedAt`,
         );
+      }, writeUnavailable),
+      listCharacters: Effect.fn("D1ScriptStore.listCharacters")(function* (ownerId, scriptId) {
+        return yield* Schema.decodeUnknownEffect(CharacterRows)(
+          yield* sql`SELECT c.id, c.name, c.ability, c.team FROM characters c
+          JOIN scripts s ON s.id = c.script_id
+          WHERE s.id = ${scriptId} AND s.owner_id = ${ownerId} ORDER BY c.id`,
+        );
+      }, readUnavailable),
+      insertCharacter: Effect.fn("D1ScriptStore.insertCharacter")(function* (
+        ownerId,
+        scriptId,
+        character,
+        now,
+      ) {
+        const results = yield* d1.batch([
+          sql`INSERT INTO characters (id, script_id, name, ability, team)
+          SELECT ${character.id}, id, ${character.name}, ${character.ability}, ${character.team}
+          FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId}`,
+          sql`UPDATE scripts SET updated_at = ${now}
+          WHERE id = ${scriptId} AND owner_id = ${ownerId}`,
+          sql`SELECT id, name, ability, team FROM characters WHERE id = ${character.id}`,
+        ]);
+
+        return yield* firstCharacter(results[2]);
+      }, writeUnavailable),
+      updateCharacter: Effect.fn("D1ScriptStore.updateCharacter")(function* (
+        ownerId,
+        scriptId,
+        id,
+        details,
+        now,
+      ) {
+        const results = yield* d1.batch([
+          sql`UPDATE scripts SET updated_at = ${now}
+          WHERE id = ${scriptId} AND owner_id = ${ownerId}
+            AND EXISTS (SELECT 1 FROM characters WHERE id = ${id} AND script_id = ${scriptId})`,
+          sql`UPDATE characters SET name = ${details.name}, ability = ${details.ability}, team = ${details.team}
+          WHERE id = ${id} AND script_id IN (SELECT id FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId})
+          RETURNING id, name, ability, team`,
+        ]);
+
+        return yield* firstCharacter(results[1]);
+      }, writeUnavailable),
+      deleteCharacter: Effect.fn("D1ScriptStore.deleteCharacter")(function* (
+        ownerId,
+        scriptId,
+        id,
+        now,
+      ) {
+        const results = yield* d1.batch([
+          sql`UPDATE scripts SET updated_at = ${now}
+          WHERE id = ${scriptId} AND owner_id = ${ownerId}
+            AND EXISTS (SELECT 1 FROM characters WHERE id = ${id} AND script_id = ${scriptId})`,
+          sql`DELETE FROM characters
+          WHERE id = ${id} AND script_id IN (SELECT id FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId})
+          RETURNING id`,
+        ]);
+
+        return results[1].length > 0;
       }, writeUnavailable),
     });
   }),

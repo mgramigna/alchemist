@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { PublicCharacter } from "./character.ts";
 
 export const ScriptId = Schema.String.check(Schema.isPattern(/^[0-7][0-9a-hjkmnp-tv-z]{25}$/)).pipe(
   Schema.brand("ScriptId"),
@@ -33,12 +34,11 @@ export const OwnedScript = Schema.Struct({
 
 export interface OwnedScript extends Schema.Schema.Type<typeof OwnedScript> {}
 
-// This slice supports empty Scripts. Character fields arrive with the authoring slice.
 export const PublicScript = Schema.Struct({
   id: ScriptId,
   name: Schema.String,
   authorCredit: Schema.String,
-  characters: Schema.Array(Schema.Never),
+  characters: Schema.Array(PublicCharacter),
 });
 
 export interface PublicScript extends Schema.Schema.Type<typeof PublicScript> {}

@@ -3,6 +3,8 @@ import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-rout
 import { Effect, Option, Schema } from "effect";
 import { AtomRegistry } from "effect/reactivity";
 import { publicScript } from "../../../api.ts";
+import { CharacterToken } from "../../../components/characters.tsx";
+import { characterTitle, groupByTeam, teamPluralLabel } from "../../../lib/characters.ts";
 import { Button, buttonVariants } from "../../../components/ui/button.tsx";
 
 export const Route = createFileRoute("/scripts/$scriptId/")({
@@ -87,11 +89,44 @@ function PublicScript() {
             {script.characters.length} Characters
           </span>
         </div>
-        <div className="flex flex-col gap-3 px-5 py-12 text-center">
-          <h3 className="text-xl font-medium">A story waiting for its Characters</h3>
-          <p>This Script has no Characters yet.</p>
-          <p className="text-muted-foreground">Come back when the Script Owner has added some.</p>
-        </div>
+        {script.characters.length === 0 ? (
+          <div className="flex flex-col gap-3 px-5 py-12 text-center">
+            <h3 className="text-xl font-medium">A story waiting for its Characters</h3>
+            <p>This Script has no Characters yet.</p>
+            <p className="text-muted-foreground">Come back when the Script Owner has added some.</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-6 p-5">
+            {groupByTeam(script.characters)
+              .filter(({ characters }) => characters.length > 0)
+              .map(({ team, characters }) => (
+                <section
+                  key={team}
+                  aria-label={teamPluralLabel(team)}
+                  className="flex flex-col gap-2"
+                >
+                  <h3 className="text-sm font-medium tracking-wide text-muted-foreground uppercase">
+                    {teamPluralLabel(team)}
+                  </h3>
+                  <ul className="flex flex-col gap-3">
+                    {characters.map((character) => (
+                      <li key={character.id} className="flex items-start gap-3">
+                        <CharacterToken team={character.team} className="size-10" />
+                        <div className="flex min-w-0 flex-col">
+                          <span className="font-medium wrap-anywhere">
+                            {characterTitle(character)}
+                          </span>
+                          <span className="text-sm wrap-anywhere text-muted-foreground">
+                            {character.ability}
+                          </span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+          </div>
+        )}
       </section>
     </article>
   );
