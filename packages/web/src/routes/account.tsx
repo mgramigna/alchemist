@@ -81,7 +81,7 @@ function LoadFailed({ onRetry }: { readonly onRetry: () => void }) {
         <EmptyMedia variant="icon" className="bg-destructive/10 text-destructive">
           <WarningCircleIcon />
         </EmptyMedia>
-        <EmptyTitle className="text-lg">Could not load your account</EmptyTitle>
+        <EmptyTitle className="text-lg">Couldn’t load your account</EmptyTitle>
         <EmptyDescription>Your connection or the server may be unavailable.</EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
@@ -167,7 +167,7 @@ function ProfileCard({ user }: { readonly user: User }) {
                 className="mr-auto flex items-center gap-1.5 text-sm text-destructive"
               >
                 <WarningCircleIcon className="size-4 shrink-0" />
-                Could not save your name. Try again, or sign in again if your session expired.
+                Couldn’t save your name. Try again, or sign in again if your session expired.
               </p>
             )}
             <form.SubmitButton requireChanges pendingLabel="Saving…">

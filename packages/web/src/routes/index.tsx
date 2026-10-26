@@ -110,7 +110,7 @@ function NewScriptButton() {
       </Button>
       {AsyncResult.isFailure(result) && !result.waiting && (
         <p role="alert" className="text-sm text-destructive">
-          Could not create a Script. Try again.
+          Couldn’t create a Script. Try again.
         </p>
       )}
     </div>
@@ -180,7 +180,7 @@ function ListFailed({ onRetry }: { readonly onRetry: () => void }) {
         <EmptyMedia variant="icon" className="bg-destructive/10 text-destructive">
           <WarningCircleIcon />
         </EmptyMedia>
-        <EmptyTitle className="text-lg">Could not load your Scripts</EmptyTitle>
+        <EmptyTitle className="text-lg">Couldn’t load your Scripts</EmptyTitle>
         <EmptyDescription>Your connection or the server may be unavailable.</EmptyDescription>
       </EmptyHeader>
       <EmptyContent>

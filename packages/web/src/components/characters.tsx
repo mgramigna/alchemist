@@ -1,4 +1,3 @@
-import { textLength } from "@alchemist/domain";
 import {
   FLAVOR_EXPORT_LIMIT,
   flavorBlocker,
@@ -25,8 +24,9 @@ import {
 import { ArrowRightIcon, PlusIcon, ScrollIcon, TrashIcon } from "@phosphor-icons/react";
 import { useId, type ReactNode } from "react";
 import { cn } from "cn";
-import { ReminderTokenList, REMINDER_TITLES } from "./reminder-tokens.tsx";
+import { ReminderTokenList } from "./reminder-tokens.tsx";
 import { CharacterToken } from "./character-token.tsx";
+import { Counter } from "./counter.tsx";
 import { JinxPreview } from "./jinxes.tsx";
 import { useAppForm } from "../hooks/form.ts";
 import {
@@ -36,6 +36,7 @@ import {
   teamLabel,
   teamPluralLabel,
 } from "../lib/characters.ts";
+import { fieldLabel } from "../lib/fields.ts";
 import { INSTRUCTIONS_FIELD, NIGHT_LABELS, positionSummary } from "../lib/night.ts";
 import { Badge } from "./ui/badge.tsx";
 import { Button } from "./ui/button.tsx";
@@ -205,15 +206,7 @@ export function ExportBlockerList({
                     <span className="text-destructive">
                       {blocker.field === "jinx"
                         ? `Jinx with ${other ? characterTitle(other) : "another Character"}: `
-                        : blocker.field === "reminders" || blocker.field === "remindersGlobal"
-                          ? `${REMINDER_TITLES[blocker.field]}${blocker.tokenIndex === undefined ? "" : `, token ${blocker.tokenIndex + 1}`}: `
-                          : blocker.field === "flavor"
-                            ? "Flavor text: "
-                            : blocker.field === "firstNightInstructions"
-                              ? "First Night instructions: "
-                              : blocker.field === "otherNightInstructions"
-                                ? "Other Nights instructions: "
-                                : `${blocker.field}: `}
+                        : `${fieldLabel(blocker.field)}${blocker.tokenIndex === undefined ? "" : `, token ${blocker.tokenIndex + 1}`}: `}
                       {blocker.message}
                     </span>
                   </span>
@@ -227,17 +220,7 @@ export function ExportBlockerList({
   );
 }
 
-// Export limits are not enforced while typing, so drafts can run over them.
-function Counter({ value, limit }: { readonly value: string; readonly limit: number }) {
-  return (
-    <span className={cn("tabular-nums", textLength(value) > limit && "text-destructive")}>
-      {textLength(value)}/{limit} characters
-    </span>
-  );
-}
-
-const selectClass =
-  "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30 dark:*:bg-popover";
+const TEAM_OPTIONS = AuthoredTeam.literals.map((team) => ({ value: team, label: teamLabel(team) }));
 
 /**
  * Name, Team, ability and night actions for one Character. Edits flow out as
@@ -289,9 +272,12 @@ export function CharacterForm({
         aria-labelledby="character-title"
         className="flex min-w-0 flex-col gap-6 rounded-xl border border-border bg-card p-5 lg:col-span-5"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <CharacterToken team={character.team} className="size-11" />
-          <h2 id="character-title" className="min-w-0 flex-1 text-xl font-semibold wrap-anywhere">
+          <h2
+            id="character-title"
+            className="min-w-0 flex-1 basis-40 text-xl font-semibold wrap-anywhere"
+          >
             {characterTitle(character)}
           </h2>
           <Button variant="ghost" size="sm" className="text-destructive" onClick={onDelete}>
@@ -315,30 +301,7 @@ export function CharacterForm({
             )}
           </form.AppField>
           <form.AppField name="team">
-            {(field) => (
-              <field.Control label="Team">
-                {(control) => (
-                  <select
-                    {...control}
-                    className={selectClass}
-                    value={field.state.value}
-                    onChange={(event) => {
-                      const team = AuthoredTeam.literals.find(
-                        (candidate) => candidate === event.target.value,
-                      );
-
-                      if (team) field.handleChange(team);
-                    }}
-                  >
-                    {AuthoredTeam.literals.map((team) => (
-                      <option key={team} value={team}>
-                        {teamLabel(team)}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </field.Control>
-            )}
+            {(field) => <field.SelectField label="Team" options={TEAM_OPTIONS} />}
           </form.AppField>
         </div>
         <form.AppField

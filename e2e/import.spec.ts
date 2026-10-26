@@ -212,13 +212,13 @@ test("review and commit failures keep the original input and allow retry", async
   state.failReview = true;
   await page.getByLabel("Or paste JSON").fill(fixture);
   await page.getByRole("button", { name: "Review import" }).click();
-  await expect(page.getByRole("alert")).toContainText("Could not review");
+  await expect(page.getByRole("alert")).toContainText("Couldn’t review");
   await expect(page.getByLabel("Or paste JSON")).toHaveValue(fixture);
   state.failReview = false;
   await page.getByRole("button", { name: "Review import" }).click();
   state.failCommit = true;
   await page.getByRole("button", { name: "Import Script", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("Could not import");
+  await expect(page.getByRole("alert")).toContainText("Couldn’t import");
   state.failCommit = false;
   await page.getByRole("button", { name: "Import Script", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/scripts/${id}/edit$`));
