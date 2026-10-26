@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AccountRouteImport } from './routes/account'
 import { Route as ScriptsScriptIdRouteImport } from './routes/scripts/$scriptId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountRoute = AccountRouteImport.update({
+  id: '/account',
+  path: '/account',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ScriptsScriptIdRoute = ScriptsScriptIdRouteImport.update({
@@ -25,27 +31,31 @@ const ScriptsScriptIdRoute = ScriptsScriptIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/scripts/$scriptId': typeof ScriptsScriptIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/scripts/$scriptId': typeof ScriptsScriptIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/scripts/$scriptId': typeof ScriptsScriptIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/scripts/$scriptId'
+  fullPaths: '/' | '/account' | '/scripts/$scriptId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/scripts/$scriptId'
-  id: '__root__' | '/' | '/scripts/$scriptId'
+  to: '/' | '/account' | '/scripts/$scriptId'
+  id: '__root__' | '/' | '/account' | '/scripts/$scriptId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AccountRoute: typeof AccountRoute
   ScriptsScriptIdRoute: typeof ScriptsScriptIdRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account': {
+      id: '/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AccountRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/scripts/$scriptId': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AccountRoute: AccountRoute,
   ScriptsScriptIdRoute: ScriptsScriptIdRoute,
 }
 export const routeTree = rootRouteImport

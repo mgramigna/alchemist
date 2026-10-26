@@ -6,6 +6,9 @@ import {
 } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 
+import { AccountMenu } from "../components/account.tsx";
+import { Button, buttonVariants } from "../components/ui/button.tsx";
+import { Toaster } from "../components/ui/sonner.tsx";
 import type { RouterContext } from "../router.tsx";
 
 export const Route = createRootRouteWithContext<RouterContext>()({
@@ -17,24 +20,36 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 function RootLayout() {
   return (
     <div className="flex min-h-screen flex-col font-sans">
-      <a className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4" href="#main">
+      <a
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-lg focus:bg-background focus:px-3 focus:py-2 focus:ring-3 focus:ring-ring/50"
+        href="#main"
+      >
         Skip to content
       </a>
-      <header className="px-6 md:px-12 lg:px-20 py-6">
-        <Link
-          className="font-heading tracking-brand no-underline"
-          to="/"
-          aria-label="Alchemist home"
-        >
-          <span aria-hidden="true">◈</span> ALCHEMIST
-        </Link>
+      <header className="border-b border-border">
+        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-6 md:px-12">
+          <Link
+            className="font-heading text-lg tracking-brand no-underline"
+            to="/"
+            aria-label="Alchemist home"
+          >
+            <span aria-hidden="true" className="text-accent-foreground">
+              ◈
+            </span>{" "}
+            ALCHEMIST
+          </Link>
+          <AccountMenu />
+        </div>
       </header>
-      <main id="main" className="flex-1 px-6 md:px-12 lg:px-20 py-12">
+      <main id="main" className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-12 md:px-12">
         <Outlet />
       </main>
-      <footer className="px-6 md:px-12 lg:px-20 py-6 text-sm">
-        Alchemist is not affiliated with The Pandemonium Institute.
+      <footer className="border-t border-border">
+        <div className="mx-auto w-full max-w-6xl px-6 py-6 text-sm text-muted-foreground md:px-12">
+          Alchemist is not affiliated with The Pandemonium Institute.
+        </div>
       </footer>
+      <Toaster position="bottom-center" />
       {import.meta.env.DEV && <TanStackRouterDevtools position="bottom-right" />}
     </div>
   );
@@ -42,21 +57,23 @@ function RootLayout() {
 
 function NotFound() {
   return (
-    <section className="flex flex-col gap-4">
+    <section className="flex flex-col items-start gap-4">
       <h1 className="text-3xl font-semibold">Page not found</h1>
-      <p>This link may be incorrect.</p>
-      <Link to="/">Go home</Link>
+      <p className="text-muted-foreground">This link may be incorrect.</p>
+      <Link className={buttonVariants({ variant: "outline" })} to="/">
+        Go home
+      </Link>
     </section>
   );
 }
 
 function RouteError({ reset }: ErrorComponentProps) {
   return (
-    <section className="flex flex-col gap-4" role="alert">
+    <section className="flex flex-col items-start gap-4" role="alert">
       <h1 className="text-3xl font-semibold">Something went wrong</h1>
-      <button type="button" onClick={reset}>
+      <Button variant="outline" onClick={reset}>
         Try again
-      </button>
+      </Button>
     </section>
   );
 }
