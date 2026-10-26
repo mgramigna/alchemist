@@ -6,6 +6,7 @@ import { Cause, Exit, Result, Schema } from "effect";
 import { useCallback, useId, useState } from "react";
 import { importScript, reviewScriptImport, ScriptKeys } from "../api.ts";
 import { characterTitle } from "../lib/characters.ts";
+import { fieldLabel } from "../lib/fields.ts";
 import { useAppForm } from "../hooks/form.ts";
 import { Badge } from "./ui/badge.tsx";
 import { Button } from "./ui/button.tsx";
@@ -22,23 +23,6 @@ import {
 } from "./ui/sheet.tsx";
 import { Spinner } from "./ui/spinner.tsx";
 import { Textarea } from "./ui/textarea.tsx";
-
-const IMPORT_FIELD_LABELS = new Map([
-  ["name", "Name"],
-  ["ability", "Ability"],
-  ["authorCredit", "Author Credit"],
-  ["firstNightInstructions", "First Night instructions"],
-  ["otherNightInstructions", "Other Nights instructions"],
-  ["firstNight", "First Night"],
-  ["otherNight", "Other Nights"],
-  ["reminders", "Reminder Tokens"],
-  ["remindersGlobal", "Global Reminder Tokens"],
-  ["flavor", "Flavor text"],
-  ["characters", "Characters"],
-  ["jinx", "Jinx"],
-  ["id", "Character ID"],
-  ["schema", "JSON format"],
-]);
 
 export function ImportScriptButton() {
   const [open, setOpen] = useState(false);
@@ -97,7 +81,7 @@ function ImportScriptForm({ onDone }: { readonly onDone: () => void }) {
         setAcknowledged(false);
       } else
         setError(
-          "Could not review this JSON. Check your connection and sign-in, then try again. Your input is kept here.",
+          "Couldn’t review this JSON. Check your connection and sign-in, then try again. Your input is kept here.",
         );
     },
   });
@@ -134,7 +118,7 @@ function ImportScriptForm({ onDone }: { readonly onDone: () => void }) {
                   try {
                     form.setFieldValue("json", await file.text());
                   } catch {
-                    setError("Could not read this file. Choose it again or paste the JSON below.");
+                    setError("Couldn’t read this file. Choose it again or paste the JSON below.");
                   } finally {
                     setReading(false);
                   }
@@ -221,7 +205,7 @@ function ImportScriptForm({ onDone }: { readonly onDone: () => void }) {
                     ({ id }) => id === problem.characterId,
                   );
 
-                  const label = IMPORT_FIELD_LABELS.get(problem.field) ?? problem.field;
+                  const label = fieldLabel(problem.field);
 
                   const token =
                     problem.tokenIndex === undefined ? "" : `, token ${problem.tokenIndex + 1}`;
@@ -297,7 +281,7 @@ function ImportScriptForm({ onDone }: { readonly onDone: () => void }) {
                   setError(
                     Result.isSuccess(reason) && Schema.is(ScriptImportInvalid)(reason.success)
                       ? reason.success.messages.join(" ")
-                      : "Could not import this Script. Check your connection and sign-in, then try again. Your JSON is kept here.",
+                      : "Couldn’t import this Script. Check your connection and sign-in, then try again. Your JSON is kept here.",
                   );
                 }
               }}

@@ -1,4 +1,3 @@
-import { textLength } from "@alchemist/domain";
 import {
   JINX_EXPLANATION_EXPORT_LIMIT,
   explanationBlocker,
@@ -14,6 +13,7 @@ import { useId, useState } from "react";
 import { useAppForm } from "../hooks/form.ts";
 import { characterTitle } from "../lib/characters.ts";
 import { CharacterToken } from "./character-token.tsx";
+import { Counter } from "./counter.tsx";
 import { Button } from "./ui/button.tsx";
 import {
   DropdownMenu,
@@ -212,7 +212,9 @@ function JinxFields({
               className="max-h-64 overflow-y-auto"
               label="Jinx explanation"
               autoFocus={autoFocus}
-              description={`${textLength(field.state.value)}/${JINX_EXPLANATION_EXPORT_LIMIT} characters · Drafts save even when invalid.`}
+              description={
+                <Counter value={field.state.value} limit={JINX_EXPLANATION_EXPORT_LIMIT} />
+              }
               maxLength={2000}
               rows={3}
             />
@@ -244,7 +246,9 @@ export function JinxPreview({
           <li key={jinxKey(jinx)} className="flex min-w-0 flex-col gap-1.5">
             <PairNames jinx={jinx} characters={characters} />
             <p className="text-sm whitespace-pre-wrap wrap-anywhere">
-              {jinx.explanation.trim() || "Add an explanation for this Jinx."}
+              {jinx.explanation.trim() || (
+                <em className="text-muted-foreground">No explanation yet</em>
+              )}
             </p>
           </li>
         ))}

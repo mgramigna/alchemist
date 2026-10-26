@@ -208,7 +208,7 @@ export function NightOrderEditor({
             >
               <DotsSixVerticalIcon
                 aria-hidden="true"
-                className="mt-2 size-4 shrink-0 cursor-grab text-muted-foreground"
+                className="mt-2 hidden size-4 shrink-0 cursor-grab text-muted-foreground sm:block"
               />
               <span className="mt-1.5 w-5 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
                 {index + 1}

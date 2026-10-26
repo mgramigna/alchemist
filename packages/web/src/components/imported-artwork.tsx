@@ -28,7 +28,7 @@ export function ImportedArtworkNotice({
     ),
     onError: () => (
       <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
-        Could not check imported artwork.
+        Couldn’t check imported artwork.
         <Button variant="outline" size="sm" onClick={refresh}>
           Try again
         </Button>
@@ -36,7 +36,7 @@ export function ImportedArtworkNotice({
     ),
     onDefect: () => (
       <p role="alert" className="text-sm text-destructive">
-        Could not check imported artwork. Reload to try again.
+        Couldn’t check imported artwork. Reload to try again.
       </p>
     ),
     onSuccess: ({ value }) => {
@@ -118,7 +118,7 @@ export function ImportedArtworkNotice({
           </ul>
           {AsyncResult.isFailure(repair) && !repair.waiting && (
             <p role="alert" className="text-sm text-destructive">
-              Could not update artwork. Your references are kept; try again.
+              Couldn’t update artwork. Your references are kept; try again.
             </p>
           )}
         </section>

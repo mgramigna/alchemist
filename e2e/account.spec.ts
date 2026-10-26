@@ -84,7 +84,7 @@ test("profile edit validates, retains failed input, retries with the keyboard, a
   await expect(input).toHaveAttribute("aria-invalid", "true");
   await input.fill("Chosen name");
   await save.click();
-  await expect(page.getByRole("alert")).toContainText("Could not save your name");
+  await expect(page.getByRole("alert")).toContainText("Couldn’t save your name");
   await expect(input).toHaveValue("Chosen name");
   fail = false;
   await save.focus();
@@ -115,7 +115,7 @@ test("account loading and failure states announce progress and allow retry", asy
   await page.goto("/account");
   await expect(page.getByRole("status")).toContainText("Checking your session");
   release();
-  await expect(page.getByRole("alert")).toContainText("Could not load your account");
+  await expect(page.getByRole("alert")).toContainText("Couldn’t load your account");
   await expect(page.getByRole("button", { name: "Retry sign-in check" })).toBeVisible();
   await page.unroute(accountRpc);
   await page.getByRole("button", { name: "Try again" }).click();

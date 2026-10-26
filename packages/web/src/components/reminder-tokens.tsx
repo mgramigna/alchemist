@@ -1,4 +1,3 @@
-import { textLength } from "@alchemist/domain";
 import {
   REMINDER_COUNT_LIMIT,
   REMINDER_LABEL_LIMIT,
@@ -8,14 +7,11 @@ import {
 } from "@alchemist/domain";
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, XIcon } from "@phosphor-icons/react";
 import { useId, useLayoutEffect, useRef, useState } from "react";
+import { REMINDER_TITLES } from "../lib/fields.ts";
+import { Counter } from "./counter.tsx";
 import { Button } from "./ui/button.tsx";
 import { Field, FieldDescription, FieldError, FieldLabel } from "./ui/field.tsx";
 import { Input } from "./ui/input.tsx";
-
-export const REMINDER_TITLES = {
-  reminders: "Reminder Tokens",
-  remindersGlobal: "Global Reminder Tokens",
-} as const;
 
 /** Ordered draft labels. Positions identify rows so duplicate labels stay independent. */
 export function ReminderTokenList({
@@ -70,6 +66,7 @@ export function ReminderTokenList({
           variant="outline"
           size="sm"
           data-token-control="add"
+          aria-label={`Add ${field === "reminders" ? "Reminder Token" : "Global Reminder Token"}`}
           disabled={value.length >= 100}
           onClick={() => {
             onChange([...value, ""]);
@@ -78,7 +75,7 @@ export function ReminderTokenList({
           }}
         >
           <PlusIcon />
-          Add {field === "reminders" ? "Reminder Token" : "Global Reminder Token"}
+          Add
         </Button>
       </div>
       <p className="text-sm text-muted-foreground">
@@ -120,7 +117,7 @@ export function ReminderTokenList({
                     }
                   />
                   <FieldDescription id={`${inputId}-count`} className="text-xs">
-                    {textLength(label)}/{REMINDER_LABEL_LIMIT[field]} characters
+                    <Counter value={label} limit={REMINDER_LABEL_LIMIT[field]} />
                   </FieldDescription>
                   {error && <FieldError id={`${inputId}-error`}>{error}</FieldError>}
                 </Field>

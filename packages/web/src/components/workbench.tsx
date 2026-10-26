@@ -21,6 +21,7 @@ import {
   CaretLeftIcon,
   CheckCircleIcon,
   CopyIcon,
+  DownloadSimpleIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react";
 import { useSelector } from "@tanstack/react-form";
@@ -44,6 +45,7 @@ import { JinxEditor } from "./jinxes.tsx";
 import { useCharacters } from "../hooks/use-characters.ts";
 import { useNightOrders } from "../hooks/use-night-orders.ts";
 import { characterTitle } from "../lib/characters.ts";
+import { fieldLabel } from "../lib/fields.ts";
 import { NIGHT_LABELS } from "../lib/night.ts";
 import { scriptTitle } from "../lib/script.ts";
 import { createAutosave, type SaveStatus } from "../lib/autosave.ts";
@@ -352,7 +354,7 @@ export function Workbench({
               })}
             </ul>
           </section>
-          <div className="border-t px-3 pt-3">
+          <div className="flex flex-col items-start gap-2 border-t px-3 pt-3">
             {problems.length === 0 ? (
               <p className="text-muted-foreground">Ready to export</p>
             ) : (
@@ -363,21 +365,17 @@ export function Workbench({
                   : `${problems.length} problems block export`}
               </Button>
             )}
-            <Button
-              type="button"
-              className="mt-3"
-              onClick={() => void downloadJson()}
-              disabled={exporting}
-            >
-              {exporting && <Spinner />}Download JSON
+            <Button type="button" onClick={() => void downloadJson()} disabled={exporting}>
+              {exporting ? <Spinner /> : <DownloadSimpleIcon />}
+              Download JSON
             </Button>
             {(status !== "saved" || structuralPending) && (
-              <p className="mt-2 text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 Save all changes before downloading. Retry failed saves first.
               </p>
             )}
             {exportError && (
-              <p role="alert" className="mt-2 text-sm text-destructive">
+              <p role="alert" className="text-sm text-destructive">
                 {exportError}
               </p>
             )}
@@ -450,7 +448,8 @@ export function Workbench({
                               ?.focus();
                         }}
                       >
-                        {problem.field}: {problem.message}
+                        {problem.field === "name" ? "Script name" : fieldLabel(problem.field)}:{" "}
+                        {problem.message}
                       </button>
                     </li>
                   ))}
