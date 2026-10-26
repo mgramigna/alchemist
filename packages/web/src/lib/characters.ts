@@ -1,0 +1,53 @@
+import {
+  AuthoredTeam,
+  type Character,
+  type CharacterId,
+  type IconVariant,
+  type PublicCharacter,
+} from "@alchemist/domain";
+
+const TEAM_LABELS: Record<AuthoredTeam, { readonly one: string; readonly many: string }> = {
+  townsfolk: { one: "Townsfolk", many: "Townsfolk" },
+  outsider: { one: "Outsider", many: "Outsiders" },
+  minion: { one: "Minion", many: "Minions" },
+  demon: { one: "Demon", many: "Demons" },
+  traveller: { one: "Traveller", many: "Travellers" },
+};
+
+export const teamLabel = (team: AuthoredTeam) => TEAM_LABELS[team].one;
+
+export const teamPluralLabel = (team: AuthoredTeam) => TEAM_LABELS[team].many;
+
+export const ICON_VARIANT_LABELS: Record<IconVariant, string> = {
+  regular: "Regular",
+  flipped: "Flipped",
+  unaligned: "Unaligned",
+  good: "Good",
+  evil: "Evil",
+};
+
+export const characterTitle = ({ name, team }: Pick<Character, "name" | "team">) =>
+  name.trim() || `Unnamed ${teamLabel(team)}`;
+
+/** Characters of each authored Team, in creation order. */
+export const groupByTeam = <C extends Pick<PublicCharacter, "team">>(
+  characters: ReadonlyArray<C>,
+) =>
+  AuthoredTeam.literals.map((team) => ({
+    team,
+    characters: characters.filter((character) => character.team === team),
+  }));
+
+export const sameDetails = (a: Character, b: Character) =>
+  a.name === b.name && a.ability === b.ability && a.team === b.team;
+
+export const replaceCharacter = (
+  characters: ReadonlyArray<Character>,
+  id: CharacterId,
+  details: Pick<Character, "name" | "ability" | "team">,
+) =>
+  characters.map((character) =>
+    character.id === id
+      ? { id, name: details.name, ability: details.ability, team: details.team }
+      : character,
+  );

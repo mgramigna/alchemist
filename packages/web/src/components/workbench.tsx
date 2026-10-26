@@ -1,22 +1,33 @@
 import { useAtomSet } from "@effect/atom-react";
-import { AuthorCredit, ScriptName, type OwnedScript, type ScriptDetails } from "@alchemist/domain";
+import {
+  AuthorCredit,
+  ScriptName,
+  exportBlockers,
+  type AuthoredTeam,
+  type Character,
+  type CharacterId,
+  type OwnedScript,
+  type ScriptDetails,
+} from "@alchemist/domain";
 import {
   ArrowSquareOutIcon,
   CaretLeftIcon,
   CheckCircleIcon,
   CopyIcon,
-  ScrollIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react";
 import { useSelector } from "@tanstack/react-form";
 import { Link, useBlocker } from "@tanstack/react-router";
+import { cn } from "cn";
 import { Exit, Schema } from "effect";
 import { useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { ScriptKeys, updateScriptDetails } from "../api.ts";
 import { useAppForm } from "../hooks/form.ts";
+import { useCharacters } from "../hooks/use-characters.ts";
+import { characterTitle } from "../lib/characters.ts";
 import { scriptTitle } from "../lib/script.ts";
-import { createAutosave, type Autosave, type SaveStatus } from "../lib/autosave.ts";
+import { createAutosave, type SaveStatus } from "../lib/autosave.ts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,18 +38,32 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./ui/alert-dialog.tsx";
+import {
+  CharacterForm,
+  CharacterNavigator,
+  ExportBlockerList,
+  SheetPreview,
+} from "./characters.tsx";
 import { Button, buttonVariants } from "./ui/button.tsx";
 import { Input } from "./ui/input.tsx";
 import { Spinner } from "./ui/spinner.tsx";
 
 const SAVE_DELAY_MS = 800;
-const TEAMS = ["Townsfolk", "Outsiders", "Minions", "Demons", "Travellers"] as const;
 
 const ScriptNameInput = Schema.toStandardSchemaV1(ScriptName);
 const AuthorCreditInput = Schema.toStandardSchemaV1(AuthorCredit);
 
+const combinedStatus = (...statuses: ReadonlyArray<SaveStatus>): SaveStatus =>
+  statuses.includes("failed") ? "failed" : statuses.includes("pending") ? "pending" : "saved";
+
 /** The owner's editor: navigator, focused form and live preview. */
-export function Workbench({ script }: { readonly script: OwnedScript }) {
+export function Workbench({
+  script,
+  characters: initialCharacters,
+}: {
+  readonly script: OwnedScript;
+  readonly characters: ReadonlyArray<Character>;
+}) {
   const update = useAtomSet(updateScriptDetails, { mode: "promiseExit" });
   const updateRef = useRef(update);
   updateRef.current = update;
@@ -56,7 +81,16 @@ export function Workbench({ script }: { readonly script: OwnedScript }) {
     ),
   );
 
-  const status = useSyncExternalStore(autosave.subscribe, autosave.status);
+  const detailsStatus = useSyncExternalStore(autosave.subscribe, autosave.status);
+  const roster = useCharacters(script.id, initialCharacters, SAVE_DELAY_MS);
+  const status = combinedStatus(detailsStatus, roster.status);
+  const unsaved = () => autosave.status() !== "saved" || roster.autosave.status() !== "saved";
+
+  // null selects the Script details.
+  const [selectedId, setSelectedId] = useState<CharacterId | null>(null);
+  const [addedId, setAddedId] = useState<CharacterId | null>(null);
+  const [adding, setAdding] = useState<AuthoredTeam | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Character | null>(null);
 
   const form = useAppForm({
     defaultValues: { name: script.name, authorCredit: script.authorCredit },
@@ -68,10 +102,43 @@ export function Workbench({ script }: { readonly script: OwnedScript }) {
   const values = useSelector(form.store, (state) => state.values);
 
   const blocker = useBlocker({
-    shouldBlockFn: () => autosave.status() !== "saved",
-    enableBeforeUnload: () => autosave.status() !== "saved",
+    shouldBlockFn: unsaved,
+    enableBeforeUnload: unsaved,
     withResolver: true,
   });
+
+  const { characters } = roster;
+  const blockers = exportBlockers(characters);
+  const selected = characters.find((character) => character.id === selectedId);
+
+  const add = async (team: AuthoredTeam) => {
+    setAdding(team);
+
+    const added = await roster.add(team);
+
+    setAdding(null);
+
+    if (added === undefined) {
+      toast.error("Couldn’t add the Character. Try again.");
+
+      return;
+    }
+
+    setAddedId(added.id);
+    setSelectedId(added.id);
+  };
+
+  const remove = async (character: Character) => {
+    if (!(await roster.remove(character.id))) {
+      toast.error("Couldn’t delete the Character. Try again.");
+
+      return;
+    }
+
+    setDeleteTarget(null);
+    setSelectedId(null);
+    toast.success(`Deleted ${characterTitle(character)}`);
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -86,43 +153,120 @@ export function Workbench({ script }: { readonly script: OwnedScript }) {
           </Link>
           <h1 className="text-2xl font-semibold wrap-anywhere">{scriptTitle(values.name)}</h1>
         </div>
-        <SaveIndicator status={status} autosave={autosave} />
+        <SaveIndicator
+          status={status}
+          retry={() => {
+            autosave.retry();
+            roster.autosave.retry();
+          }}
+        />
       </header>
       <div className="grid gap-6 lg:grid-cols-12">
-        <Navigator />
-        <form.AppForm>
-          <form.Form
-            aria-labelledby="details-title"
-            className="flex min-w-0 flex-col gap-6 rounded-xl border border-border bg-card p-5 lg:col-span-5"
+        <nav
+          aria-label="Script sections"
+          className="flex min-w-0 flex-col gap-4 text-sm lg:col-span-3"
+        >
+          <button
+            type="button"
+            aria-current={selected === undefined ? "true" : undefined}
+            onClick={() => setSelectedId(null)}
+            className={cn(
+              "flex flex-col rounded-lg px-3 py-2 text-left hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+              selected === undefined && "bg-muted",
+            )}
           >
-            <div className="flex flex-col gap-1">
-              <h2 id="details-title" className="text-xl font-semibold">
-                Script details
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Changes save automatically as you type.
-              </p>
-            </div>
-            <form.AppField name="name" validators={{ onChange: ScriptNameInput }}>
-              {(field) => (
-                <field.TextField label="Script name" maxLength={100} autoComplete="off" />
-              )}
-            </form.AppField>
-            <form.AppField name="authorCredit" validators={{ onChange: AuthorCreditInput }}>
-              {(field) => (
-                <field.TextField
-                  label="Author Credit"
-                  description="Shown on the shared page and in exports. Changing your display name won’t change it."
-                  maxLength={100}
-                  autoComplete="off"
-                />
-              )}
-            </form.AppField>
-            <ShareLink script={script} />
-          </form.Form>
-        </form.AppForm>
-        <Preview name={values.name} authorCredit={values.authorCredit} />
+            <span className="font-medium wrap-anywhere">{scriptTitle(values.name)}</span>
+            <span className="text-xs text-muted-foreground">Script details</span>
+          </button>
+          <CharacterNavigator
+            characters={characters}
+            blockers={blockers}
+            selectedId={selectedId}
+            adding={adding}
+            onSelect={setSelectedId}
+            onAdd={(team) => void add(team)}
+          />
+          <div className="border-t px-3 pt-3">
+            {blockers.length === 0 ? (
+              <p className="text-muted-foreground">Ready to export</p>
+            ) : (
+              <Button variant="destructive" size="sm" onClick={() => setSelectedId(null)}>
+                <WarningCircleIcon />
+                {blockers.length === 1
+                  ? "1 problem blocks export"
+                  : `${blockers.length} problems block export`}
+              </Button>
+            )}
+          </div>
+        </nav>
+        {selected === undefined ? (
+          <form.AppForm>
+            <form.Form
+              aria-labelledby="details-title"
+              className="flex min-w-0 flex-col gap-6 rounded-xl border border-border bg-card p-5 lg:col-span-5"
+            >
+              <div className="flex flex-col gap-1">
+                <h2 id="details-title" className="text-xl font-semibold">
+                  Script details
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Changes save automatically as you type.
+                </p>
+              </div>
+              <form.AppField name="name" validators={{ onChange: ScriptNameInput }}>
+                {(field) => (
+                  <field.TextField label="Script name" maxLength={100} autoComplete="off" />
+                )}
+              </form.AppField>
+              <form.AppField name="authorCredit" validators={{ onChange: AuthorCreditInput }}>
+                {(field) => (
+                  <field.TextField
+                    label="Author Credit"
+                    description="Shown on the shared page and in exports. Changing your display name won’t change it."
+                    maxLength={100}
+                    autoComplete="off"
+                  />
+                )}
+              </form.AppField>
+              <ExportBlockerList
+                characters={characters}
+                blockers={blockers}
+                onSelect={setSelectedId}
+              />
+              <ShareLink script={script} />
+            </form.Form>
+          </form.AppForm>
+        ) : (
+          <CharacterForm
+            key={selected.id}
+            character={selected}
+            otherNames={characters.flatMap(({ id, name }) => (id === selected.id ? [] : [name]))}
+            autoFocusName={selected.id === addedId}
+            onChange={(details) => roster.edit(selected.id, details)}
+            onDelete={() => setDeleteTarget(selected)}
+          />
+        )}
+        <aside
+          aria-labelledby="preview-title"
+          className="flex min-w-0 flex-col gap-3 lg:col-span-4"
+        >
+          <h2 id="preview-title" className="text-sm font-medium text-muted-foreground">
+            Preview
+          </h2>
+          <SheetPreview
+            name={values.name}
+            authorCredit={values.authorCredit}
+            characters={characters}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+          />
+        </aside>
       </div>
+      <DeleteCharacterDialog
+        character={deleteTarget}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={remove}
+      />
       <AlertDialog
         open={blocker.status === "blocked"}
         onOpenChange={(open) => {
@@ -150,12 +294,59 @@ export function Workbench({ script }: { readonly script: OwnedScript }) {
   );
 }
 
+function DeleteCharacterDialog({
+  character,
+  onCancel,
+  onConfirm,
+}: {
+  readonly character: Character | null;
+  readonly onCancel: () => void;
+  readonly onConfirm: (character: Character) => Promise<void>;
+}) {
+  const [pending, setPending] = useState(false);
+
+  return (
+    <AlertDialog
+      open={character !== null}
+      onOpenChange={(open) => {
+        if (!open && !pending) onCancel();
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete this Character?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {character && characterTitle(character)} and everything written for it will be removed
+            from the Script. This can’t be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={pending}>Keep</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            disabled={pending}
+            onClick={async () => {
+              if (character === null) return;
+              setPending(true);
+              await onConfirm(character);
+              setPending(false);
+            }}
+          >
+            {pending && <Spinner />}
+            Delete Character
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 function SaveIndicator({
   status,
-  autosave,
+  retry,
 }: {
   readonly status: SaveStatus;
-  readonly autosave: Autosave<ScriptDetails>;
+  readonly retry: () => void;
 }) {
   return (
     <div className="flex items-center gap-2 text-sm">
@@ -180,44 +371,11 @@ function SaveIndicator({
         )}
       </p>
       {status === "failed" && (
-        <Button variant="outline" size="sm" onClick={autosave.retry}>
+        <Button variant="outline" size="sm" onClick={retry}>
           Retry save
         </Button>
       )}
     </div>
-  );
-}
-
-function Navigator() {
-  return (
-    <nav aria-label="Script sections" className="flex min-w-0 flex-col gap-4 text-sm lg:col-span-3">
-      <ul className="flex flex-col gap-1">
-        <li>
-          <a
-            href="#details-title"
-            aria-current="page"
-            className="block rounded-lg bg-muted px-3 py-2 font-medium text-foreground no-underline"
-          >
-            Script details
-          </a>
-        </li>
-      </ul>
-      <div className="flex flex-col gap-1">
-        <h2 className="px-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          Characters
-        </h2>
-        <ul className="flex flex-wrap gap-x-3 gap-y-1 px-3 text-muted-foreground lg:flex-col">
-          {TEAMS.map((team) => (
-            <li key={team} className="flex items-center justify-between gap-2">
-              <span>{team}</span>
-              <span className="tabular-nums" aria-label={`0 ${team}`}>
-                0
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </nav>
   );
 }
 
@@ -267,27 +425,5 @@ function ShareLink({ script }: { readonly script: OwnedScript }) {
         </Link>
       </div>
     </section>
-  );
-}
-
-function Preview({ name, authorCredit }: { readonly name: string; readonly authorCredit: string }) {
-  return (
-    <aside aria-labelledby="preview-title" className="flex min-w-0 flex-col gap-3 lg:col-span-4">
-      <h2 id="preview-title" className="text-sm font-medium text-muted-foreground">
-        Preview
-      </h2>
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        <div className="flex flex-col items-center gap-1 bg-band px-4 py-5 text-center text-band-foreground">
-          <p className="font-heading text-xl wrap-anywhere">{scriptTitle(name)}</p>
-          <p className="text-xs wrap-anywhere opacity-80">
-            {authorCredit.trim() ? `by ${authorCredit}` : "Uncredited"}
-          </p>
-        </div>
-        <div className="flex flex-col items-center gap-2 px-4 py-10 text-center text-sm text-muted-foreground">
-          <ScrollIcon className="size-6" />
-          <p>Characters you add will appear on this sheet.</p>
-        </div>
-      </div>
-    </aside>
   );
 }

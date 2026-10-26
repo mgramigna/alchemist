@@ -1,5 +1,6 @@
 import {
   AuthRejected,
+  CharacterNotFound,
   AuthUnavailable,
   ScriptWriteUnavailable,
   PublicScript,
@@ -165,6 +166,67 @@ it.effect(
           assert.deepStrictEqual(
             yield* client["Script.readOwned"]({ id: created.id }).pipe(session(alice)),
             saved,
+          );
+        }),
+      ).pipe(Effect.provide(Layer.provideMerge(server, Layer.merge(a.layer, s.layer))));
+    }),
+);
+
+it.effect(
+  "Character RPCs require a session, scope to its owner and delete by returning the ID",
+  () =>
+    Effect.gen(function* () {
+      const a = yield* authFixture;
+      const s = yield* scriptsFixture;
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const client = yield* RpcTest.makeClient(Rpcs);
+          const alice = yield* signIn("alice");
+          const bob = yield* signIn("bob");
+
+          assert.instanceOf(
+            yield* client["Character.list"]({ scriptId: id }).pipe(Effect.flip),
+            AuthRejected,
+          );
+
+          const script = yield* client["Script.create"]().pipe(session(alice));
+
+          const character = yield* client["Character.create"]({
+            scriptId: script.id,
+            team: "minion",
+          }).pipe(session(alice));
+
+          const renamed = yield* client["Character.update"]({
+            scriptId: script.id,
+            id: character.id,
+            name: "Poisoner",
+            ability: "Each night, poison a player.",
+            team: "minion",
+          }).pipe(session(alice));
+
+          assert.deepStrictEqual(
+            yield* client["Character.list"]({ scriptId: script.id }).pipe(session(alice)),
+            [renamed],
+          );
+          assert.instanceOf(
+            yield* client["Character.list"]({ scriptId: script.id }).pipe(
+              session(bob),
+              Effect.flip,
+            ),
+            ScriptNotFound,
+          );
+          assert.instanceOf(
+            yield* client["Character.delete"]({ scriptId: script.id, id: character.id }).pipe(
+              session(bob),
+              Effect.flip,
+            ),
+            CharacterNotFound,
+          );
+          assert.strictEqual(
+            yield* client["Character.delete"]({ scriptId: script.id, id: character.id }).pipe(
+              session(alice),
+            ),
+            character.id,
           );
         }),
       ).pipe(Effect.provide(Layer.provideMerge(server, Layer.merge(a.layer, s.layer))));

@@ -35,3 +35,11 @@ export const ownedScript = (id: ScriptId) => Client.query("Script.readOwned", { 
 export const createScript = Client.mutation("Script.create");
 
 export const updateScriptDetails = Client.mutation("Script.updateDetails");
+
+export const ownedCharacters = (scriptId: ScriptId) => Client.query("Character.list", { scriptId });
+
+export const createCharacter = Client.mutation("Character.create");
+
+export const updateCharacter = Client.mutation("Character.update");
+
+export const deleteCharacter = Client.mutation("Character.delete");

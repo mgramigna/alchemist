@@ -3,7 +3,7 @@ import { LockIcon } from "@phosphor-icons/react";
 import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-router";
 import { Effect, Option, Schema } from "effect";
 import { AtomRegistry } from "effect/reactivity";
-import { ownedScript } from "../../../api.ts";
+import { ownedCharacters, ownedScript } from "../../../api.ts";
 import { SignInWithGoogle } from "../../../components/account.tsx";
 import { Button, buttonVariants } from "../../../components/ui/button.tsx";
 import {
@@ -23,12 +23,19 @@ export const Route = createFileRoute("/scripts/$scriptId/edit")({
 
     if (Option.isNone(id)) throw notFound();
 
-    const query = ownedScript(id.value);
+    const script = ownedScript(id.value);
+    const characters = ownedCharacters(id.value);
     // Reopening always starts from the latest saved state.
-    context.registry.refresh(query);
+    context.registry.refresh(script);
+    context.registry.refresh(characters);
 
     return Effect.runPromise(
-      AtomRegistry.getResult(context.registry, query, { suspendOnWaiting: true }).pipe(
+      Effect.all({
+        script: AtomRegistry.getResult(context.registry, script, { suspendOnWaiting: true }),
+        characters: AtomRegistry.getResult(context.registry, characters, {
+          suspendOnWaiting: true,
+        }),
+      }).pipe(
         // Missing and someone else's Scripts look the same to the Workbench.
         Effect.catchTags({
           ScriptNotFound: () => Effect.fail(notFound()),
@@ -47,9 +54,13 @@ export const Route = createFileRoute("/scripts/$scriptId/edit")({
 });
 
 function EditScript() {
-  const script = Route.useLoaderData();
+  const loaded = Route.useLoaderData();
 
-  return script === null ? <SignedOut /> : <Workbench key={script.id} script={script} />;
+  return loaded === null ? (
+    <SignedOut />
+  ) : (
+    <Workbench key={loaded.script.id} script={loaded.script} characters={loaded.characters} />
+  );
 }
 
 function WorkbenchPending() {

@@ -1,4 +1,5 @@
 import {
+  CharacterNotFound,
   PublicScript,
   ScriptId,
   ScriptNotFound,
@@ -186,4 +187,114 @@ it.effect(
         assert.strictEqual(f.rows.size, 1);
       }).pipe(Effect.provide(f.layer));
     }),
+);
+
+it.effect(
+  "owners add Characters by Team, edit them with stable IDs, save invalid drafts and see them publicly",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* scriptsFixture;
+      yield* Effect.gen(function* () {
+        const scripts = yield* Scripts;
+        const script = yield* scripts.create().pipe(as(alice));
+        yield* TestClock.adjust(1_000);
+
+        const added = yield* scripts.createCharacter(script.id, "demon").pipe(as(alice));
+        assert.match(added.id, /^[0-7][0-9a-hjkmnp-tv-z]{25}$/);
+        assert.deepStrictEqual(
+          { name: added.name, ability: added.ability, team: added.team },
+          { name: "", ability: "", team: "demon" },
+        );
+        assert.strictEqual((yield* scripts.readOwned(script.id).pipe(as(alice))).updatedAt, 1_000);
+        yield* TestClock.adjust(1_000);
+
+        // Over-limit and blank drafts are stored as written, not truncated.
+        const longName = "N".repeat(60);
+
+        const renamed = yield* scripts
+          .updateCharacter(script.id, added.id, { name: longName, ability: "", team: "demon" })
+          .pipe(as(alice));
+
+        assert.deepStrictEqual(renamed, {
+          id: added.id,
+          name: longName,
+          ability: "",
+          team: "demon",
+        });
+
+        // A Team change keeps every authored field and the Character's identity.
+        const moved = yield* scripts
+          .updateCharacter(script.id, added.id, {
+            name: "Imp",
+            ability: "Each night*",
+            team: "minion",
+          })
+          .pipe(as(alice));
+
+        assert.deepStrictEqual(moved, {
+          id: added.id,
+          name: "Imp",
+          ability: "Each night*",
+          team: "minion",
+        });
+        assert.deepStrictEqual(yield* scripts.listCharacters(script.id).pipe(as(alice)), [moved]);
+        assert.strictEqual((yield* scripts.readOwned(script.id).pipe(as(alice))).updatedAt, 2_000);
+        assert.deepStrictEqual((yield* scripts.readPublic(script.id)).characters, [moved]);
+      }).pipe(Effect.provide(f.layer));
+    }),
+);
+
+it.effect("deleting a Character removes it from storage and the public Script", () =>
+  Effect.gen(function* () {
+    const f = yield* scriptsFixture;
+    yield* Effect.gen(function* () {
+      const scripts = yield* Scripts;
+      const script = yield* scripts.create().pipe(as(alice));
+      const keep = yield* scripts.createCharacter(script.id, "townsfolk").pipe(as(alice));
+      const drop = yield* scripts.createCharacter(script.id, "outsider").pipe(as(alice));
+
+      yield* scripts.deleteCharacter(script.id, drop.id).pipe(as(alice));
+
+      assert.deepStrictEqual(yield* scripts.listCharacters(script.id).pipe(as(alice)), [keep]);
+      assert.deepStrictEqual((yield* scripts.readPublic(script.id)).characters, [keep]);
+      assert.deepStrictEqual(
+        yield* scripts.deleteCharacter(script.id, drop.id).pipe(as(alice), Effect.flip),
+        new CharacterNotFound({ id: drop.id }),
+      );
+    }).pipe(Effect.provide(f.layer));
+  }),
+);
+
+it.effect("another user cannot list, add, edit or delete Characters on an owner's Script", () =>
+  Effect.gen(function* () {
+    const f = yield* scriptsFixture;
+    yield* Effect.gen(function* () {
+      const scripts = yield* Scripts;
+      const script = yield* scripts.create().pipe(as(alice));
+      const character = yield* scripts.createCharacter(script.id, "townsfolk").pipe(as(alice));
+      const notFound = new ScriptNotFound({ id: script.id });
+      const missing = new CharacterNotFound({ id: character.id });
+
+      assert.deepStrictEqual(
+        yield* scripts.listCharacters(script.id).pipe(as(bob), Effect.flip),
+        notFound,
+      );
+      assert.deepStrictEqual(
+        yield* scripts.createCharacter(script.id, "demon").pipe(as(bob), Effect.flip),
+        notFound,
+      );
+      assert.deepStrictEqual(
+        yield* scripts
+          .updateCharacter(script.id, character.id, { name: "Hijack", ability: "", team: "demon" })
+          .pipe(as(bob), Effect.flip),
+        missing,
+      );
+      assert.deepStrictEqual(
+        yield* scripts.deleteCharacter(script.id, character.id).pipe(as(bob), Effect.flip),
+        missing,
+      );
+      assert.deepStrictEqual(yield* scripts.listCharacters(script.id).pipe(as(alice)), [character]);
+      assert.strictEqual(f.characters.size, 1);
+    }).pipe(Effect.provide(f.layer));
+  }),
 );
