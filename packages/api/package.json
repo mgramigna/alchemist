@@ -5,11 +5,13 @@
   "dependencies": {
     "@alchemist/domain": "workspace:*",
     "@effect/sql-d1": "catalog:",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "jose": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
     "@effect/vitest": "catalog:",
+    "miniflare": "catalog:",
     "vitest": "catalog:"
   }
 }

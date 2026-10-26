@@ -19,8 +19,10 @@ export default defineConfig({
     strictPort: true,
     allowedHosts: ["solana", ".ts.net"],
     proxy: {
-      "/api": "http://127.0.0.1:1337",
-      "/auth": "http://127.0.0.1:1337",
+      // String shorthand enables changeOrigin and hides the browser-facing
+      // origin from the Worker's strict auth checks. Preserve Host instead.
+      "/api": { target: "http://127.0.0.1:1337", changeOrigin: false },
+      "/auth": { target: "http://127.0.0.1:1337", changeOrigin: false },
     },
   },
   build: { outDir: "dist" },
