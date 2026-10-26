@@ -3,8 +3,9 @@ import { ImportJson, ScriptImportInvalid, type ImportReview } from "@alchemist/d
 import { UploadSimpleIcon } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
 import { Cause, Exit, Result, Schema } from "effect";
-import { useId, useState } from "react";
+import { useCallback, useId, useState } from "react";
 import { importScript, reviewScriptImport, ScriptKeys } from "../api.ts";
+import { characterTitle } from "../lib/characters.ts";
 import { useAppForm } from "../hooks/form.ts";
 import { Badge } from "./ui/badge.tsx";
 import { Button } from "./ui/button.tsx";
@@ -22,6 +23,23 @@ import {
 import { Spinner } from "./ui/spinner.tsx";
 import { Textarea } from "./ui/textarea.tsx";
 
+const IMPORT_FIELD_LABELS = new Map([
+  ["name", "Name"],
+  ["ability", "Ability"],
+  ["authorCredit", "Author Credit"],
+  ["firstNightInstructions", "First Night instructions"],
+  ["otherNightInstructions", "Other Nights instructions"],
+  ["firstNight", "First Night"],
+  ["otherNight", "Other Nights"],
+  ["reminders", "Reminder Tokens"],
+  ["remindersGlobal", "Global Reminder Tokens"],
+  ["flavor", "Flavor text"],
+  ["characters", "Characters"],
+  ["jinx", "Jinx"],
+  ["id", "Character ID"],
+  ["schema", "JSON format"],
+]);
+
 export function ImportScriptButton() {
   const [open, setOpen] = useState(false);
 
@@ -31,8 +49,8 @@ export function ImportScriptButton() {
         <UploadSimpleIcon />
         Import JSON
       </SheetTrigger>
-      <SheetContent className="overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-xl">
-        <SheetHeader className="border-b pr-12">
+      <SheetContent className="overflow-hidden data-[side=right]:w-full data-[side=right]:sm:max-w-xl">
+        <SheetHeader className="shrink-0 border-b pr-12">
           <SheetTitle>Import a Script</SheetTitle>
           <SheetDescription>
             Bring your Custom Characters into a new, editable Script.
@@ -58,6 +76,13 @@ function ImportScriptForm({ onDone }: { readonly onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
   const fileId = useId();
+  const jsonId = useId();
+  const [focusJson, setFocusJson] = useState(false);
+
+  const focusReview = useCallback((heading: HTMLHeadingElement | null) => {
+    heading?.focus();
+  }, []);
+
   const acknowledgementId = useId();
   const busy = reviewing.waiting || importing.waiting || reading;
 
@@ -80,7 +105,7 @@ function ImportScriptForm({ onDone }: { readonly onDone: () => void }) {
   const report = reviewed?.report;
 
   return (
-    <div className="flex flex-col gap-6 px-4 pb-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 pb-6">
       {reviewed === null ? (
         <form.AppForm>
           <form.Form className="flex flex-col gap-5">
@@ -90,6 +115,7 @@ function ImportScriptForm({ onDone }: { readonly onDone: () => void }) {
                 id={fileId}
                 type="file"
                 accept=".json,application/json"
+                aria-describedby={`${fileId}-description`}
                 disabled={busy}
                 onChange={async (event) => {
                   const file = event.currentTarget.files?.[0];
@@ -114,7 +140,7 @@ function ImportScriptForm({ onDone }: { readonly onDone: () => void }) {
                   }
                 }}
               />
-              <FieldDescription>
+              <FieldDescription id={`${fileId}-description`}>
                 Custom Characters only. Official Characters, Fabled, and Loric are unsupported.
               </FieldDescription>
             </Field>
@@ -123,14 +149,25 @@ function ImportScriptForm({ onDone }: { readonly onDone: () => void }) {
               validators={{ onChange: Schema.toStandardSchemaV1(ImportJson) }}
             >
               {(field) => (
-                <field.TextareaField
+                <field.Control
                   label="Or paste JSON"
+                  id={jsonId}
                   description="Review the contents before anything is saved."
-                  rows={12}
-                  spellCheck={false}
-                  className="font-mono"
                   disabled={busy}
-                />
+                >
+                  {(control) => (
+                    <Textarea
+                      {...control}
+                      value={field.state.value}
+                      onChange={(event) => field.handleChange(event.target.value)}
+                      rows={12}
+                      spellCheck={false}
+                      className="max-h-72 overflow-y-auto font-mono"
+                      disabled={busy}
+                      autoFocus={focusJson}
+                    />
+                  )}
+                </field.Control>
               )}
             </form.AppField>
             <form.Subscribe selector={(state) => state.values.json}>
@@ -143,12 +180,16 @@ function ImportScriptForm({ onDone }: { readonly onDone: () => void }) {
           </form.Form>
         </form.AppForm>
       ) : (
-        <div className="flex flex-col gap-5" aria-live="polite">
+        <div className="flex flex-col gap-5">
           <div className="flex flex-col gap-2">
             <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
               Import review
             </p>
-            <h2 className="text-xl font-semibold wrap-anywhere">
+            <h2
+              ref={focusReview}
+              tabIndex={-1}
+              className="text-xl font-semibold wrap-anywhere outline-none"
+            >
               {report?.draft?.script.name || "This JSON needs attention"}
             </h2>
             {report?.draft && (
@@ -174,11 +215,19 @@ function ImportScriptForm({ onDone }: { readonly onDone: () => void }) {
               <ImportMessages title="Cannot import yet" messages={report.errors} destructive />
               <ImportMessages title="Artwork and defaults" messages={report.warnings} />
               <ImportMessages
-                title={`${report.blockers.length} export blockers`}
-                messages={report.blockers.map(
-                  (problem) =>
-                    `${problem.characterId ?? "Script"} · ${problem.field}: ${problem.message}`,
-                )}
+                title={`${report.blockers.length} ${report.blockers.length === 1 ? "problem blocks" : "problems block"} export`}
+                messages={report.blockers.map((problem) => {
+                  const character = report.draft?.characters.find(
+                    ({ id }) => id === problem.characterId,
+                  );
+
+                  const label = IMPORT_FIELD_LABELS.get(problem.field) ?? problem.field;
+
+                  const token =
+                    problem.tokenIndex === undefined ? "" : `, token ${problem.tokenIndex + 1}`;
+
+                  return `${character ? characterTitle(character) : "Script"} · ${label}${token}: ${problem.message}`;
+                })}
               />
               {report.blockers.length > 0 && report.draft && (
                 <p className="text-sm text-muted-foreground">
@@ -195,7 +244,7 @@ function ImportScriptForm({ onDone }: { readonly onDone: () => void }) {
                     onCheckedChange={setAcknowledged}
                     disabled={busy}
                   />
-                  <FieldLabel htmlFor={acknowledgementId}>
+                  <FieldLabel htmlFor={acknowledgementId} className="font-normal">
                     I understand that the listed unsupported fields will be discarded.
                   </FieldLabel>
                 </Field>
@@ -209,7 +258,7 @@ function ImportScriptForm({ onDone }: { readonly onDone: () => void }) {
               value={reviewed.json}
               readOnly
               rows={8}
-              className="mt-3 font-mono"
+              className="mt-3 max-h-64 overflow-y-auto font-mono"
             />
           </details>
           <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
@@ -217,6 +266,7 @@ function ImportScriptForm({ onDone }: { readonly onDone: () => void }) {
               variant="outline"
               disabled={busy}
               onClick={() => {
+                setFocusJson(true);
                 setReviewed(null);
                 setError(null);
               }}

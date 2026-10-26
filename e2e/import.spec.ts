@@ -128,6 +128,7 @@ test("keyboard review, commit, reload and artwork fallback preserve an editable 
   await review.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "A Borrowed Moon", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "A Borrowed Moon", exact: true })).toBeFocused();
   await expect(page.getByText("Author Credit: Original Designer")).toBeVisible();
   await expect(page.getByText("4 Characters", { exact: true })).toBeVisible();
   await page.getByText("Original JSON", { exact: true }).click();
@@ -138,20 +139,20 @@ test("keyboard review, commit, reload and artwork fallback preserve an editable 
   await expect(
     page.getByRole("heading", { name: "Imported artwork needs attention" }),
   ).toBeVisible();
-  await expect(page.getByText("seer · image · Pending copy")).toBeVisible();
+  await expect(page.getByText("Seer · Character icons · Pending copy")).toBeVisible();
   expect(state.commits).toBe(1);
   await page.reload();
   await expect(page.getByRole("heading", { name: "A Borrowed Moon", exact: true })).toBeVisible();
-  await expect(page.getByText("seer · image · Pending copy")).toBeVisible();
+  await expect(page.getByText("Seer · Character icons · Pending copy")).toBeVisible();
 
   const seerRow = page
     .getByRole("region", { name: "Imported artwork" })
     .getByRole("listitem")
-    .filter({ hasText: "seer · image" });
+    .filter({ hasText: "Seer · Character icons" });
 
-  await seerRow.getByRole("button", { name: "Use generic icons" }).click();
-  await expect(page.getByText("seer · image · Pending copy")).toHaveCount(0);
-  await expect(page.getByText("shade · image · Failed reference")).toBeVisible();
+  await seerRow.getByRole("button", { name: "Use generic icons for Seer" }).click();
+  await expect(page.getByText("Seer · Character icons · Pending copy")).toHaveCount(0);
+  await expect(page.getByText("Shade · Character icons · Failed reference")).toBeVisible();
   expect(state.externalRequests).toEqual([]);
 });
 
@@ -164,6 +165,7 @@ test("preflight rejects malformed JSON and ambiguous references without creating
   await expect(page.getByRole("heading", { name: "Cannot import yet" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Import Script", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Back to JSON" }).click();
+  await expect(page.getByLabel("Or paste JSON")).toBeFocused();
 
   const duplicate =
     '[{"id":"a","name":"A","team":"townsfolk","ability":"A"},{"id":"a","name":"B","team":"minion","ability":"B"}]';
@@ -187,7 +189,7 @@ test("file review fits mobile, requires keyboard acknowledgement of extras, and 
     .setInputFiles({ name: "draft.json", mimeType: "application/json", buffer: Buffer.from(json) });
   await expect(page.getByLabel("Or paste JSON")).toHaveValue(json);
   await page.getByRole("button", { name: "Review import" }).click();
-  await expect(page.getByRole("heading", { name: /export blockers/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /problems block export/ })).toBeVisible();
   const commit = page.getByRole("button", { name: "Import Script", exact: true });
   await expect(commit).toBeDisabled();
   const acknowledge = page.getByRole("checkbox");
@@ -230,3 +232,32 @@ test("Escape cancels and returns keyboard focus to the dashboard trigger", async
   await expect(page.getByRole("button", { name: "Import JSON" })).toBeFocused();
   expect(state.commits).toBe(0);
 });
+
+for (const width of [375, 1280]) {
+  test(`dark theme and long JSON remain usable at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 812 });
+    await setupImport(page);
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
+    const json = page.getByLabel("Or paste JSON");
+    await json.fill(JSON.stringify(JSON.parse(fixture), null, 2));
+    await expect(json).toHaveCSS("font-family", /monospace/);
+    await expect(page.getByText("Or paste JSON", { exact: true })).toHaveCSS(
+      "font-family",
+      /Libre Franklin/,
+    );
+    expect((await json.boundingBox())?.height).toBeLessThanOrEqual(289);
+    const close = page.getByRole("button", { name: "Close", exact: true });
+    await expect(close).toBeInViewport();
+    await page.screenshot({ path: test.info().outputPath(`import-input-dark-${width}.png`) });
+    await page.getByRole("button", { name: "Review import" }).click();
+    await expect(page.getByRole("heading", { name: "A Borrowed Moon", exact: true })).toBeFocused();
+    await page.getByText("Original JSON", { exact: true }).click();
+    await page.screenshot({ path: test.info().outputPath(`import-review-dark-${width}.png`) });
+    await page.getByRole("button", { name: "Back to JSON" }).click();
+    await expect(json).toBeFocused();
+    await expect(close).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  });
+}

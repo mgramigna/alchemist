@@ -2,8 +2,11 @@ import { useAtom, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import type { Character, ScriptId } from "@alchemist/domain";
 import { AsyncResult } from "effect/reactivity";
 import { importedScriptData, ScriptKeys, useGenericArtwork } from "../api.ts";
+import { characterTitle } from "../lib/characters.ts";
 import { Button } from "./ui/button.tsx";
 import { Spinner } from "./ui/spinner.tsx";
+
+const ARTWORK_LABELS = { image: "Character icons", logo: "Logo", background: "Background" };
 
 /** Owner-only repair state. External sources are text, never image requests. */
 export function ImportedArtworkNotice({
@@ -61,10 +64,10 @@ export function ImportedArtworkNotice({
           </div>
           <ul className="flex flex-col gap-3">
             {artwork.map((art) => {
-              const name =
-                characters.find((character) => character.id === art.characterId)?.name ||
-                art.characterId ||
-                "Script";
+              const character = characters.find((character) => character.id === art.characterId);
+              const name = character ? characterTitle(character) : "Script";
+
+              const label = ARTWORK_LABELS[art.field];
 
               return (
                 <li
@@ -73,7 +76,7 @@ export function ImportedArtworkNotice({
                 >
                   <details className="min-w-0 flex-1">
                     <summary className="cursor-pointer text-sm font-medium wrap-anywhere">
-                      {name} · {art.field} ·{" "}
+                      {name} · {label} ·{" "}
                       {art.slots.some((slot) => slot.state === "failed")
                         ? "Failed reference"
                         : "Pending copy"}
@@ -90,6 +93,11 @@ export function ImportedArtworkNotice({
                     variant="outline"
                     size="sm"
                     disabled={repair.waiting}
+                    aria-label={
+                      art.field === "image"
+                        ? `Use generic icons for ${name}`
+                        : `Omit ${art.field} for ${name}`
+                    }
                     onClick={() =>
                       void useGeneric({
                         payload: {
