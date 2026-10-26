@@ -1097,6 +1097,34 @@ test("JSON download requires saved edits and downloads the saved Script on a nar
   expect(await noHorizontalScroll(page)).toBe(true);
 });
 
+test("an owner downloads sheet PNGs of the live draft from the preview", async ({ page }) => {
+  const api = await ownerApi(page);
+  const id = "01k8ae00000000000000000001";
+  api.scripts.push({ id, name: "Saved Script", authorCredit: "Ada", updatedAt: 0 });
+  api.characters.push({
+    id: "01k8af00000000000000000001",
+    name: "Chef",
+    team: "townsfolk",
+    ability: "You start knowing a number.",
+    reminders: [],
+    remindersGlobal: [],
+    setup: false,
+    flavor: "",
+    firstNightInstructions: "",
+    otherNightInstructions: "",
+  });
+  await page.goto(`/scripts/${id}/edit`);
+  await page.getByRole("textbox", { name: "Script name" }).fill("Draft Name");
+  await expect(page.getByRole("region", { name: "Character sheet" })).toContainText("Draft Name");
+  const downloaded = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download PNG" }).click();
+  await page.getByRole("menuitem", { name: "Character sheet" }).click();
+  expect((await downloaded).suggestedFilename()).toBe("Draft-Name-character.png");
+  await expect(page.getByText("Downloaded Draft-Name-character.png.")).toBeVisible();
+  // PNGs come from the browser alone: no export or render request.
+  expect(api.exports).toBe(0);
+});
+
 test("export blockers and counters use Unicode code points", async ({ page }) => {
   const api = await ownerApi(page);
   await page.goto("/");

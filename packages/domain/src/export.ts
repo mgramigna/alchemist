@@ -9,6 +9,10 @@ import { decodeBotcDocument } from "./schemas/botc.ts";
 
 export const BOTC_SCHEMA_REVISION = "f10cd02e3401af227ce406287eaae7bb99a06a42";
 
+/** The Script name as a download filename stem, shared by the JSON and sheet PNGs. */
+export const scriptFileStem = (name: string): string =>
+  name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "script";
+
 export const ScriptExportProblem = Schema.Struct({
   // Character IDs stay strings here so even an invalid ID can be reported.
   characterId: Schema.optionalKey(Schema.String),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { botcSchemaProblems } from "../src/export.ts";
+import { botcSchemaProblems, scriptFileStem } from "../src/export.ts";
 
 const character = {
   id: "custom1",
@@ -103,5 +103,17 @@ describe("URI syntax in every schema-supported position", () => {
     expect(
       botcSchemaProblems([metadata, { ...character, extension: true }, ...valid.slice(2)]).length,
     ).toBeGreaterThan(0);
+  });
+});
+
+describe("scriptFileStem", () => {
+  it("keeps letters and digits, joining the rest with single hyphens", () => {
+    expect(scriptFileStem("Brimstone & Brine")).toBe("Brimstone-Brine");
+    expect(scriptFileStem("  Trouble Brewing 2!  ")).toBe("Trouble-Brewing-2");
+  });
+
+  it("falls back when nothing usable is left", () => {
+    expect(scriptFileStem("")).toBe("script");
+    expect(scriptFileStem("✨✨")).toBe("script");
   });
 });
