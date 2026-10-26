@@ -52,7 +52,18 @@ export const NightInstructions = Schema.String.check(
   Schema.isMaxLength(2000, { message: "Use 2000 characters or fewer." }),
 );
 
+// Storage bounds deliberately exceed the export limits so invalid drafts can save.
+export const ReminderTokens = Schema.Array(Schema.String.check(Schema.isMaxLength(100))).check(
+  Schema.isMaxLength(100),
+);
+
+export const CharacterFlavor = Schema.String.check(Schema.isMaxLength(2000));
+
 export const CharacterDetails = Schema.Struct({
+  reminders: ReminderTokens,
+  remindersGlobal: ReminderTokens,
+  setup: Schema.Boolean,
+  flavor: CharacterFlavor,
   name: CharacterName,
   ability: CharacterAbility,
   team: AuthoredTeam,
@@ -126,17 +137,41 @@ export const instructionsBlocker = (instructions: string): string | undefined =>
     ? `Use ${INSTRUCTIONS_EXPORT_LIMIT} characters or fewer.`
     : undefined;
 
+export const REMINDER_COUNT_LIMIT = 20;
+export const REMINDER_LABEL_LIMIT = { reminders: 30, remindersGlobal: 25 } as const;
+export const FLAVOR_EXPORT_LIMIT = 500;
+
+export type ReminderField = keyof typeof REMINDER_LABEL_LIMIT;
+
+export const reminderLabelBlocker = (label: string, field: ReminderField): string | undefined =>
+  label.trim() === ""
+    ? "Enter a token label."
+    : label.length > REMINDER_LABEL_LIMIT[field]
+      ? `Use ${REMINDER_LABEL_LIMIT[field]} characters or fewer.`
+      : undefined;
+
+export const reminderCountBlocker = (tokens: ReadonlyArray<string>): string | undefined =>
+  tokens.length > REMINDER_COUNT_LIMIT ? `Use ${REMINDER_COUNT_LIMIT} tokens or fewer.` : undefined;
+
+export const flavorBlocker = (flavor: string): string | undefined =>
+  flavor.length > FLAVOR_EXPORT_LIMIT
+    ? `Use ${FLAVOR_EXPORT_LIMIT} characters or fewer.`
+    : undefined;
+
 export interface ExportBlocker {
   readonly characterId: CharacterId;
-  readonly field: "name" | "ability" | InstructionsField | "jinx";
+  readonly field: "name" | "ability" | InstructionsField | ReminderField | "flavor" | "jinx";
+  readonly tokenIndex?: number;
   readonly otherCharacterId?: CharacterId;
   readonly message: string;
 }
 
 export const exportBlockers = (
-  characters: ReadonlyArray<Pick<Character, "id" | "name" | "ability" | InstructionsField>>,
+  characters: ReadonlyArray<
+    Pick<Character, "id" | "name" | "ability" | InstructionsField | ReminderField | "flavor">
+  >,
 ): ReadonlyArray<ExportBlocker> =>
-  characters.flatMap(({ id, name, ability, ...instructions }) => {
+  characters.flatMap(({ id, name, ability, ...details }) => {
     const blockers: Array<ExportBlocker> = [];
     const otherNames = characters.flatMap((other) => (other.id === id ? [] : [other.name]));
     const nameMessage = nameBlocker(name, otherNames);
@@ -149,10 +184,26 @@ export const exportBlockers = (
       blockers.push({ characterId: id, field: "ability", message: abilityMessage });
 
     for (const field of ["firstNightInstructions", "otherNightInstructions"] as const) {
-      const message = instructionsBlocker(instructions[field]);
+      const message = instructionsBlocker(details[field]);
 
       if (message !== undefined) blockers.push({ characterId: id, field, message });
     }
+
+    for (const field of ["reminders", "remindersGlobal"] as const) {
+      const tokens = details[field];
+      const count = reminderCountBlocker(tokens);
+
+      if (count) blockers.push({ characterId: id, field, message: count });
+      tokens.forEach((label, tokenIndex) => {
+        const message = reminderLabelBlocker(label, field);
+
+        if (message) blockers.push({ characterId: id, field, tokenIndex, message });
+      });
+    }
+
+    const flavorMessage = flavorBlocker(details.flavor);
+
+    if (flavorMessage) blockers.push({ characterId: id, field: "flavor", message: flavorMessage });
 
     return blockers;
   });

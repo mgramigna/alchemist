@@ -50,6 +50,10 @@ export function useCharacters(
             team: character.team,
             firstNightInstructions: character.firstNightInstructions,
             otherNightInstructions: character.otherNightInstructions,
+            reminders: character.reminders,
+            remindersGlobal: character.remindersGlobal,
+            setup: character.setup,
+            flavor: character.flavor,
           },
           reactivityKeys: [ScriptKeys.owned],
         });

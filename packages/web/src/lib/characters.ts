@@ -43,6 +43,12 @@ export const sameDetails = (a: CharacterDetails, b: CharacterDetails) =>
   a.name === b.name &&
   a.ability === b.ability &&
   a.team === b.team &&
+  a.setup === b.setup &&
+  a.flavor === b.flavor &&
+  a.reminders.length === b.reminders.length &&
+  a.reminders.every((label, i) => label === b.reminders[i]) &&
+  a.remindersGlobal.length === b.remindersGlobal.length &&
+  a.remindersGlobal.every((label, i) => label === b.remindersGlobal[i]) &&
   a.firstNightInstructions === b.firstNightInstructions &&
   a.otherNightInstructions === b.otherNightInstructions;
 
@@ -60,6 +66,10 @@ export const replaceCharacter = (
           team: details.team,
           firstNightInstructions: details.firstNightInstructions,
           otherNightInstructions: details.otherNightInstructions,
+          reminders: details.reminders,
+          remindersGlobal: details.remindersGlobal,
+          setup: details.setup,
+          flavor: details.flavor,
         }
       : character,
   );

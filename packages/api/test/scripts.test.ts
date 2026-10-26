@@ -15,7 +15,14 @@ import { TestClock } from "effect/testing";
 import { Scripts, ScriptsLive, ScriptStore } from "../src/scripts.ts";
 import { scriptsFixture } from "./support/scripts.ts";
 
-const noInstructions = { firstNightInstructions: "", otherNightInstructions: "" };
+const noInstructions = {
+  reminders: [],
+  remindersGlobal: [],
+  setup: false,
+  flavor: "",
+  firstNightInstructions: "",
+  otherNightInstructions: "",
+};
 
 // Night Instructions are not part of the public projection yet.
 const publicView = ({ id, name, ability, team }: Character) => ({ id, name, ability, team });
@@ -218,6 +225,10 @@ it.effect(
             team: added.team,
             firstNightInstructions: added.firstNightInstructions,
             otherNightInstructions: added.otherNightInstructions,
+            reminders: added.reminders,
+            remindersGlobal: added.remindersGlobal,
+            setup: added.setup,
+            flavor: added.flavor,
           },
           { name: "", ability: "", team: "demon", ...noInstructions },
         );
@@ -410,6 +421,10 @@ it.effect(
             team: "minion",
             firstNightInstructions: "The Poisoner chooses a player.",
             otherNightInstructions: "Not a member, but kept for later.",
+            reminders: [],
+            remindersGlobal: [],
+            setup: false,
+            flavor: "",
           })
           .pipe(as(alice));
 
@@ -529,6 +544,50 @@ it.effect("another user cannot read or replace an owner's Night Orders", () =>
         (yield* scripts.readNightOrders(script.id).pipe(as(alice))).otherNight,
         ["dusk", "dawn"],
       );
+    }).pipe(Effect.provide(f.layer));
+  }),
+);
+
+it.effect("token, setup and flavor drafts survive Team changes and refuse another owner", () =>
+  Effect.gen(function* () {
+    const f = yield* scriptsFixture;
+    yield* Effect.gen(function* () {
+      const scripts = yield* Scripts;
+      const script = yield* scripts.create().pipe(as(alice));
+      const character = yield* scripts.createCharacter(script.id, "townsfolk", []).pipe(as(alice));
+      assert.deepStrictEqual(
+        [character.reminders, character.remindersGlobal, character.setup, character.flavor],
+        [[], [], false, ""],
+      );
+
+      const details = {
+        name: character.name,
+        ability: character.ability,
+        team: character.team,
+        firstNightInstructions: character.firstNightInstructions,
+        otherNightInstructions: character.otherNightInstructions,
+        reminders: ["Dead", "Dead", " ", "x".repeat(31)],
+        remindersGlobal: Array.from({ length: 21 }, () => "x".repeat(26)),
+        setup: true,
+        flavor: "x".repeat(501),
+      };
+
+      const saved = yield* scripts
+        .updateCharacter(script.id, character.id, details)
+        .pipe(as(alice));
+
+      const moved = yield* scripts
+        .updateCharacter(script.id, character.id, { ...details, team: "traveller" })
+        .pipe(as(alice));
+
+      assert.deepStrictEqual(moved, { ...details, id: saved.id, team: "traveller" });
+      assert.instanceOf(
+        yield* scripts
+          .updateCharacter(script.id, character.id, { ...details, reminders: [], setup: false })
+          .pipe(as(bob), Effect.flip),
+        CharacterNotFound,
+      );
+      assert.deepStrictEqual(yield* scripts.listCharacters(script.id).pipe(as(alice)), [moved]);
     }).pipe(Effect.provide(f.layer));
   }),
 );

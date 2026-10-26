@@ -12,6 +12,9 @@ import {
 } from "../src/index.ts";
 
 const instructions = (firstNightInstructions: string, otherNightInstructions: string) => ({
+  reminders: [],
+  remindersGlobal: [],
+  flavor: "",
   firstNightInstructions,
   otherNightInstructions,
 });
@@ -83,4 +86,47 @@ test("generic icons are regular/flipped by default Alignment, or unaligned/Good/
     { variant: "good", path: "/icons/generic/v1/traveller-good.svg" },
     { variant: "evil", path: "/icons/generic/v1/traveller-evil.svg" },
   ]);
+});
+
+test("token lists validate independently, allow duplicates and retain positions in the shared blockers", () => {
+  const draft = {
+    id: id(1),
+    name: "Imp",
+    ability: "Kills",
+    ...instructions("", ""),
+    reminders: ["Dead", "Dead", " ", "x".repeat(31)],
+    remindersGlobal: ["x".repeat(26), ...Array.from({ length: 20 }, () => "Drunk")],
+    flavor: "x".repeat(501),
+  };
+
+  expect(exportBlockers([draft])).toEqual([
+    { characterId: id(1), field: "reminders", tokenIndex: 2, message: "Enter a token label." },
+    {
+      characterId: id(1),
+      field: "reminders",
+      tokenIndex: 3,
+      message: "Use 30 characters or fewer.",
+    },
+    { characterId: id(1), field: "remindersGlobal", message: "Use 20 tokens or fewer." },
+    {
+      characterId: id(1),
+      field: "remindersGlobal",
+      tokenIndex: 0,
+      message: "Use 25 characters or fewer.",
+    },
+    { characterId: id(1), field: "flavor", message: "Use 500 characters or fewer." },
+  ]);
+  expect(
+    exportBlockers([
+      {
+        ...draft,
+        reminders: Array.from({ length: 20 }, () => "x".repeat(30)),
+        remindersGlobal: Array.from({ length: 20 }, () => "x".repeat(25)),
+        flavor: "x".repeat(500),
+      },
+    ]),
+  ).toEqual([]);
+  expect(exportBlockers([{ ...draft, reminders: [], remindersGlobal: [], flavor: "" }])).toEqual(
+    [],
+  );
 });

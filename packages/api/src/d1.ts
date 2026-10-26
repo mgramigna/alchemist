@@ -1,4 +1,5 @@
 import {
+  ReminderTokens,
   Jinx,
   Character,
   CharacterId,
@@ -31,11 +32,25 @@ const OwnedRows = Schema.Array(OwnedScript);
 
 const JinxRows = Schema.Array(Jinx);
 
-const CharacterRows = Schema.Array(Character);
+const StoredCharacter = Schema.Struct({
+  ...Character.fields,
+  reminders: Schema.fromJsonString(ReminderTokens),
+  remindersGlobal: Schema.fromJsonString(ReminderTokens),
+  setup: Schema.Literals([0, 1]),
+});
+
+const CharacterRows = Schema.Array(StoredCharacter);
+
+const decodeCharacters = (rows: ReadonlyArray<object>) =>
+  Schema.decodeUnknownEffect(CharacterRows)(rows).pipe(
+    Effect.map((characters) =>
+      characters.map((character) => ({ ...character, setup: character.setup === 1 })),
+    ),
+  );
 
 const CHARACTER_COLUMNS = `id, name, ability, team,
   first_night_instructions AS firstNightInstructions,
-  other_night_instructions AS otherNightInstructions`;
+  other_night_instructions AS otherNightInstructions, reminders, reminders_global AS remindersGlobal, setup, flavor`;
 
 const NightEntryRows = Schema.Array(
   Schema.Struct({
@@ -71,9 +86,7 @@ const owned = (rows: ReadonlyArray<object>) =>
   );
 
 const firstCharacter = (rows: ReadonlyArray<object>) =>
-  Schema.decodeUnknownEffect(CharacterRows)(rows).pipe(
-    Effect.map((decoded) => Option.fromNullishOr(decoded[0])),
-  );
+  decodeCharacters(rows).pipe(Effect.map((decoded) => Option.fromNullishOr(decoded[0])));
 
 // The cause is dropped from the domain error, so record it here.
 const readUnavailable = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -178,10 +191,10 @@ export const D1ScriptStore = Layer.effect(
         );
       }, writeUnavailable),
       listCharacters: Effect.fn("D1ScriptStore.listCharacters")(function* (ownerId, scriptId) {
-        return yield* Schema.decodeUnknownEffect(CharacterRows)(
+        return yield* decodeCharacters(
           yield* sql`SELECT c.id, c.name, c.ability, c.team,
             c.first_night_instructions AS firstNightInstructions,
-            c.other_night_instructions AS otherNightInstructions
+            c.other_night_instructions AS otherNightInstructions, c.reminders, c.reminders_global AS remindersGlobal, c.setup, c.flavor
           FROM characters c
           JOIN scripts s ON s.id = c.script_id
           WHERE s.id = ${scriptId} AND s.owner_id = ${ownerId} ORDER BY c.id`,
@@ -195,9 +208,9 @@ export const D1ScriptStore = Layer.effect(
         now,
       ) {
         const results = yield* d1.batch([
-          sql`INSERT INTO characters (id, script_id, name, ability, team, first_night_instructions, other_night_instructions)
+          sql`INSERT INTO characters (id, script_id, name, ability, team, first_night_instructions, other_night_instructions, reminders, reminders_global, setup, flavor)
           SELECT ${character.id}, id, ${character.name}, ${character.ability}, ${character.team},
-            ${character.firstNightInstructions}, ${character.otherNightInstructions}
+            ${character.firstNightInstructions}, ${character.otherNightInstructions}, ${JSON.stringify(character.reminders)}, ${JSON.stringify(character.remindersGlobal)}, ${character.setup ? 1 : 0}, ${character.flavor}
           FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId}`,
           sql`UPDATE scripts SET updated_at = ${now}
           WHERE id = ${scriptId} AND owner_id = ${ownerId}`,
@@ -221,7 +234,9 @@ export const D1ScriptStore = Layer.effect(
             AND EXISTS (SELECT 1 FROM characters WHERE id = ${id} AND script_id = ${scriptId})`,
           sql`UPDATE characters SET name = ${details.name}, ability = ${details.ability}, team = ${details.team},
             first_night_instructions = ${details.firstNightInstructions},
-            other_night_instructions = ${details.otherNightInstructions}
+            other_night_instructions = ${details.otherNightInstructions},
+            reminders = ${JSON.stringify(details.reminders)}, reminders_global = ${JSON.stringify(details.remindersGlobal)},
+            setup = ${details.setup ? 1 : 0}, flavor = ${details.flavor}
           WHERE id = ${id} AND script_id IN (SELECT id FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId})
           RETURNING ${sql.literal(CHARACTER_COLUMNS)}`,
         ]);
