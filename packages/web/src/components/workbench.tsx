@@ -18,6 +18,7 @@ import {
 } from "@alchemist/domain";
 import {
   ArrowSquareOutIcon,
+  CaretDownIcon,
   CaretLeftIcon,
   CheckCircleIcon,
   CopyIcon,
@@ -66,6 +67,12 @@ import { SheetPreview } from "./sheet-preview.tsx";
 import { sheetShowing, type SheetView } from "../lib/sheets.ts";
 import { Button, buttonVariants } from "./ui/button.tsx";
 import { Input } from "./ui/input.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx";
 import { Spinner } from "./ui/spinner.tsx";
 
 const SAVE_DELAY_MS = 800;
@@ -94,7 +101,7 @@ export function Workbench({
   readonly nightOrders: NightOrders;
   readonly jinxes: ReadonlyArray<Jinx>;
 }) {
-  const download = useAtomSet(exportScript, { mode: "promiseExit" });
+  const getExport = useAtomSet(exportScript, { mode: "promiseExit" });
   const creatingCharacter = useAtomValue(createCharacter);
   const deletingCharacter = useAtomValue(deleteCharacter);
   const creatingJinx = useAtomValue(createJinx);
@@ -189,10 +196,10 @@ export function Workbench({
 
   const scriptProblems = problems.filter((problem) => problem.characterId === undefined);
 
-  const downloadJson = async () => {
+  const exportJson = async (action: "copy" | "download") => {
     if (unsaved() || structuralPending) {
       setExportError(
-        "Wait for all changes to save, then retry the download. If saving failed, use Retry save first.",
+        "Wait for all changes to save, then retry the export. If saving failed, use Retry save first.",
       );
 
       return;
@@ -208,7 +215,7 @@ export function Workbench({
     setExportError(null);
 
     try {
-      const exit = await download({ payload: { id: script.id } });
+      const exit = await getExport({ payload: { id: script.id } });
 
       if (Exit.isFailure(exit)) {
         const error = Cause.findError(exit.cause);
@@ -217,13 +224,25 @@ export function Workbench({
             ? error.success.problems
                 .map((problem) => `${problem.field}: ${problem.message}`)
                 .join(" ")
-            : "Couldn’t download the saved Script. Try again.",
+            : "Couldn’t export the saved Script. Try again.",
         );
 
         return;
       }
 
-      downloadBlob(new Blob([exit.value.json], { type: "application/json" }), exit.value.filename);
+      if (action === "copy") {
+        try {
+          await navigator.clipboard.writeText(exit.value.json);
+          toast.success("JSON copied to clipboard");
+        } catch {
+          setExportError("Couldn’t copy the JSON. Try again or download it instead.");
+        }
+      } else {
+        downloadBlob(
+          new Blob([exit.value.json], { type: "application/json" }),
+          exit.value.filename,
+        );
+      }
     } finally {
       setExporting(false);
     }
@@ -355,13 +374,26 @@ export function Workbench({
                   : `${problems.length} problems block export`}
               </Button>
             )}
-            <Button type="button" onClick={() => void downloadJson()} disabled={exporting}>
-              {exporting ? <Spinner /> : <DownloadSimpleIcon />}
-              Download JSON
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button type="button" disabled={exporting} />}>
+                {exporting ? <Spinner /> : <CopyIcon />}
+                Export JSON
+                <CaretDownIcon />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-48">
+                <DropdownMenuItem onClick={() => void exportJson("copy")}>
+                  <CopyIcon />
+                  Copy JSON
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void exportJson("download")}>
+                  <DownloadSimpleIcon />
+                  Download JSON
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {(status !== "saved" || structuralPending) && (
               <p className="text-sm text-muted-foreground">
-                Save all changes before downloading. Retry failed saves first.
+                Save all changes before exporting. Retry failed saves first.
               </p>
             )}
             {exportError && (
