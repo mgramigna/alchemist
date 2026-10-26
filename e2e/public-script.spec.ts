@@ -37,7 +37,7 @@ test("loading is announced while the public read is pending", async ({ page }) =
     release = resolve;
   });
 
-  await page.route(/\/api\/public\/rpc\/?$/, async (route) => {
+  await page.route(/\/api\/rpc\/?$/, async (route) => {
     await gate;
     await route.continue();
   });
@@ -48,10 +48,10 @@ test("loading is announced while the public read is pending", async ({ page }) =
 });
 
 test("a transport failure offers a keyboard-accessible retry that recovers", async ({ page }) => {
-  await page.route(/\/api\/public\/rpc\/?$/, (route) => route.abort());
+  await page.route(/\/api\/rpc\/?$/, (route) => route.abort());
   await page.goto(path);
   await expect(page.getByRole("alert")).toContainText("We couldn’t load this Script");
-  await page.unroute(/\/api\/public\/rpc\/?$/);
+  await page.unroute(/\/api\/rpc\/?$/);
   const retry = page.getByRole("button", { name: "Try again" });
   await retry.focus();
   await page.keyboard.press("Enter");

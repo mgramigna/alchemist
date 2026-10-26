@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const accountRpc = /\/api\/account\/rpc\/?$/;
+const accountRpc = /\/api\/rpc\/?$/;
 
 // Controlled wire response for browser states; persistence/authorization are covered by real D1 tests.
 const fulfillUser = (displayName: string, requestId: string) =>

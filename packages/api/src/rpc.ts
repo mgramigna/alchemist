@@ -1,25 +1,37 @@
-import { AccountRpcs, PublicRpcs } from "@alchemist/domain/rpc";
-import { Effect } from "effect";
+import { AuthRejected } from "@alchemist/domain";
+import { Authentication, CurrentUser, Rpcs } from "@alchemist/domain/rpc";
+import { Effect, Layer } from "effect";
 import { Scripts } from "./scripts.ts";
 import { Auth } from "./auth.ts";
-import { BrowserSession } from "./auth-http.ts";
+import { SESSION_COOKIE, readCookie } from "./auth-http.ts";
 
-export const PublicHandlers = PublicRpcs.toLayer(
+export const AuthenticationLive = Layer.effect(
+  Authentication,
   Effect.gen(function* () {
-    const scripts = yield* Scripts;
+    const auth = yield* Auth;
 
-    return { "Script.readPublic": ({ id }) => scripts.readPublic(id) };
+    return Authentication.of((effect, { headers }) =>
+      Effect.gen(function* () {
+        const user = yield* auth.current(readCookie(headers.cookie, SESSION_COOKIE));
+
+        if (user === null) return yield* new AuthRejected({});
+
+        return yield* Effect.provideService(effect, CurrentUser, user);
+      }),
+    );
   }),
 );
 
-export const AccountHandlers = AccountRpcs.toLayer(
+export const Handlers = Rpcs.toLayer(
   Effect.gen(function* () {
+    const scripts = yield* Scripts;
     const auth = yield* Auth;
-    const session = yield* BrowserSession;
 
     return {
-      "Account.current": () => auth.current(session.token),
-      "Account.rename": ({ displayName }) => auth.rename(session.token, displayName),
+      "Script.readPublic": ({ id }) => scripts.readPublic(id),
+      "Account.current": (_, { headers }) =>
+        auth.current(readCookie(headers.cookie, SESSION_COOKIE)),
+      "Account.rename": ({ displayName }) => auth.rename(displayName),
     };
   }),
 );

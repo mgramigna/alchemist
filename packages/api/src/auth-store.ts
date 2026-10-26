@@ -68,10 +68,9 @@ export const D1AuthStore = Layer.effect(
         WHERE token_hash = ${hash} AND expires_at > ${now}`,
         );
       }, unavailable),
-      rename: Effect.fn("D1AuthStore.rename")(function* (hash, now, name) {
+      rename: Effect.fn("D1AuthStore.rename")(function* (userId, name) {
         return yield* decodeUser(
-          yield* sql`UPDATE users SET display_name = ${name}
-        WHERE id = (SELECT user_id FROM sessions WHERE token_hash = ${hash} AND expires_at > ${now})
+          yield* sql`UPDATE users SET display_name = ${name} WHERE id = ${userId}
         RETURNING id, display_name AS displayName`,
         );
       }, unavailable),

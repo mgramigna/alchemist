@@ -1,8 +1,8 @@
 import { ScriptId, ScriptNotFound } from "@alchemist/domain";
-import { PublicRpcs } from "@alchemist/domain/rpc";
+import { Rpcs } from "@alchemist/domain/rpc";
 import { expect, test } from "@playwright/test";
 import { Effect, Layer } from "effect";
-import { FetchHttpClient } from "effect/http";
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 import { RpcClient, RpcSerialization } from "effect/rpc";
 
 const scriptId = ScriptId.make(process.env.ALCHEMIST_SCRIPT_ID ?? "01k8ac00000000000000000001");
@@ -15,14 +15,17 @@ test("public RPC reads persisted data, exposes only public fields, and reports t
   request,
   baseURL,
 }) => {
+  const origin = new URL(baseURL ?? "").origin;
+
   const protocol = RpcClient.layerProtocolHttp({
-    url: new URL("/api/public/rpc", baseURL).href,
+    url: new URL("/api/rpc", baseURL).href,
+    transformClient: HttpClient.mapRequest(HttpClientRequest.setHeader("Origin", origin)),
   }).pipe(Layer.provide([FetchHttpClient.layer, RpcSerialization.layerNdjson]));
 
   await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
-        const client = yield* RpcClient.make(PublicRpcs);
+        const client = yield* RpcClient.make(Rpcs);
         const script = yield* client["Script.readPublic"]({ id: scriptId });
 
         expect(script.id).toBe(scriptId);
@@ -42,8 +45,8 @@ test("public RPC reads persisted data, exposes only public fields, and reports t
     ).pipe(Effect.provide(protocol)),
   );
 
-  const response = await request.post("/api/public/rpc", {
-    headers: { "Content-Type": "application/x-ndjson" },
+  const response = await request.post("/api/rpc", {
+    headers: { "Content-Type": "application/x-ndjson", Origin: origin },
     data: readRequest(scriptId),
   });
 
@@ -71,7 +74,7 @@ test("public URL refresh returns the SPA document", async ({ request }) => {
 });
 
 test("reserved API and auth paths return HTTP errors instead of SPA HTML", async ({ request }) => {
-  for (const path of ["/api", "/api/missing", "/api/public/rpc", "/auth/missing"]) {
+  for (const path of ["/api", "/api/missing", "/api/rpc", "/auth/missing"]) {
     const response = await request.get(path, {
       headers: { Accept: "text/html", "Sec-Fetch-Mode": "navigate" },
     });
@@ -82,9 +85,12 @@ test("reserved API and auth paths return HTTP errors instead of SPA HTML", async
   }
 });
 
-test("malformed RPC input returns a protocol failure instead of SPA HTML", async ({ request }) => {
-  const response = await request.post("/api/public/rpc", {
-    headers: { "Content-Type": "application/x-ndjson" },
+test("malformed RPC input returns a protocol failure instead of SPA HTML", async ({
+  request,
+  baseURL,
+}) => {
+  const response = await request.post("/api/rpc", {
+    headers: { "Content-Type": "application/x-ndjson", Origin: new URL(baseURL ?? "").origin },
     data: readRequest("invalid"),
   });
 

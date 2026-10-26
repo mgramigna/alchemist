@@ -3,7 +3,8 @@ import { assert, it } from "@effect/vitest";
 import { Effect, Result } from "effect";
 import { TestClock } from "effect/testing";
 import { Auth, FLOW_SECONDS, SESSION_SECONDS, hashToken } from "../src/auth.ts";
-import { authFixture, signIn } from "./support/auth.ts";
+import { CurrentUser } from "@alchemist/domain/rpc";
+import { asUser, authFixture, signIn } from "./support/auth.ts";
 
 it.effect(
   "sign-in links by sub, preserves edited names, hashes tokens, and signs out only this browser",
@@ -22,17 +23,26 @@ it.effect(
           "displayName",
           "id",
         ]);
-        yield* auth.rename(first, "  Chosen name  ");
+        yield* auth.rename("  Chosen name  ").pipe(asUser(first));
         const second = yield* signIn("alice");
         assert.deepStrictEqual(yield* auth.current(second), {
           id: user?.id,
           displayName: "Chosen name",
         });
         const other = yield* signIn("bob");
-        yield* auth.rename(other, "Bob");
+        yield* auth.rename("Bob").pipe(asUser(other));
         yield* auth.signOut(first);
         assert.isNull(yield* auth.current(first));
-        assert.instanceOf(yield* auth.rename(first, "No").pipe(Effect.flip), AuthRejected);
+        assert.instanceOf(yield* auth.rename("  ").pipe(asUser(second), Effect.flip), AuthRejected);
+        assert.instanceOf(
+          yield* auth
+            .rename("No")
+            .pipe(
+              Effect.provideService(CurrentUser, { id: "missing-user", displayName: "Gone" }),
+              Effect.flip,
+            ),
+          AuthRejected,
+        );
         assert.strictEqual((yield* auth.current(second))?.displayName, "Chosen name");
         assert.strictEqual((yield* auth.current(other))?.displayName, "Bob");
         assert.strictEqual(f.sessions.size, 2);
@@ -94,7 +104,7 @@ it.effect(
     }),
 );
 
-it.effect("session expiry is fixed at 30 days and expired sessions cannot mutate a profile", () =>
+it.effect("session expiry is fixed at 30 days", () =>
   Effect.gen(function* () {
     const f = yield* authFixture;
     yield* Effect.gen(function* () {
@@ -102,11 +112,8 @@ it.effect("session expiry is fixed at 30 days and expired sessions cannot mutate
       const token = yield* signIn("alice");
       yield* TestClock.adjust((SESSION_SECONDS - 1) * 1000);
       assert.isNotNull(yield* auth.current(token));
-      yield* auth.rename(token, "Before expiry");
       yield* TestClock.adjust(1000);
       assert.isNull(yield* auth.current(token));
-      assert.instanceOf(yield* auth.rename(token, "After expiry").pipe(Effect.flip), AuthRejected);
-      assert.strictEqual(f.users.get("alice")?.displayName, "Before expiry");
     }).pipe(Effect.provide(f.layer));
   }),
 );
