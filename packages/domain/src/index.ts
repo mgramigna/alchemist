@@ -13,6 +13,15 @@ export {
 export { AuthRejected, AuthUnavailable, DisplayName, User } from "./auth.ts";
 
 export {
+  ReminderTokens,
+  CharacterFlavor,
+  REMINDER_COUNT_LIMIT,
+  REMINDER_LABEL_LIMIT,
+  FLAVOR_EXPORT_LIMIT,
+  reminderLabelBlocker,
+  reminderCountBlocker,
+  flavorBlocker,
+  type ReminderField,
   ABILITY_EXPORT_LIMIT,
   AuthoredTeam,
   Character,

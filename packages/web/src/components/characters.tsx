@@ -1,4 +1,6 @@
 import {
+  FLAVOR_EXPORT_LIMIT,
+  flavorBlocker,
   ABILITY_EXPORT_LIMIT,
   AuthoredTeam,
   INSTRUCTIONS_EXPORT_LIMIT,
@@ -22,6 +24,7 @@ import {
 import { ArrowRightIcon, PlusIcon, ScrollIcon, TrashIcon } from "@phosphor-icons/react";
 import { useId, type ReactNode } from "react";
 import { cn } from "cn";
+import { ReminderTokenList, REMINDER_TITLES } from "./reminder-tokens.tsx";
 import { CharacterToken } from "./character-token.tsx";
 import { JinxPreview } from "./jinxes.tsx";
 import { useAppForm } from "../hooks/form.ts";
@@ -175,7 +178,9 @@ export function ExportBlockerList({
             const other = characters.find(({ id }) => id === blocker.otherCharacterId);
 
             return (
-              <li key={`${blocker.characterId}-${blocker.otherCharacterId ?? ""}-${blocker.field}`}>
+              <li
+                key={`${blocker.characterId}-${blocker.otherCharacterId ?? ""}-${blocker.field}-${blocker.tokenIndex ?? "list"}`}
+              >
                 <button
                   type="button"
                   onClick={() => onSelect(blocker.characterId)}
@@ -189,7 +194,11 @@ export function ExportBlockerList({
                     <span className="text-destructive">
                       {blocker.field === "jinx"
                         ? `Jinx with ${other ? characterTitle(other) : "another Character"}: `
-                        : ""}
+                        : blocker.field === "reminders" || blocker.field === "remindersGlobal"
+                          ? `${REMINDER_TITLES[blocker.field]}${blocker.tokenIndex === undefined ? "" : `, token ${blocker.tokenIndex + 1}`}: `
+                          : blocker.field === "flavor"
+                            ? "Flavor text: "
+                            : ""}
                       {blocker.message}
                     </span>
                   </span>
@@ -244,6 +253,10 @@ export function CharacterForm({
 
   const form = useAppForm({
     defaultValues: {
+      reminders: character.reminders,
+      remindersGlobal: character.remindersGlobal,
+      setup: character.setup,
+      flavor: character.flavor,
       name: character.name,
       ability: character.ability,
       team: character.team,
@@ -322,6 +335,47 @@ export function CharacterForm({
               label="Ability"
               description={<Counter value={field.state.value} limit={ABILITY_EXPORT_LIMIT} />}
               maxLength={1000}
+              rows={3}
+            />
+          )}
+        </form.AppField>
+        <form.AppField name="setup">
+          {(field) => (
+            <field.CheckboxField
+              label="Affects setup"
+              description="This Character's ability changes game setup."
+            />
+          )}
+        </form.AppField>
+        {(["reminders", "remindersGlobal"] as const).map((name) => (
+          <form.AppField key={name} name={name}>
+            {(field) => (
+              <ReminderTokenList
+                field={name}
+                value={field.state.value}
+                onChange={field.handleChange}
+              />
+            )}
+          </form.AppField>
+        ))}
+        <form.AppField
+          name="flavor"
+          defaultMeta={{ isTouched: true }}
+          validators={{
+            onMount: ({ value }) => flavorBlocker(value),
+            onChange: ({ value }) => flavorBlocker(value),
+          }}
+        >
+          {(field) => (
+            <field.TextareaField
+              label="Flavor text"
+              description={
+                <>
+                  <span>Optional.</span>{" "}
+                  <Counter value={field.state.value} limit={FLAVOR_EXPORT_LIMIT} />
+                </>
+              }
+              maxLength={2000}
               rows={3}
             />
           )}

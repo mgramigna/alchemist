@@ -13,7 +13,14 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { D1ScriptStore } from "../src/d1.ts";
 import { ScriptStore } from "../src/scripts.ts";
 
-const noInstructions = { firstNightInstructions: "", otherNightInstructions: "" };
+const noInstructions = {
+  reminders: [],
+  remindersGlobal: [],
+  setup: false,
+  flavor: "",
+  firstNightInstructions: "",
+  otherNightInstructions: "",
+};
 
 const mf = new Miniflare({
   modules: true,
@@ -236,6 +243,10 @@ test("D1 Night Orders default on creation, replace atomically, refuse other Scri
           team: "townsfolk",
           firstNightInstructions: "Show the number.",
           otherNightInstructions: "",
+          reminders: [],
+          remindersGlobal: [],
+          setup: false,
+          flavor: "",
         });
 
       const chef = character("01k8af10000000000000000001");
@@ -418,3 +429,62 @@ test("D1 Jinxes enforce concurrent uniqueness, Script membership, ownership, and
     }),
   );
 });
+
+test("D1 keeps separate ordered duplicate token drafts, setup and flavor across reloads and Team changes", () =>
+  run(
+    Effect.gen(function* () {
+      const scripts = yield* ScriptStore;
+      const mine = script("01k8ah00000000000000000001", 10);
+      yield* scripts.insert("alice", mine);
+
+      const character = Character.make({
+        id: CharacterId.make("01k8ah10000000000000000001"),
+        name: "Imp",
+        ability: "Kills",
+        team: "demon",
+        ...noInstructions,
+      });
+
+      yield* scripts.insertCharacter("alice", mine.id, character, defaultNightOrders, 20);
+
+      const draft = {
+        ...character,
+        reminders: ["Dead", "Dead", " ", "x".repeat(31)],
+        remindersGlobal: Array.from({ length: 21 }, () => "x".repeat(26)),
+        setup: true,
+        flavor: "x".repeat(501),
+      };
+
+      expect(
+        Option.getOrNull(yield* scripts.updateCharacter("alice", mine.id, character.id, draft, 30)),
+      ).toEqual(draft);
+      const [loaded] = yield* scripts.listCharacters("alice", mine.id);
+      expect(loaded).toEqual(draft);
+
+      const moved = {
+        ...draft,
+        team: "traveller" as const,
+        reminders: ["x".repeat(31), "Dead", "Dead"],
+      };
+
+      yield* scripts.updateCharacter("alice", mine.id, character.id, moved, 40);
+      expect(
+        Option.isNone(
+          yield* scripts.updateCharacter(
+            "bob",
+            mine.id,
+            character.id,
+            { ...moved, reminders: [], setup: false },
+            50,
+          ),
+        ),
+      ).toBe(true);
+      expect(yield* scripts.listCharacters("alice", mine.id)).toEqual([moved]);
+      expect(
+        (yield* scripts.findOwned("alice", mine.id)).pipe(
+          Option.map((row) => row.updatedAt),
+          Option.getOrNull,
+        ),
+      ).toBe(40);
+    }),
+  ));

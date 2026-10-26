@@ -21,7 +21,14 @@ import { Scripts } from "../src/scripts.ts";
 import { authFixture, signIn } from "./support/auth.ts";
 import { scriptsFixture } from "./support/scripts.ts";
 
-const noInstructions = { firstNightInstructions: "", otherNightInstructions: "" };
+const noInstructions = {
+  reminders: [],
+  remindersGlobal: [],
+  setup: false,
+  flavor: "",
+  firstNightInstructions: "",
+  otherNightInstructions: "",
+};
 
 const id = ScriptId.make("01k8ac00000000000000000001");
 const unavailableId = ScriptId.make("01k8ac00000000000000000002");
@@ -208,7 +215,29 @@ it.effect(
             ability: "Each night, poison a player.",
             team: "minion",
             ...noInstructions,
+            reminders: ["Poisoned", "Poisoned", " ", "x".repeat(31)],
+            remindersGlobal: Array.from({ length: 21 }, () => "x".repeat(26)),
+            setup: true,
+            flavor: "x".repeat(501),
           }).pipe(session(alice));
+
+          assert.deepStrictEqual(renamed.reminders, ["Poisoned", "Poisoned", " ", "x".repeat(31)]);
+          assert.strictEqual(renamed.remindersGlobal.length, 21);
+          assert.strictEqual(renamed.setup, true);
+          assert.strictEqual(renamed.flavor.length, 501);
+          assert.instanceOf(
+            yield* client["Character.update"]({ ...renamed, scriptId: script.id }).pipe(
+              Effect.flip,
+            ),
+            AuthRejected,
+          );
+          assert.instanceOf(
+            yield* client["Character.update"]({ ...renamed, scriptId: script.id }).pipe(
+              session(bob),
+              Effect.flip,
+            ),
+            CharacterNotFound,
+          );
 
           assert.deepStrictEqual(
             yield* client["Character.list"]({ scriptId: script.id }).pipe(session(alice)),

@@ -14,6 +14,10 @@ interface Character {
   name: string;
   ability: string;
   team: string;
+  reminders: string[];
+  remindersGlobal: string[];
+  setup: boolean;
+  flavor: string;
   firstNightInstructions: string;
   otherNightInstructions: string;
 }
@@ -173,6 +177,10 @@ const ownerApi = async (page: Page) => {
           name: "",
           ability: "",
           team: body.payload.team,
+          reminders: [],
+          remindersGlobal: [],
+          setup: false,
+          flavor: "",
           firstNightInstructions: "",
           otherNightInstructions: "",
         };
@@ -194,6 +202,10 @@ const ownerApi = async (page: Page) => {
 
         if (state.failSaves || !character) return route.abort();
 
+        character.reminders = body.payload.reminders;
+        character.remindersGlobal = body.payload.remindersGlobal;
+        character.setup = body.payload.setup;
+        character.flavor = body.payload.flavor;
         character.name = body.payload.name;
         character.ability = body.payload.ability;
         character.team = body.payload.team;
@@ -447,6 +459,10 @@ test("an owner adds Characters by Team and finds and fixes what blocks export", 
       name: "",
       ability: "",
       team: "townsfolk",
+      reminders: [],
+      remindersGlobal: [],
+      setup: false,
+      flavor: "",
       firstNightInstructions: "",
       otherNightInstructions: "",
     },
@@ -818,4 +834,130 @@ test("Jinx creation, editing, and preview fit a narrow screen", async ({ page })
   await editor.screenshot({ path: test.info().outputPath("jinxes-mobile.png") });
   expect(await noHorizontalScroll(page)).toBe(true);
   await expect(page.getByRole("status")).toContainText("All changes saved");
+});
+
+test("Reminder Tokens, setup and flavor support keyboard edits, duplicate ordering and saved invalid drafts", async ({
+  page,
+}) => {
+  const api = await ownerApi(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "New Script" }).click();
+  await addCharacter(page, "Townsfolk");
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill("Chef");
+  await page
+    .getByRole("textbox", { name: "Ability", exact: true })
+    .fill("You start knowing a number.");
+  const ordinary = page.getByRole("region", { name: "Reminder Tokens", exact: true });
+  const global = page.getByRole("region", { name: "Global Reminder Tokens", exact: true });
+  const add = ordinary.getByRole("button", { name: "Add Reminder Token", exact: true });
+  await expect(page.getByRole("checkbox", { name: "Affects setup" })).not.toBeChecked();
+  await add.focus();
+  await page.keyboard.press("Enter");
+  await expect(ordinary.getByRole("textbox", { name: "Token 1", exact: true })).toBeFocused();
+  await expect(ordinary.getByText("Enter a token label.")).toBeVisible();
+  await ordinary.getByRole("textbox", { name: "Token 1", exact: true }).fill("Dead");
+  await add.click();
+  await ordinary.getByRole("textbox", { name: "Token 2", exact: true }).fill("Dead");
+  await add.click();
+  await ordinary.getByRole("textbox", { name: "Token 3", exact: true }).fill("Chosen");
+  await ordinary.getByRole("button", { name: "Move token 3 up" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(ordinary.getByRole("button", { name: "Move token 2 up" })).toBeFocused();
+  expect(
+    await ordinary
+      .getByRole("textbox")
+      .evaluateAll((inputs) => inputs.map((input) => input.getAttribute("value"))),
+  ).toEqual(["Dead", "Chosen", "Dead"]);
+  await ordinary.getByRole("button", { name: "Remove token 1", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(ordinary.getByRole("textbox", { name: "Token 1", exact: true })).toBeFocused();
+  await ordinary.getByRole("textbox", { name: "Token 1", exact: true }).fill("x".repeat(31));
+  await expect(ordinary.getByText("Use 30 characters or fewer.")).toBeVisible();
+  await global.getByRole("button", { name: "Add Global Reminder Token" }).click();
+  await global.getByRole("textbox", { name: "Token 1", exact: true }).fill("x".repeat(26));
+  await expect(global.getByText("Use 25 characters or fewer.")).toBeVisible();
+  await page.getByRole("checkbox", { name: "Affects setup" }).focus();
+  await page.keyboard.press("Space");
+  await page.getByRole("textbox", { name: "Flavor text" }).fill("x".repeat(501));
+  await expect(page.getByRole("textbox", { name: "Flavor text" })).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+  await page.getByRole("combobox", { name: "Team" }).selectOption("traveller");
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  expect(api.characters[0]).toMatchObject({
+    reminders: ["x".repeat(31), "Dead"],
+    remindersGlobal: ["x".repeat(26)],
+    setup: true,
+    flavor: "x".repeat(501),
+    team: "traveller",
+  });
+  await page.screenshot({ path: test.info().outputPath("reminders-desktop.png"), fullPage: true });
+  await page.reload();
+  await page
+    .getByRole("navigation", { name: "Script sections" })
+    .getByRole("button", { name: /^Chef/ })
+    .click();
+  await expect(ordinary.getByRole("textbox").first()).toHaveValue("x".repeat(31));
+  await expect(ordinary.getByRole("textbox").last()).toHaveValue("Dead");
+  await expect(ordinary.getByText("Use 30 characters or fewer.")).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Affects setup" })).toBeChecked();
+  await expect(page.getByRole("textbox", { name: "Flavor text" })).toHaveValue("x".repeat(501));
+  // The shared summary identifies the separate list and position.
+  await page.getByRole("button", { name: "3 problems block export" }).click();
+  await expect(
+    page.getByText("Reminder Tokens, token 1: Use 30 characters or fewer.", { exact: false }),
+  ).toBeVisible();
+  await page
+    .getByRole("region", { name: "Before you can export" })
+    .getByRole("button")
+    .first()
+    .click();
+  await ordinary.getByRole("textbox", { name: "Token 1", exact: true }).fill("Chosen");
+  await global.getByRole("textbox", { name: "Token 1", exact: true }).fill("Drunk");
+  await page.getByRole("textbox", { name: "Flavor text" }).fill("");
+  await expect(page.getByText("Ready to export")).toBeVisible();
+  api.failSaves = true;
+  await ordinary
+    .getByRole("textbox", { name: "Token 1", exact: true })
+    .fill("Retained after failure");
+  await expect(page.getByRole("status")).toContainText("Couldn’t save");
+  await expect(ordinary.getByRole("textbox", { name: "Token 1", exact: true })).toHaveValue(
+    "Retained after failure",
+  );
+  api.failSaves = false;
+  await page.getByRole("button", { name: "Retry save" }).click();
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  expect(api.characters[0]?.reminders).toEqual(["Retained after failure", "Dead"]);
+});
+
+test("Reminder Token count errors remain editable on a narrow screen", async ({ page }) => {
+  await ownerApi(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "New Script" }).click();
+  await addCharacter(page, "Minion");
+  const ordinary = page.getByRole("region", { name: "Reminder Tokens", exact: true });
+
+  for (let i = 1; i <= 21; i++) {
+    await ordinary.getByRole("button", { name: "Add Reminder Token" }).click();
+    await ordinary.getByRole("textbox", { name: `Token ${i}`, exact: true }).fill("Poisoned");
+  }
+
+  await expect(ordinary.getByText("Use 20 tokens or fewer.")).toBeVisible();
+  await page.getByRole("button", { name: "3 problems block export" }).click();
+  await expect(
+    page.getByText("Reminder Tokens: Use 20 tokens or fewer.", { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  await page.reload();
+  await page
+    .getByRole("navigation", { name: "Script sections" })
+    .getByRole("button", { name: /Unnamed Minion/ })
+    .click();
+  await expect(ordinary.getByRole("textbox")).toHaveCount(21);
+  await ordinary.getByRole("button", { name: "Remove token 21", exact: true }).click();
+  await expect(ordinary.getByText("Use 20 tokens or fewer.")).toHaveCount(0);
+  expect(await noHorizontalScroll(page)).toBe(true);
+  await ordinary.screenshot({ path: test.info().outputPath("reminders-mobile.png") });
 });

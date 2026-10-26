@@ -133,6 +133,10 @@ export const scriptsFixture = Effect.sync(() => {
           team: details.team,
           firstNightInstructions: details.firstNightInstructions,
           otherNightInstructions: details.otherNightInstructions,
+          reminders: details.reminders,
+          remindersGlobal: details.remindersGlobal,
+          setup: details.setup,
+          flavor: details.flavor,
         };
 
         characters.set(id, { scriptId, character });

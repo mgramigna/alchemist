@@ -3,11 +3,9 @@ import { Rpc, RpcGroup, RpcMiddleware } from "effect/rpc";
 import {
   AuthoredTeam,
   Character,
-  CharacterAbility,
+  CharacterDetails,
   CharacterId,
-  CharacterName,
   CharacterNotFound,
-  NightInstructions,
 } from "./character.ts";
 import {
   Jinx,
@@ -86,11 +84,7 @@ export const Rpcs = RpcGroup.make(
     payload: {
       scriptId: ScriptId,
       id: CharacterId,
-      name: CharacterName,
-      ability: CharacterAbility,
-      team: AuthoredTeam,
-      firstNightInstructions: NightInstructions,
-      otherNightInstructions: NightInstructions,
+      ...CharacterDetails.fields,
     },
     success: Character,
     error: Schema.Union([CharacterNotFound, ScriptWriteUnavailable]),

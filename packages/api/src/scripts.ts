@@ -279,6 +279,10 @@ export const ScriptsLive = Layer.effect(
           team,
           firstNightInstructions: "",
           otherNightInstructions: "",
+          reminders: [],
+          remindersGlobal: [],
+          setup: false,
+          flavor: "",
         });
 
         const orders = yield* readForWrite(store.findNightOrders(user.id, scriptId));
@@ -315,6 +319,10 @@ export const ScriptsLive = Layer.effect(
             team: details.team,
             firstNightInstructions: details.firstNightInstructions,
             otherNightInstructions: details.otherNightInstructions,
+            reminders: details.reminders,
+            remindersGlobal: details.remindersGlobal,
+            setup: details.setup,
+            flavor: details.flavor,
           },
           yield* Clock.currentTimeMillis,
         );
