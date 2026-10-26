@@ -39,7 +39,7 @@ function PairNames({
         return (
           character && (
             <span key={id} className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
-              <CharacterToken team={character.team} className="size-6" />
+              <CharacterToken character={character} className="size-6" />
               <span className="wrap-anywhere">{characterTitle(character)}</span>
             </span>
           )
@@ -109,7 +109,7 @@ export function JinxEditor({
                     setPending(false);
                   }}
                 >
-                  <CharacterToken team={character.team} className="size-5" />
+                  <CharacterToken character={character} className="size-5" />
                   <span className="min-w-0 truncate">{characterTitle(character)}</span>
                 </DropdownMenuItem>
               ))}

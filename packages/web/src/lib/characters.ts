@@ -1,6 +1,7 @@
 import {
   AuthoredTeam,
   type Character,
+  type CharacterArtwork,
   type CharacterDetails,
   type CharacterId,
   type IconVariant,
@@ -52,6 +53,18 @@ export const sameDetails = (a: CharacterDetails, b: CharacterDetails) =>
   a.firstNightInstructions === b.firstNightInstructions &&
   a.otherNightInstructions === b.otherNightInstructions;
 
+export const withArtwork = (
+  characters: ReadonlyArray<Character>,
+  id: CharacterId,
+  artwork: CharacterArtwork | undefined,
+): ReadonlyArray<Character> =>
+  characters.map((character) => {
+    if (character.id !== id) return character;
+    const { artwork: _previous, ...rest } = character;
+
+    return artwork === undefined ? rest : { ...rest, artwork };
+  });
+
 export const replaceCharacter = (
   characters: ReadonlyArray<Character>,
   id: CharacterId,
@@ -60,7 +73,8 @@ export const replaceCharacter = (
   characters.map((character) =>
     character.id === id
       ? {
-          id,
+          // Keeps artwork, which changes only through its own mutations.
+          ...character,
           name: details.name,
           ability: details.ability,
           team: details.team,

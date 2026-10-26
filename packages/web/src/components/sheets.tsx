@@ -1,5 +1,5 @@
 import {
-  genericIcons,
+  characterIcons,
   jinxKey,
   type CharacterId,
   type NightStep,
@@ -131,12 +131,13 @@ function Page({
 }
 
 /**
- * The regular (or unaligned) icon every sheet uses. One that fails to load
+ * The regular (or unaligned) icon every sheet uses: published artwork when
+ * styled for the current Team, otherwise the generic icon. One that fails to load
  * shows a plain Team token instead, here and in the captured PNG.
  */
 const SheetIcon = ({ character }: { readonly character: PublicCharacter }) => (
   <img
-    src={genericIcons(character.team)[0]?.path}
+    src={characterIcons(character)[0]?.path}
     alt=""
     width={400}
     height={400}

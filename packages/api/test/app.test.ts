@@ -5,12 +5,14 @@ import { Effect, Layer } from "effect";
 import { AppConfig, handleRequest } from "../src/app.ts";
 import { Auth, hashToken } from "../src/auth.ts";
 import { FLOW_COOKIE, SESSION_COOKIE } from "../src/auth-http.ts";
+import { ArtworkStorage } from "../src/artwork-storage.ts";
 import { Scripts } from "../src/scripts.ts";
 import { asUser, authFixture, signIn } from "./support/auth.ts";
+import { png } from "./support/images.ts";
 
 const origin = "https://alchemist.test";
 const config = Layer.succeed(AppConfig, { origin });
-const unusedScripts = Layer.mock(Scripts, {});
+const unusedScripts = Layer.mergeAll(Layer.mock(Scripts, {}), Layer.mock(ArtworkStorage, {}));
 
 const account = (
   token: string | null,
@@ -176,6 +178,7 @@ it.effect("public reads stay anonymous through the shared RPC endpoint", () =>
     });
   }).pipe(
     Effect.provide([
+      Layer.mock(ArtworkStorage, {}),
       Layer.mock(Auth, {}),
       config,
       Layer.mock(Scripts, {
@@ -253,6 +256,76 @@ it.effect(
         assert.include(document[1].image[0], `${origin}/icons/generic/v1/`);
         const bob = yield* signIn("bob");
         assert.strictEqual((yield* exportRequest(bob)).exit.cause[0].error._tag, "ScriptNotFound");
+      }).pipe(Effect.provide([a.layer, s.layer, config]));
+    }),
+);
+
+it.effect(
+  "HTTP RPC carries artwork bytes as base64 and serves the published variants anonymously",
+  () =>
+    Effect.gen(function* () {
+      const a = yield* authFixture;
+      const s = yield* scriptsFixture;
+      yield* Effect.gen(function* () {
+        const token = yield* signIn("alice");
+        const scripts = yield* Scripts;
+        const script = yield* scripts.create().pipe(asUser(token));
+
+        const character = yield* scripts
+          .createCharacter(script.id, "townsfolk", [])
+          .pipe(asUser(token));
+
+        const base64 = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64");
+        const variant = png(400, 400);
+
+        // The payload arrives as JSON text, as the browser's RPC client sends it.
+        const call = (tag: string, payload: string) =>
+          handleRequest(
+            new Request(`${origin}/api/rpc`, {
+              method: "POST",
+              headers: {
+                Origin: origin,
+                "Content-Type": "application/x-ndjson",
+                Cookie: `${SESSION_COOKIE}=${token}`,
+              },
+              body: `{"_tag":"Request","id":"1","tag":${JSON.stringify(tag)},"payload":${payload},"headers":[]}\n`,
+            }),
+          ).pipe(Effect.flatMap((response) => Effect.promise(() => response.json())));
+
+        const uploaded = yield* call(
+          "Artwork.upload",
+          JSON.stringify({
+            scriptId: script.id,
+            id: character.id,
+            source: base64(png(900, 700)),
+            style: { look: "auto" },
+            team: "townsfolk",
+            variants: [
+              { variant: "regular", image: base64(variant) },
+              { variant: "flipped", image: base64(variant) },
+            ],
+          }),
+        );
+
+        assert.strictEqual(uploaded.exit._tag, "Success");
+
+        const source = yield* call(
+          "Artwork.readSource",
+          JSON.stringify({ scriptId: script.id, id: character.id }),
+        );
+
+        assert.strictEqual(source.exit.value.bytes, base64(png(900, 700)));
+
+        const image = yield* handleRequest(
+          new Request(`${origin}${uploaded.exit.value.variants[0].path}`),
+        );
+
+        assert.strictEqual(image.status, 200);
+        assert.strictEqual(image.headers.get("Access-Control-Allow-Origin"), "*");
+        assert.deepStrictEqual(
+          new Uint8Array(yield* Effect.promise(() => image.arrayBuffer())),
+          variant,
+        );
       }).pipe(Effect.provide([a.layer, s.layer, config]));
     }),
 );

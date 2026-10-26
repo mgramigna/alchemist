@@ -1,4 +1,16 @@
 import {
+  ArtworkConflict,
+  ArtworkInvalid,
+  ArtworkNotFound,
+  sniffImageType,
+  sourceProblem,
+  variantsProblem,
+  type ArtworkRestyle,
+  type ArtworkSource,
+  type ArtworkUpload,
+  type CharacterArtwork,
+  type RenderedVariant,
+  type SourceType,
   ImportedArtwork,
   ImportedData,
   ImportDraft,
@@ -38,11 +50,49 @@ import {
 } from "@alchemist/domain";
 import { CurrentUser } from "@alchemist/domain/rpc";
 import { Clock, Context, Effect, Layer, Option, Schema } from "effect";
+import { ArtworkStorage } from "./artwork-storage.ts";
 import { createId } from "./ids.ts";
+
+/** Current artwork as stored, including the private original's format. */
+export interface StoredArtwork extends CharacterArtwork {
+  readonly sourceType: SourceType;
+}
+
+// Originals are grouped by Script so its deletion can find them.
+export const sourceKey = (scriptId: ScriptId, sourceId: string) => `${scriptId}/${sourceId}`;
+
+// Published paths are also their bucket keys, and resolve against the asset origin.
+export const PUBLISHED_PREFIX = "/artwork/";
 
 export class ScriptStore extends Context.Service<
   ScriptStore,
   {
+    // The Character's saved Team and current artwork; None unless the owner's Character exists.
+    readonly findArtwork: (
+      ownerId: string,
+      scriptId: ScriptId,
+      id: CharacterId,
+    ) => Effect.Effect<
+      Option.Option<{ readonly team: AuthoredTeam; readonly artwork: StoredArtwork | null }>,
+      ScriptReadUnavailable
+    >;
+    // Switches to the new artwork only while the current original is still
+    // `expectedSourceId` (null: none yet), also dropping any imported image
+    // reference for the Character. False means nothing was written.
+    readonly replaceArtwork: (
+      ownerId: string,
+      scriptId: ScriptId,
+      id: CharacterId,
+      artwork: StoredArtwork,
+      expectedSourceId: string | null,
+      now: number,
+    ) => Effect.Effect<boolean, ScriptWriteUnavailable>;
+    readonly deleteArtwork: (
+      ownerId: string,
+      scriptId: ScriptId,
+      id: CharacterId,
+      now: number,
+    ) => Effect.Effect<boolean, ScriptWriteUnavailable>;
     readonly useGenericArtwork: (
       ownerId: string,
       id: ScriptId,
@@ -106,7 +156,8 @@ export class ScriptStore extends Context.Service<
       details: CharacterDetails,
       now: number,
     ) => Effect.Effect<Option.Option<Character>, ScriptWriteUnavailable>;
-    // Removes Night Order memberships and attached Jinxes in the same atomic write.
+    // Removes Night Order memberships, attached Jinxes and the current artwork
+    // reference in the same atomic write.
     readonly deleteCharacter: (
       ownerId: string,
       scriptId: ScriptId,
@@ -153,6 +204,32 @@ export class ScriptStore extends Context.Service<
 export class Scripts extends Context.Service<
   Scripts,
   {
+    readonly uploadArtwork: (
+      scriptId: ScriptId,
+      id: CharacterId,
+      upload: ArtworkUpload,
+    ) => Effect.Effect<
+      CharacterArtwork,
+      CharacterNotFound | ArtworkInvalid | ArtworkConflict | ScriptWriteUnavailable,
+      CurrentUser
+    >;
+    readonly restyleArtwork: (
+      scriptId: ScriptId,
+      id: CharacterId,
+      restyle: ArtworkRestyle,
+    ) => Effect.Effect<
+      CharacterArtwork,
+      ArtworkNotFound | ArtworkInvalid | ArtworkConflict | ScriptWriteUnavailable,
+      CurrentUser
+    >;
+    readonly readArtworkSource: (
+      scriptId: ScriptId,
+      id: CharacterId,
+    ) => Effect.Effect<ArtworkSource, ArtworkNotFound | ScriptReadUnavailable, CurrentUser>;
+    readonly removeArtwork: (
+      scriptId: ScriptId,
+      id: CharacterId,
+    ) => Effect.Effect<CharacterId, ArtworkNotFound | ScriptWriteUnavailable, CurrentUser>;
     readonly useGenericArtwork: (
       id: ScriptId,
       field: typeof ImportedArtwork.Type.field,
@@ -259,12 +336,147 @@ const readForWrite = <A, E, R>(effect: Effect.Effect<A, E | ScriptReadUnavailabl
     Effect.catchTag("ScriptReadUnavailable", () => Effect.fail(new ScriptWriteUnavailable({}))),
   );
 
+const ownerArtwork = ({ team, variants, sourceId, style }: StoredArtwork): CharacterArtwork => ({
+  team,
+  variants,
+  sourceId,
+  style,
+});
+
 export const ScriptsLive = Layer.effect(
   Scripts,
   Effect.gen(function* () {
     const store = yield* ScriptStore;
+    const storage = yield* ArtworkStorage;
+
+    // Cleanup of a private original that is no longer, or never became, current.
+    // Its failure is logged by the adapter and never undoes the saved change.
+    const discardSource = (scriptId: ScriptId, sourceId: string) =>
+      storage.deleteSource(sourceKey(scriptId, sourceId)).pipe(Effect.ignore);
+
+    // Each variant gets a fresh opaque key; nothing published is ever replaced.
+    const publishVariants = (variants: ReadonlyArray<RenderedVariant>) =>
+      Effect.forEach(variants, ({ variant, image }) => {
+        const path = `${PUBLISHED_PREFIX}${createId()}.png`;
+
+        return storage.publish(path.slice(1), image).pipe(Effect.as({ variant, path }));
+      });
 
     return Scripts.of({
+      uploadArtwork: Effect.fn("Scripts.uploadArtwork")(function* (scriptId, id, upload) {
+        const user = yield* CurrentUser;
+        const current = yield* readForWrite(store.findArtwork(user.id, scriptId, id));
+
+        if (Option.isNone(current)) return yield* new CharacterNotFound({ id });
+        const sourceType = sniffImageType(upload.source);
+
+        const problem =
+          sourceProblem(upload.source) ?? variantsProblem(upload.team, upload.variants);
+
+        if (problem !== undefined || sourceType === undefined)
+          return yield* new ArtworkInvalid({ message: problem ?? "Choose an image file." });
+        const sourceId = createId();
+
+        yield* storage.putSource(sourceKey(scriptId, sourceId), upload.source, sourceType);
+
+        // Publish everything before switching references; a failure leaves the
+        // previous artwork current and drops only the unused original.
+        const artwork = yield* Effect.gen(function* () {
+          const next: StoredArtwork = {
+            sourceId,
+            sourceType,
+            style: upload.style,
+            team: upload.team,
+            variants: yield* publishVariants(upload.variants),
+          };
+
+          const previous = current.value.artwork?.sourceId ?? null;
+
+          if (
+            !(yield* store.replaceArtwork(
+              user.id,
+              scriptId,
+              id,
+              next,
+              previous,
+              yield* Clock.currentTimeMillis,
+            ))
+          )
+            return yield* new ArtworkConflict({});
+
+          return next;
+        }).pipe(Effect.onError(() => discardSource(scriptId, sourceId)));
+
+        if (current.value.artwork !== null)
+          yield* discardSource(scriptId, current.value.artwork.sourceId);
+
+        return ownerArtwork(artwork);
+      }),
+      restyleArtwork: Effect.fn("Scripts.restyleArtwork")(function* (scriptId, id, restyle) {
+        const user = yield* CurrentUser;
+        const current = yield* readForWrite(store.findArtwork(user.id, scriptId, id));
+        const artwork = Option.getOrNull(current)?.artwork ?? null;
+
+        if (artwork === null) return yield* new ArtworkNotFound({ id });
+
+        if (artwork.sourceId !== restyle.sourceId) return yield* new ArtworkConflict({});
+        const problem = variantsProblem(restyle.team, restyle.variants);
+
+        if (problem !== undefined) return yield* new ArtworkInvalid({ message: problem });
+
+        const next: StoredArtwork = {
+          ...artwork,
+          style: restyle.style,
+          team: restyle.team,
+          variants: yield* publishVariants(restyle.variants),
+        };
+
+        if (
+          !(yield* store.replaceArtwork(
+            user.id,
+            scriptId,
+            id,
+            next,
+            artwork.sourceId,
+            yield* Clock.currentTimeMillis,
+          ))
+        )
+          return yield* new ArtworkConflict({});
+
+        return ownerArtwork(next);
+      }),
+      readArtworkSource: Effect.fn("Scripts.readArtworkSource")(function* (scriptId, id) {
+        const user = yield* CurrentUser;
+        const current = yield* store.findArtwork(user.id, scriptId, id);
+        const artwork = Option.getOrNull(current)?.artwork ?? null;
+
+        if (artwork === null) return yield* new ArtworkNotFound({ id });
+        const bytes = yield* storage.readSource(sourceKey(scriptId, artwork.sourceId));
+
+        // A current reference without its original means storage lost data.
+        if (Option.isNone(bytes)) {
+          yield* Effect.logError(`Missing artwork source ${artwork.sourceId}`);
+
+          return yield* new ScriptReadUnavailable({});
+        }
+
+        return { sourceId: artwork.sourceId, contentType: artwork.sourceType, bytes: bytes.value };
+      }),
+      removeArtwork: Effect.fn("Scripts.removeArtwork")(function* (scriptId, id) {
+        const user = yield* CurrentUser;
+        const current = yield* readForWrite(store.findArtwork(user.id, scriptId, id));
+        const artwork = Option.getOrNull(current)?.artwork ?? null;
+
+        if (
+          artwork === null ||
+          !(yield* store.deleteArtwork(user.id, scriptId, id, yield* Clock.currentTimeMillis))
+        )
+          return yield* new ArtworkNotFound({ id });
+
+        yield* discardSource(scriptId, artwork.sourceId);
+
+        return id;
+      }),
       useGenericArtwork: Effect.fn("Scripts.useGenericArtwork")(function* (id, field, characterId) {
         const user = yield* CurrentUser;
 
@@ -477,6 +689,7 @@ export const ScriptsLive = Layer.effect(
       }),
       deleteCharacter: Effect.fn("Scripts.deleteCharacter")(function* (scriptId, id) {
         const user = yield* CurrentUser;
+        const current = yield* readForWrite(store.findArtwork(user.id, scriptId, id));
 
         const deleted = yield* store.deleteCharacter(
           user.id,
@@ -486,6 +699,9 @@ export const ScriptsLive = Layer.effect(
         );
 
         if (!deleted) return yield* new CharacterNotFound({ id });
+        const artwork = Option.getOrNull(current)?.artwork ?? null;
+
+        if (artwork !== null) yield* discardSource(scriptId, artwork.sourceId);
 
         return id;
       }),

@@ -5,6 +5,7 @@ import { Miniflare } from "miniflare";
 import { readFile, readdir } from "node:fs/promises";
 import { AppConfig, handleRequest } from "../../src/app.ts";
 import { Auth } from "../../src/auth.ts";
+import { r2ArtworkStorage } from "../../src/artwork-storage.ts";
 import { D1ScriptStore } from "../../src/d1.ts";
 import { Scripts, ScriptsLive } from "../../src/scripts.ts";
 
@@ -14,6 +15,7 @@ export const sharingApplication = async (origin: string) => {
     script: "export default { fetch() { return new Response('ok') } }",
     compatibilityDate: "2026-07-01",
     d1Databases: ["DB"],
+    r2Buckets: ["SOURCES", "PUBLISHED"],
   });
 
   const db = await mf.getD1Database("DB");
@@ -28,9 +30,17 @@ export const sharingApplication = async (origin: string) => {
   await db.prepare("INSERT INTO users (id, display_name) VALUES ('owner', 'Owner')").run();
   const owner = { id: "owner", displayName: "Owner" };
 
+  const storage = r2ArtworkStorage(
+    await mf.getR2Bucket("SOURCES"),
+    await mf.getR2Bucket("PUBLISHED"),
+  );
+
   const runtime = ManagedRuntime.make(
     Layer.mergeAll(
-      ScriptsLive.pipe(Layer.provide(D1ScriptStore.pipe(Layer.provide(D1Client.layer({ db }))))),
+      ScriptsLive.pipe(
+        Layer.provide(D1ScriptStore.pipe(Layer.provide(D1Client.layer({ db })))),
+        Layer.provideMerge(storage),
+      ),
       Layer.mock(Auth, {
         current: (token) => Effect.succeed(token === "owner-session" ? owner : null),
       }),

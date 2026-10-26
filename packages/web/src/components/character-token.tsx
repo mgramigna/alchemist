@@ -1,17 +1,20 @@
-import { genericIcons, type AuthoredTeam, type IconVariant } from "@alchemist/domain";
+import { characterIcons, type IconVariant, type PublicCharacter } from "@alchemist/domain";
 import { cn } from "cn";
 
-/** A generic icon. Decorative by default: the Character's name labels it. */
+/**
+ * The Character's published artwork for its current Team, otherwise its
+ * generic icon. Decorative by default: the Character's name labels it.
+ */
 export function CharacterToken({
-  team,
+  character,
   variant,
   className,
 }: {
-  readonly team: AuthoredTeam;
+  readonly character: Pick<PublicCharacter, "team" | "artwork">;
   readonly variant?: IconVariant;
   readonly className?: string;
 }) {
-  const icons = genericIcons(team);
+  const icons = characterIcons(character);
   const icon = icons.find((candidate) => candidate.variant === variant) ?? icons[0];
 
   return (

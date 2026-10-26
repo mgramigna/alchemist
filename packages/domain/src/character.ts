@@ -73,10 +73,48 @@ export const CharacterDetails = Schema.Struct({
 
 export interface CharacterDetails extends Schema.Schema.Type<typeof CharacterDetails> {}
 
+export const IconVariant = Schema.Literals(["regular", "flipped", "unaligned", "good", "evil"]);
+
+export type IconVariant = typeof IconVariant.Type;
+
+// One published 400×400 image. Paths resolve against the asset origin, like generic icons.
+export const ArtworkVariant = Schema.Struct({ variant: IconVariant, path: Schema.String });
+
+export interface ArtworkVariant extends Schema.Schema.Type<typeof ArtworkVariant> {}
+
+// The Looks offered after upload. Auto picks Solid for line art and ink, Pale lines for photos.
+export const ArtworkLook = Schema.Literals(["auto", "solid", "shaded", "lines"]);
+
+export type ArtworkLook = typeof ArtworkLook.Type;
+
+// Saved per Character and replayed whenever the variants are re-rendered.
+export const ArtworkStyle = Schema.Struct({ look: ArtworkLook });
+
+export interface ArtworkStyle extends Schema.Schema.Type<typeof ArtworkStyle> {}
+
+// What anyone may see: immutable variants and the Team they were styled for.
+export const PublishedArtwork = Schema.Struct({
+  team: AuthoredTeam,
+  variants: Schema.Array(ArtworkVariant),
+});
+
+export interface PublishedArtwork extends Schema.Schema.Type<typeof PublishedArtwork> {}
+
+// The owner's view adds the style and the private source it was rendered from.
+export const CharacterArtwork = Schema.Struct({
+  ...PublishedArtwork.fields,
+  sourceId: Schema.String,
+  style: ArtworkStyle,
+});
+
+export interface CharacterArtwork extends Schema.Schema.Type<typeof CharacterArtwork> {}
+
 // The Script Owner's view. The ID is assigned once and never changes on rename.
+// Artwork is absent until uploaded; generic icons stand in meanwhile.
 export const Character = Schema.Struct({
   id: CharacterId,
   ...CharacterDetails.fields,
+  artwork: Schema.optionalKey(CharacterArtwork),
 });
 
 export interface Character extends Schema.Schema.Type<typeof Character> {}
@@ -89,6 +127,7 @@ export const PublicCharacter = Schema.Struct({
   team: AuthoredTeam,
   firstNightInstructions: Schema.String,
   otherNightInstructions: Schema.String,
+  artwork: Schema.optionalKey(PublishedArtwork),
 });
 
 export type InstructionsField = "firstNightInstructions" | "otherNightInstructions";
@@ -163,7 +202,14 @@ export const flavorBlocker = (flavor: string): string | undefined =>
 
 export interface ExportBlocker {
   readonly characterId: CharacterId;
-  readonly field: "name" | "ability" | InstructionsField | ReminderField | "flavor" | "jinx";
+  readonly field:
+    | "name"
+    | "ability"
+    | InstructionsField
+    | ReminderField
+    | "flavor"
+    | "jinx"
+    | "artwork";
   readonly tokenIndex?: number;
   readonly otherCharacterId?: CharacterId;
   readonly message: string;
@@ -171,7 +217,8 @@ export interface ExportBlocker {
 
 export const exportBlockers = (
   characters: ReadonlyArray<
-    Pick<Character, "id" | "name" | "ability" | InstructionsField | ReminderField | "flavor">
+    Pick<Character, "id" | "name" | "ability" | InstructionsField | ReminderField | "flavor"> &
+      Partial<Pick<Character, "team" | "artwork">>
   >,
 ): ReadonlyArray<ExportBlocker> =>
   characters.flatMap(({ id, name, ability, ...details }) => {
@@ -208,10 +255,15 @@ export const exportBlockers = (
 
     if (flavorMessage) blockers.push({ characterId: id, field: "flavor", message: flavorMessage });
 
+    if (details.team !== undefined && isStale({ team: details.team, artwork: details.artwork }))
+      blockers.push({
+        characterId: id,
+        field: "artwork",
+        message: "Artwork is still styled for its previous Team. Restyle it or use generic icons.",
+      });
+
     return blockers;
   });
-
-export type IconVariant = "regular" | "flipped" | "unaligned" | "good" | "evil";
 
 export interface GenericIcon {
   readonly variant: IconVariant;
@@ -235,3 +287,18 @@ export const genericIcons = (team: AuthoredTeam): ReadonlyArray<GenericIcon> => 
     ? [icon(team, "unaligned", undefined), icon(team, "good", "good"), icon(team, "evil", "evil")]
     : [icon(team, "regular", alignment), icon(team, "flipped", opposite(alignment))];
 };
+
+interface Iconed {
+  readonly team: AuthoredTeam;
+  readonly artwork?: PublishedArtwork | undefined;
+}
+
+// Variants styled for an earlier Team wait for a restyle rather than show wrong alignments.
+export const isStale = ({ team, artwork }: Iconed) =>
+  artwork !== undefined && artwork.team !== team;
+
+/** Published artwork styled for the current Team, otherwise the generic icons, in export order. */
+export const characterIcons = (character: Iconed): ReadonlyArray<GenericIcon> =>
+  character.artwork !== undefined && !isStale(character)
+    ? character.artwork.variants
+    : genericIcons(character.team);

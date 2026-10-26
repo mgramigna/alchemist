@@ -1,9 +1,10 @@
 import { Rpcs } from "@alchemist/domain/rpc";
-import { Context, Effect, Layer, Scheduler } from "effect";
+import { Context, Effect, Layer, Option, Scheduler } from "effect";
 import { HttpRouter, HttpServer } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 import { Auth } from "./auth.ts";
-import { Scripts } from "./scripts.ts";
+import { ArtworkStorage, PUBLISHED_CACHE_CONTROL } from "./artwork-storage.ts";
+import { PUBLISHED_PREFIX, Scripts } from "./scripts.ts";
 import { AuthenticationLive, Handlers, ExportOrigin } from "./rpc.ts";
 import { authResponse, handleAuth, sameOrigin } from "./auth-http.ts";
 
@@ -28,8 +29,65 @@ const Routes = HttpRouter.add("POST", "/api/rpc", rpc).pipe(
 
 const rpcApp = HttpRouter.toWebHandler(Routes);
 
+const PUBLISHED_PATH = new RegExp(`^${PUBLISHED_PREFIX}[0-9a-z]{26}\\.png$`);
+
+// Anyone, including the official BOTC app and sheet capture on other origins,
+// may read published artwork without credentials.
+const PUBLIC_IMAGE_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, HEAD",
+  "X-Content-Type-Options": "nosniff",
+};
+
+const servePublished = Effect.fn("App.servePublished")(function* (request: Request, path: string) {
+  if (request.method === "OPTIONS")
+    return new Response(null, { status: 204, headers: PUBLIC_IMAGE_HEADERS });
+
+  if (request.method !== "GET" && request.method !== "HEAD")
+    return new Response(null, {
+      status: 405,
+      headers: { ...PUBLIC_IMAGE_HEADERS, Allow: "GET, HEAD" },
+    });
+  const storage = yield* ArtworkStorage;
+
+  const image = PUBLISHED_PATH.test(path)
+    ? yield* storage
+        .readPublished(path.slice(1))
+        .pipe(Effect.catchTag("ScriptReadUnavailable", () => Effect.succeed(null)))
+    : Option.none();
+
+  if (image === null)
+    return new Response("Artwork is temporarily unavailable.", {
+      status: 503,
+      headers: { ...PUBLIC_IMAGE_HEADERS, "Cache-Control": "no-store" },
+    });
+
+  if (Option.isNone(image))
+    return new Response("Not found.", {
+      status: 404,
+      headers: { ...PUBLIC_IMAGE_HEADERS, "Cache-Control": "no-store" },
+    });
+
+  const headers = {
+    ...PUBLIC_IMAGE_HEADERS,
+    "Content-Type": "image/png",
+    "Content-Length": String(image.value.bytes.length),
+    "Cache-Control": PUBLISHED_CACHE_CONTROL,
+    ETag: image.value.etag,
+  };
+
+  if (request.headers.get("If-None-Match") === image.value.etag)
+    return new Response(null, { status: 304, headers });
+
+  return new Response(request.method === "HEAD" ? null : new Uint8Array(image.value.bytes), {
+    headers,
+  });
+});
+
 export const handleRequest = Effect.fn("App.handleRequest")(function* (request: Request) {
   const path = new URL(request.url).pathname.replace(/\/$/, "");
+
+  if (path.startsWith(PUBLISHED_PREFIX)) return yield* servePublished(request, path);
   const isRpc = path === "/api/rpc";
 
   if (path.startsWith("/auth/") || isRpc) {

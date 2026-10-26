@@ -18,6 +18,7 @@ const FIELD_LABELS = new Map([
   ["flavor", "Flavor text"],
   ["characters", "Characters"],
   ["jinx", "Jinx"],
+  ["artwork", "Icon"],
   ["id", "Character ID"],
   ["schema", "JSON format"],
 ]);
