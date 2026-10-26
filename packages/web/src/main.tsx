@@ -4,6 +4,7 @@ import { StrictMode, useContext, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createAppRouter } from "./router.tsx";
 import "./style.css";
+import { TooltipProvider } from "./components/ui/tooltip.tsx";
 
 const history = createBrowserHistory();
 
@@ -20,7 +21,9 @@ if (root)
   createRoot(root).render(
     <StrictMode>
       <RegistryProvider>
-        <AppRouter />
+        <TooltipProvider>
+          <AppRouter />
+        </TooltipProvider>
       </RegistryProvider>
     </StrictMode>,
   );

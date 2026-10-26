@@ -6,7 +6,7 @@ import { publicScript } from "../../api.ts";
 
 export const Route = createFileRoute("/scripts/$scriptId")({
   loader: ({ params, context, abortController }) => {
-    const id = Schema.decodeUnknownOption(ScriptId)(params.scriptId);
+    const id = Schema.decodeOption(ScriptId)(params.scriptId);
 
     if (Option.isNone(id)) throw notFound();
 
@@ -77,21 +77,23 @@ function PublicScript() {
   return (
     <article className="mx-auto flex w-full max-w-4xl flex-col gap-8">
       <header className="flex flex-col gap-3">
-        <p className="text-sm text-slate-600">Shared Script · Read only</p>
+        <p className="text-sm text-muted-foreground">Shared Script · Read only</p>
         <h1 className="text-3xl font-semibold wrap-anywhere">{script.name || "Untitled Script"}</h1>
         <p className="wrap-anywhere">By {script.authorCredit || "Uncredited"}</p>
       </header>
-      <section className="rounded border border-slate-200" aria-labelledby="characters-title">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-5">
+      <section className="rounded border border-border" aria-labelledby="characters-title">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-5">
           <h2 id="characters-title" className="text-xl font-semibold">
             Characters
           </h2>
-          <span className="text-sm text-slate-600">{script.characters.length} Characters</span>
+          <span className="text-sm text-muted-foreground">
+            {script.characters.length} Characters
+          </span>
         </div>
         <div className="flex flex-col gap-3 px-5 py-12 text-center">
           <h3 className="text-xl font-medium">A story waiting for its Characters</h3>
           <p>This Script has no Characters yet.</p>
-          <p className="text-slate-600">Come back when the Script Owner has added some.</p>
+          <p className="text-muted-foreground">Come back when the Script Owner has added some.</p>
         </div>
       </section>
     </article>

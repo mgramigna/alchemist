@@ -20,15 +20,15 @@ function RootLayout() {
       <a className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4" href="#main">
         Skip to content
       </a>
-      <header className="px-[6vw] py-6">
-        <Link className="tracking-[0.24em] no-underline" to="/" aria-label="Alchemist home">
+      <header className="px-6 md:px-12 lg:px-20 py-6">
+        <Link className="tracking-brand no-underline" to="/" aria-label="Alchemist home">
           <span aria-hidden="true">◈</span> ALCHEMIST
         </Link>
       </header>
-      <main id="main" className="flex-1 px-[6vw] py-12">
+      <main id="main" className="flex-1 px-6 md:px-12 lg:px-20 py-12">
         <Outlet />
       </main>
-      <footer className="px-[6vw] py-6 text-sm">
+      <footer className="px-6 md:px-12 lg:px-20 py-6 text-sm">
         Alchemist is not affiliated with The Pandemonium Institute.
       </footer>
       {import.meta.env.DEV && <TanStackRouterDevtools position="bottom-right" />}

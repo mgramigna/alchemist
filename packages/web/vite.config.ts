@@ -5,6 +5,11 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   root: import.meta.dirname,
+  resolve: {
+    alias: {
+      "@": `${import.meta.dirname}/src`,
+    },
+  },
   // The Router plugin must run before the React plugin.
   plugins: [tanstackRouter({ target: "react", autoCodeSplitting: true }), react(), tailwindcss()],
   // Listen on all interfaces so the dev VM is reachable over Tailscale.

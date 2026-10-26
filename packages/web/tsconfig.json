@@ -4,6 +4,11 @@
     "rootDir": ".",
     "outDir": ".tsbuild",
     "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "types": ["node", "vite/client"]
   },
