@@ -6,7 +6,8 @@
     "@alchemist/domain": "workspace:*",
     "@effect/sql-d1": "catalog:",
     "effect": "catalog:",
-    "jose": "catalog:"
+    "jose": "catalog:",
+    "ulid": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",

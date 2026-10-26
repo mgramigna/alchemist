@@ -2,9 +2,7 @@ import { textLength } from "./text.ts";
 import { Match, Schema } from "effect";
 
 // New Characters use ULIDs; imports retain valid BOTC IDs within their Script.
-export const CharacterId = Schema.String.check(Schema.isPattern(/^[a-z0-9]{1,50}$(?![\s\S])/)).pipe(
-  Schema.brand("CharacterId"),
-);
+export const CharacterId = Schema.String.pipe(Schema.brand("CharacterId"));
 
 export type CharacterId = typeof CharacterId.Type;
 
