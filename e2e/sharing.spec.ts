@@ -97,15 +97,37 @@ sharing(
       ).toBeVisible();
       await expect(recipient.getByRole("textbox")).toHaveCount(0);
       await expect(recipient.getByRole("button", { name: "Copy link" })).toHaveCount(0);
-      await expect(recipient.getByRole("button", { name: "Download JSON" })).toBeEnabled();
+      await expect(recipient.getByRole("button", { name: "Export JSON" })).toBeEnabled();
+      await anonymous.grantPermissions(["clipboard-read", "clipboard-write"]);
+      const viewer = recipient.getByRole("region", { name: "Sheets", exact: true });
+      const jsonSection = recipient.getByRole("region", { name: "BOTC JSON", exact: true });
+      expect(
+        await viewer.evaluate(
+          (node, jsonId) =>
+            Boolean(
+              node.compareDocumentPosition(document.getElementById(jsonId)?.parentElement ?? node) &
+              Node.DOCUMENT_POSITION_FOLLOWING,
+            ),
+          "json-title",
+        ),
+      ).toBe(true);
+      await jsonSection.getByRole("button", { name: "Export JSON" }).click();
+      await expect(recipient.getByRole("menuitem")).toHaveCount(2);
+      await recipient.getByRole("menuitem", { name: "Copy JSON" }).click();
+      await expect(recipient.getByText("JSON copied", { exact: true })).toBeVisible();
+      const copied = await recipient.evaluate(() => navigator.clipboard.readText());
+
       const file = recipient.waitForEvent("download");
-      await recipient.getByRole("button", { name: "Download JSON" }).focus();
+      await recipient.getByRole("button", { name: "Export JSON" }).focus();
+      await recipient.keyboard.press("Enter");
+      await recipient.getByRole("menuitem", { name: "Download JSON" }).focus();
       await recipient.keyboard.press("Enter");
       const jsonFile = await file;
       expect(jsonFile.suggestedFilename()).toBe("Shared-Alchemy.json");
       const document = JSON.parse(await readFile(await jsonFile.path(), "utf8"));
       expect(document[0]).toMatchObject({ name: "Shared Alchemy", author: "The Collective" });
       expect(document).toHaveLength(5);
+      expect(JSON.parse(copied)).toEqual(document);
 
       const denied = await recipient.evaluate(async (id) => {
         const response = await fetch("/api/rpc", {
@@ -138,7 +160,8 @@ sharing(
       await recipient.reload();
       await expect(recipient.getByRole("heading", { name: "Saved Alchemy" })).toBeVisible();
       const updated = recipient.waitForEvent("download");
-      await recipient.getByRole("button", { name: "Download JSON" }).click();
+      await recipient.getByRole("button", { name: "Export JSON" }).click();
+      await recipient.getByRole("menuitem", { name: "Download JSON" }).click();
       expect(JSON.parse(await readFile(await (await updated).path(), "utf8"))[0].name).toBe(
         "Saved Alchemy",
       );
@@ -158,7 +181,7 @@ sharing("JSON blockers leave PNG downloads available", async ({ page, context, a
   await expect(page.getByRole("list", { name: "JSON validation problems" })).toContainText(
     "Ability",
   );
-  await expect(page.getByRole("button", { name: "Download JSON" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Export JSON" })).toBeDisabled();
   const file = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download PNG" }).click();
   await page.getByRole("menuitem", { name: "Character sheet", exact: true }).click();
@@ -171,7 +194,7 @@ sharing(
     await context.clearCookies();
     await app.overflow();
     await page.goto(`/scripts/${app.id}`);
-    await expect(page.getByRole("button", { name: "Download JSON" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Export JSON" })).toBeEnabled();
     const file = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download PNG" }).click();
     await page.getByRole("menuitem", { name: "Both sheets", exact: true }).click();
@@ -179,9 +202,10 @@ sharing(
       page.getByRole("alert").filter({ hasText: "The Character sheet is too much" }),
     ).toBeVisible();
     expect((await file).suggestedFilename()).toBe("Untitled-Script-night.png");
-    await expect(page.getByRole("button", { name: "Download JSON" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Export JSON" })).toBeEnabled();
     const json = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Download JSON" }).click();
+    await page.getByRole("button", { name: "Export JSON" }).click();
+    await page.getByRole("menuitem", { name: "Download JSON" }).click();
     expect(JSON.parse(await readFile(await (await json).path(), "utf8"))).toHaveLength(66);
   },
 );
@@ -196,7 +220,8 @@ sharing(
     await page.getByRole("menuitem", { name: "Night sheet", exact: true }).click();
     await expect(page.getByRole("alert")).toContainText("Sheet fonts didn’t load");
     const json = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Download JSON" }).click();
+    await page.getByRole("button", { name: "Export JSON" }).click();
+    await page.getByRole("menuitem", { name: "Download JSON" }).click();
     expect((await json).suggestedFilename()).toBe("Untitled-Script.json");
     await page.unroute("**/*.woff*");
     const png = page.waitForEvent("download");
@@ -221,7 +246,7 @@ sharing(
     await page.unroute(/\/api\/rpc\/?$/);
     await page.getByRole("button", { name: "Retry JSON" }).focus();
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("button", { name: "Download JSON" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Export JSON" })).toBeEnabled();
   },
 );
 
@@ -243,7 +268,7 @@ sharing(
     await expect(page.getByRole("status").filter({ hasText: "Loading Script" })).toBeVisible();
     release();
     await expect(page.getByRole("heading", { name: "Untitled Script" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Download JSON" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Export JSON" })).toBeEnabled();
     await page.unrouteAll({ behavior: "wait" });
     await page.route(/\/api\/rpc\/?$/, (route) => route.abort());
     await page.reload();

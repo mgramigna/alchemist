@@ -87,7 +87,6 @@ function PublicScript() {
       <p className="text-sm text-muted-foreground">
         This link shows the latest saved Script. Reload to see new changes from the Script Owner.
       </p>
-      <PublicJsonDownload key={script.id} script={script} />
       {script.characters.length === 0 ? (
         <section
           aria-label="Sheets"
@@ -105,6 +104,7 @@ function PublicScript() {
           <SheetPreview content={script} view={view} onViewChange={setView} />
         </section>
       )}
+      <PublicJsonDownload key={script.id} script={script} />
     </article>
   );
 }
