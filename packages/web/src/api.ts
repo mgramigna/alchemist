@@ -14,3 +14,19 @@ class PublicClient extends AtomRpc.Service<PublicClient>()("alchemist/PublicClie
 }) {}
 
 export const publicScript = (id: ScriptId) => PublicClient.query("Script.readPublic", { id });
+
+import { AccountRpcs } from "@alchemist/domain/rpc";
+
+class AccountClient extends AtomRpc.Service<AccountClient>()("alchemist/AccountClient", {
+  group: AccountRpcs,
+  protocol: RpcClient.layerProtocolHttp({ url: "/api/account/rpc" }).pipe(
+    Layer.provide(RpcSerialization.layerNdjson),
+    Layer.provide(FetchHttpClient.layer),
+  ),
+}) {}
+
+export const currentAccount = AccountClient.query("Account.current", undefined, {
+  reactivityKeys: ["Account"],
+});
+
+export const renameAccount = AccountClient.mutation("Account.rename");

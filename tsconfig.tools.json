@@ -5,10 +5,13 @@
     "outDir": ".tsbuild/tools",
     "lib": ["ES2024", "DOM"]
   },
-  "include": ["alchemy.run.ts", "playwright.config.ts", "e2e/**/*.ts"],
+  "include": ["alchemy.run.ts", "playwright.config.ts", "e2e/**/*.ts", "infra/**/*.ts"],
   "references": [
     {
       "path": "packages/domain"
+    },
+    {
+      "path": "packages/api"
     }
   ]
 }
