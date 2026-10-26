@@ -2,7 +2,6 @@ import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import type { User } from "@alchemist/domain";
 import { DisplayName } from "@alchemist/domain";
 import { SignOutIcon, UserCircleIcon, WarningCircleIcon } from "@phosphor-icons/react";
-import { useForm } from "@tanstack/react-form";
 import { createFileRoute } from "@tanstack/react-router";
 import { Exit, Schema } from "effect";
 import { AsyncResult } from "effect/reactivity";
@@ -27,10 +26,11 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "../components/ui/empty.tsx";
-import { Field, FieldDescription, FieldError, FieldLabel } from "../components/ui/field.tsx";
-import { Input } from "../components/ui/input.tsx";
 import { Skeleton } from "../components/ui/skeleton.tsx";
-import { Spinner } from "../components/ui/spinner.tsx";
+import { useAppForm } from "../hooks/form.ts";
+
+// Validates what the user typed; the trimmed name is what gets saved.
+const DisplayNameInput = Schema.toStandardSchemaV1(Schema.Trim.pipe(Schema.decodeTo(DisplayName)));
 
 export const Route = createFileRoute("/account")({
   component: AccountPage,
@@ -114,7 +114,7 @@ function ProfileCard({ user }: { readonly user: User }) {
   const rename = useAtomSet(renameAccount, { mode: "promiseExit" });
   const [saveFailed, setSaveFailed] = useState(false);
 
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: { displayName: user.displayName },
     onSubmit: async ({ value }) => {
       setSaveFailed(false);
@@ -135,86 +135,47 @@ function ProfileCard({ user }: { readonly user: User }) {
 
   return (
     <Card>
-      <form
-        className="flex flex-col gap-(--card-spacing)"
-        aria-labelledby="profile-title"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void form.handleSubmit();
-        }}
-      >
-        <CardHeader className="border-b">
-          <div className="flex items-center gap-3">
-            <UserAvatar user={user} size="lg" />
-            <div className="flex min-w-0 flex-col gap-1">
-              <CardTitle id="profile-title" className="text-lg">
-                Profile
-              </CardTitle>
-              <CardDescription>Your name across Alchemist.</CardDescription>
+      <form.AppForm>
+        <form.Form className="flex flex-col gap-(--card-spacing)" aria-labelledby="profile-title">
+          <CardHeader className="border-b">
+            <div className="flex items-center gap-3">
+              <UserAvatar user={user} size="lg" />
+              <div className="flex min-w-0 flex-col gap-1">
+                <CardTitle id="profile-title" className="text-lg">
+                  Profile
+                </CardTitle>
+                <CardDescription>Your name across Alchemist.</CardDescription>
+              </div>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <form.Field
-            name="displayName"
-            validators={{
-              onChange: ({ value }) =>
-                Schema.is(DisplayName)(value.trim())
-                  ? undefined
-                  : "Enter a name between 1 and 100 characters.",
-            }}
-          >
-            {(field) => {
-              const invalid = field.state.meta.errors.length > 0;
-
-              return (
-                <Field data-invalid={invalid}>
-                  <FieldLabel htmlFor="display-name">Display name</FieldLabel>
-                  <Input
-                    id="display-name"
-                    name={field.name}
-                    value={field.state.value}
-                    maxLength={100}
-                    autoComplete="nickname"
-                    onBlur={field.handleBlur}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                    aria-invalid={invalid}
-                    aria-describedby="display-name-help"
-                  />
-                  {invalid ? (
-                    <FieldError id="display-name-help">
-                      {field.state.meta.errors.join(" ")}
-                    </FieldError>
-                  ) : (
-                    <FieldDescription id="display-name-help">
-                      Used as the starting Author Credit on new Scripts. Changing it won’t update
-                      Scripts you’ve already made.
-                    </FieldDescription>
-                  )}
-                </Field>
-              );
-            }}
-          </form.Field>
-        </CardContent>
-        <CardFooter className="flex-wrap justify-end gap-3">
-          {saveFailed && (
-            <p role="alert" className="mr-auto flex items-center gap-1.5 text-sm text-destructive">
-              <WarningCircleIcon className="size-4 shrink-0" />
-              Could not save your name. Try again, or sign in again if your session expired.
-            </p>
-          )}
-          <form.Subscribe
-            selector={(state) => [state.canSubmit, state.isSubmitting, state.isDefaultValue]}
-          >
-            {([canSubmit, submitting, unchanged]) => (
-              <Button type="submit" disabled={!canSubmit || submitting || unchanged}>
-                {submitting && <Spinner />}
-                {submitting ? "Saving…" : "Save display name"}
-              </Button>
+          </CardHeader>
+          <CardContent>
+            <form.AppField name="displayName" validators={{ onChange: DisplayNameInput }}>
+              {(field) => (
+                <field.TextField
+                  label="Display name"
+                  description="Used as the starting Author Credit on new Scripts. Changing it won’t update Scripts you’ve already made."
+                  maxLength={100}
+                  autoComplete="nickname"
+                />
+              )}
+            </form.AppField>
+          </CardContent>
+          <CardFooter className="flex-wrap justify-end gap-3">
+            {saveFailed && (
+              <p
+                role="alert"
+                className="mr-auto flex items-center gap-1.5 text-sm text-destructive"
+              >
+                <WarningCircleIcon className="size-4 shrink-0" />
+                Could not save your name. Try again, or sign in again if your session expired.
+              </p>
             )}
-          </form.Subscribe>
-        </CardFooter>
-      </form>
+            <form.SubmitButton requireChanges pendingLabel="Saving…">
+              Save display name
+            </form.SubmitButton>
+          </CardFooter>
+        </form.Form>
+      </form.AppForm>
     </Card>
   );
 }

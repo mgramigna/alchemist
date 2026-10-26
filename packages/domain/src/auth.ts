@@ -1,9 +1,9 @@
 import { Schema } from "effect";
 
 export const DisplayName = Schema.String.check(
-  Schema.isMinLength(1),
-  Schema.isMaxLength(100),
-  Schema.isPattern(/\S/),
+  Schema.isMinLength(1, { message: "Enter a display name." }),
+  Schema.isMaxLength(100, { message: "Use 100 characters or fewer." }),
+  Schema.isPattern(/\S/, { message: "Enter a display name." }),
 );
 
 export const User = Schema.Struct({ id: Schema.String, displayName: DisplayName });
