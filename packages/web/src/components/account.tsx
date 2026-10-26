@@ -1,124 +1,146 @@
-import { useAtomValue, useAtomRefresh, useAtomSet } from "@effect/atom-react";
-import { useForm } from "@tanstack/react-form";
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import type { User } from "@alchemist/domain";
-import { DisplayName } from "@alchemist/domain";
-import { Exit, Schema } from "effect";
+import { ArrowClockwiseIcon, SignOutIcon, UserCircleIcon } from "@phosphor-icons/react";
+import { Link } from "@tanstack/react-router";
+import { cn } from "cn";
 import { AsyncResult } from "effect/reactivity";
-import { useState } from "react";
-import { currentAccount, renameAccount } from "../api.ts";
+import { useRef } from "react";
+import { currentAccount } from "../api.ts";
+import { Avatar, AvatarFallback } from "./ui/avatar.tsx";
 import { Button, buttonVariants } from "./ui/button.tsx";
-import { Input } from "./ui/input.tsx";
-import { Label } from "./ui/label.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx";
+import { Skeleton } from "./ui/skeleton.tsx";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx";
 
-export function Account() {
+export function SignInWithGoogle({
+  size = "default",
+  className,
+}: {
+  readonly size?: "default" | "lg";
+  readonly className?: string;
+}) {
+  return (
+    <a className={cn(buttonVariants({ variant: "outline", size }), className)} href="/auth/google">
+      <img src="/google.svg" alt="" width={16} height={16} />
+      Sign in with Google
+    </a>
+  );
+}
+
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+export function initials(displayName: string) {
+  const words = displayName.trim().split(/\s+/u);
+  const picked = words.length > 1 ? [words[0], words.at(-1)] : [words[0]];
+
+  return picked
+    .map(
+      (word) =>
+        graphemes
+          .segment(word ?? "")
+          [Symbol.iterator]()
+          .next().value?.segment ?? "",
+    )
+    .join("")
+    .toLocaleUpperCase();
+}
+
+export function UserAvatar({
+  user,
+  size = "default",
+}: {
+  readonly user: User;
+  readonly size?: "default" | "sm" | "lg";
+}) {
+  return (
+    <Avatar size={size}>
+      <AvatarFallback className="bg-accent font-medium text-accent-foreground">
+        {initials(user.displayName)}
+      </AvatarFallback>
+    </Avatar>
+  );
+}
+
+/** The header's account control: sign-in when anonymous, a menu when signed in. */
+export function AccountMenu() {
   const account = useAtomValue(currentAccount);
   const refresh = useAtomRefresh(currentAccount);
 
   return AsyncResult.matchWithError(account, {
-    onInitial: () => <p role="status">Checking your session…</p>,
-    onError: () => (
-      <div role="alert">
-        <p>Could not load your account.</p>
-        <Button onClick={refresh}>Try again</Button>
+    onInitial: () => (
+      <div aria-busy="true" aria-label="Checking your session" className="flex items-center gap-2">
+        <Skeleton className="size-8 rounded-full" />
+        <Skeleton className="hidden h-4 w-24 sm:block" />
       </div>
     ),
-    onDefect: () => (
-      <div role="alert">
-        <p>Something went wrong loading your account.</p>
-        <Button onClick={refresh}>Try again</Button>
-      </div>
-    ),
+    onError: () => <AccountRetry onRetry={refresh} />,
+    onDefect: () => <AccountRetry onRetry={refresh} />,
     onSuccess: ({ value }) =>
-      value === null ? (
-        <a className={buttonVariants({ variant: "outline" })} href="/auth/google">
-          <img src="/google.svg" alt="" width={16} height={16} />
-          Sign in with Google
-        </a>
-      ) : (
-        <AccountForm key={value.id} user={value} />
-      ),
+      value === null ? <SignInWithGoogle /> : <SignedInMenu key={value.id} user={value} />,
   });
 }
 
-function AccountForm({ user }: { readonly user: User }) {
-  const rename = useAtomSet(renameAccount, { mode: "promiseExit" });
-  const [status, setStatus] = useState("");
+function AccountRetry({ onRetry }: { readonly onRetry: () => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button variant="ghost" size="sm" onClick={onRetry}>
+            <ArrowClockwiseIcon />
+            Retry sign-in check
+          </Button>
+        }
+      />
+      <TooltipContent>We couldn’t check whether you’re signed in.</TooltipContent>
+    </Tooltip>
+  );
+}
 
-  const form = useForm({
-    defaultValues: { displayName: user.displayName },
-    onSubmit: async ({ value }) => {
-      setStatus("");
-
-      const result = await rename({
-        payload: { displayName: value.displayName.trim() },
-        reactivityKeys: ["Account"],
-      });
-
-      if (Exit.isFailure(result)) {
-        setStatus(
-          "Could not save your name. Your session may have expired. Try again or sign in again.",
-        );
-      } else {
-        form.reset({ displayName: result.value.displayName });
-        setStatus("Display name saved.");
-      }
-    },
-  });
+function SignedInMenu({ user }: { readonly user: User }) {
+  const signOut = useRef<HTMLFormElement>(null);
 
   return (
-    <section className="flex w-full max-w-sm flex-col gap-4" aria-label="Your account">
-      <h2 className="text-xl font-semibold">Your account</h2>
-      <p>Signed in as {user.displayName}</p>
-      <form
-        className="flex flex-col gap-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void form.handleSubmit();
-        }}
-      >
-        <form.Field
-          name="displayName"
-          validators={{
-            onChange: ({ value }) =>
-              Schema.is(DisplayName)(value.trim())
-                ? undefined
-                : "Enter a name between 1 and 100 characters.",
-          }}
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              className="h-10 gap-2 rounded-full px-1 sm:pr-3"
+              aria-label={`Account menu for ${user.displayName}`}
+            />
+          }
         >
-          {(field) => (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="display-name">Display name</Label>
-              <Input
-                id="display-name"
-                name={field.name}
-                value={field.state.value}
-                maxLength={100}
-                onBlur={field.handleBlur}
-                onChange={(event) => field.handleChange(event.target.value)}
-                aria-invalid={field.state.meta.errors.length > 0}
-                aria-describedby="display-name-help"
-              />
-              <p id="display-name-help" className="text-sm">
-                {field.state.meta.errors.join(" ") ||
-                  "Used as the initial Author Credit for new Scripts."}
-              </p>
-            </div>
-          )}
-        </form.Field>
-        <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting]}>
-          {([canSubmit, submitting]) => (
-            <Button type="submit" disabled={!canSubmit || submitting}>
-              {submitting ? "Saving…" : "Save display name"}
-            </Button>
-          )}
-        </form.Subscribe>
-        <p role="status">{status}</p>
-      </form>
-      <form method="post" action="/auth/sign-out">
-        <Button type="submit" variant="outline">
-          Sign out of this browser
-        </Button>
-      </form>
-    </section>
+          <UserAvatar user={user} />
+          <span className="hidden max-w-40 truncate sm:inline">{user.displayName}</span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="flex flex-col gap-0.5 px-2 py-1.5">
+              <span className="text-xs font-normal text-muted-foreground">Signed in as</span>
+              <span className="truncate text-sm text-foreground">{user.displayName}</span>
+            </DropdownMenuLabel>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem render={<Link to="/account" />}>
+            <UserCircleIcon />
+            Account settings
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => signOut.current?.requestSubmit()}>
+            <SignOutIcon />
+            Sign out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <form ref={signOut} method="post" action="/auth/sign-out" hidden />
+    </>
   );
 }

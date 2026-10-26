@@ -3,6 +3,7 @@ import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-rout
 import { Effect, Option, Schema } from "effect";
 import { AtomRegistry } from "effect/reactivity";
 import { publicScript } from "../../api.ts";
+import { Button, buttonVariants } from "../../components/ui/button.tsx";
 
 export const Route = createFileRoute("/scripts/$scriptId")({
   loader: ({ params, context, abortController }) => {
@@ -40,13 +41,13 @@ function ScriptPending() {
 
 function ScriptNotFound() {
   return (
-    <section className="flex flex-col gap-4">
+    <section className="flex flex-col items-start gap-4">
       <h1 className="text-3xl font-semibold">Script not found</h1>
       <p>
         This link may be incorrect, or the Script may have been deleted. Ask the Script Owner for a
         current link.
       </p>
-      <Link className="underline" to="/">
+      <Link className={buttonVariants({ variant: "outline" })} to="/">
         Go home
       </Link>
     </section>
@@ -60,13 +61,9 @@ function ScriptError() {
     <section className="flex flex-col items-start gap-4" role="alert">
       <h1 className="text-3xl font-semibold">We couldn’t load this Script</h1>
       <p>Your connection or the server may be unavailable. Try again in a moment.</p>
-      <button
-        type="button"
-        className="rounded border px-4 py-2 focus-visible:outline-2 focus-visible:outline-offset-4"
-        onClick={() => void router.invalidate()}
-      >
+      <Button variant="outline" onClick={() => void router.invalidate()}>
         Try again
-      </button>
+      </Button>
     </section>
   );
 }
