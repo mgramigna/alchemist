@@ -89,6 +89,18 @@ export const scriptsFixture = Effect.sync(() => {
       }),
     readImported: (ownerId, id) =>
       Effect.sync(() => (Option.isSome(owned(ownerId, id)) ? (imports.get(id) ?? null) : null)),
+    findExport: (id) =>
+      Effect.sync(() =>
+        Option.fromNullishOr(rows.get(id)).pipe(
+          Option.map((row) => ({
+            script: project(row),
+            characters: inScript(id),
+            nightOrders: nightOrders.get(id) ?? defaultNightOrders,
+            jinxes: inJinxes(id),
+            imported: imports.get(id),
+          })),
+        ),
+      ),
     findPublic: (id) =>
       Effect.sync(() =>
         Option.fromNullishOr(rows.get(id)).pipe(

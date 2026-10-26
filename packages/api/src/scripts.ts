@@ -34,6 +34,7 @@ import {
   type NightOrder,
   type NightOrders,
   type ScriptDetails,
+  type ScriptExportSource,
 } from "@alchemist/domain";
 import { CurrentUser } from "@alchemist/domain/rpc";
 import { Clock, Context, Effect, Layer, Option, Schema } from "effect";
@@ -58,6 +59,10 @@ export class ScriptStore extends Context.Service<
       ownerId: string,
       scriptId: ScriptId,
     ) => Effect.Effect<ImportedData | null, ScriptReadUnavailable>;
+    // Internal snapshot for export; imported private sources never cross the RPC boundary.
+    readonly findExport: (
+      id: ScriptId,
+    ) => Effect.Effect<Option.Option<ScriptExportSource>, ScriptReadUnavailable>;
     readonly findPublic: (
       id: ScriptId,
     ) => Effect.Effect<Option.Option<PublicScript>, ScriptReadUnavailable>;
@@ -164,6 +169,13 @@ export class Scripts extends Context.Service<
     readonly readPublic: (
       id: ScriptId,
     ) => Effect.Effect<PublicScript, ScriptNotFound | ScriptReadUnavailable>;
+    readonly exportPublicJson: (
+      id: ScriptId,
+      assetOrigin: string,
+    ) => Effect.Effect<
+      { readonly filename: string; readonly json: string },
+      ScriptNotFound | ScriptReadUnavailable | ScriptExportInvalid
+    >;
     // Owner operations act as the signed-in User; only Authentication or an explicit test provides one.
     readonly exportJson: (
       id: ScriptId,
@@ -319,6 +331,13 @@ export const ScriptsLive = Layer.effect(
           Effect.mapError(() => new ScriptReadUnavailable({})),
         );
       }),
+      exportPublicJson: Effect.fn("Scripts.exportPublicJson")(function* (id, assetOrigin) {
+        const source = yield* store.findExport(id);
+
+        if (Option.isNone(source)) return yield* new ScriptNotFound({ id });
+
+        return yield* serializeExport(source.value, assetOrigin);
+      }),
       exportJson: Effect.fn("Scripts.exportJson")(function* (id, assetOrigin) {
         const user = yield* CurrentUser;
         const script = yield* store.findOwned(user.id, id);
@@ -339,19 +358,7 @@ export const ScriptsLive = Layer.effect(
           imported: imported ?? undefined,
         };
 
-        const problems = scriptExportProblems(source);
-
-        if (problems.length) return yield* new ScriptExportInvalid({ problems });
-        const document = botcDocument(source, assetOrigin);
-        const schemaProblems = botcSchemaProblems(document);
-
-        if (schemaProblems.length)
-          return yield* new ScriptExportInvalid({ problems: schemaProblems });
-
-        return {
-          filename: `${scriptFileStem(script.value.name)}.json`,
-          json: JSON.stringify(document, null, 2),
-        };
+        return yield* serializeExport(source, assetOrigin);
       }),
       create: Effect.fn("Scripts.create")(function* () {
         const user = yield* CurrentUser;
@@ -587,3 +594,22 @@ export const ScriptsLive = Layer.effect(
     });
   }),
 );
+
+// Both public and owner downloads enforce the same saved-content rules.
+const serializeExport = Effect.fn("Scripts.serializeExport")(function* (
+  source: ScriptExportSource,
+  assetOrigin: string,
+) {
+  const problems = scriptExportProblems(source);
+
+  if (problems.length) return yield* new ScriptExportInvalid({ problems });
+  const document = botcDocument(source, assetOrigin);
+  const schemaProblems = botcSchemaProblems(document);
+
+  if (schemaProblems.length) return yield* new ScriptExportInvalid({ problems: schemaProblems });
+
+  return {
+    filename: `${scriptFileStem(source.script.name)}.json`,
+    json: JSON.stringify(document, null, 2),
+  };
+});

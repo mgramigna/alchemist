@@ -15,6 +15,8 @@ class Client extends AtomRpc.Service<Client>()("alchemist/Client", {
 
 export const publicScript = (id: ScriptId) => Client.query("Script.readPublic", { id });
 
+export const publicScriptExport = (id: ScriptId) => Client.query("Script.exportPublic", { id });
+
 export const currentAccount = Client.query("Account.current", undefined, {
   reactivityKeys: ["Account"],
 });

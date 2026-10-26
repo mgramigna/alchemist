@@ -181,6 +181,31 @@ export const D1ScriptStore = Layer.effect(
 
         return decoded[0]?.data ?? null;
       }, readUnavailable),
+      findExport: Effect.fn("D1ScriptStore.findExport")(function* (id) {
+        const [scripts, characters, entries, jinxes, imports] = yield* d1.batch([
+          sql`SELECT id, name, author_credit FROM scripts WHERE id = ${id}`,
+          sql`SELECT ${sql.literal(CHARACTER_COLUMNS)} FROM characters WHERE script_id = ${id} ORDER BY id`,
+          sql`SELECT night, step, character_id FROM night_order_entries WHERE script_id = ${id} ORDER BY night, position`,
+          sql`SELECT first, second, explanation FROM jinxes WHERE script_id = ${id} ORDER BY first, second`,
+          sql`SELECT data FROM script_imports WHERE script_id = ${id}`,
+        ]);
+
+        const row = (yield* Schema.decodeEffect(Schema.Array(ScriptRow))(scripts))[0];
+
+        if (row === undefined) return Option.none();
+
+        const imported = yield* Schema.decodeEffect(
+          Schema.Array(Schema.Struct({ data: Schema.fromJsonString(ImportedData) })),
+        )(imports);
+
+        return Option.some({
+          script: { name: row.name, authorCredit: row.author_credit },
+          characters: yield* decodeCharacters(characters),
+          nightOrders: nightOrders(yield* Schema.decodeEffect(NightEntryRows)(entries)),
+          jinxes: yield* Schema.decodeEffect(JinxRows)(jinxes),
+          imported: imported[0]?.data,
+        });
+      }, readUnavailable),
       findPublic: Effect.fn("D1ScriptStore.findPublic")(function* (id) {
         // One batch, so the Script and its Characters come from the same snapshot.
         const [scripts, characters, entries, jinxes] = yield* d1.batch([

@@ -53,6 +53,11 @@ export const Rpcs = RpcGroup.make(
     success: PublicScript,
     error: Schema.Union([ScriptNotFound, ScriptReadUnavailable]),
   }),
+  Rpc.make("Script.exportPublic", {
+    payload: { id: ScriptId },
+    success: Schema.Struct({ filename: Schema.String, json: Schema.String }),
+    error: Schema.Union([ScriptNotFound, ScriptReadUnavailable, ScriptExportInvalid]),
+  }),
   Rpc.make("Script.useGenericArtwork", {
     payload: {
       id: ScriptId,

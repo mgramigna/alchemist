@@ -204,7 +204,7 @@ it.effect(
         const scripts = yield* Scripts;
         const script = yield* scripts.create().pipe(asUser(token));
 
-        const exportRequest = (sessionToken: string | null) =>
+        const exportRequest = (sessionToken: string | null, tag = "Script.export") =>
           handleRequest(
             new Request(`${origin}/api/rpc`, {
               method: "POST",
@@ -213,13 +213,18 @@ it.effect(
                 "Content-Type": "application/x-ndjson",
                 Cookie: `${SESSION_COOKIE}=${sessionToken ?? ""}`,
               },
-              body: `{"_tag":"Request","id":"1","tag":"Script.export","payload":{"id":${JSON.stringify(script.id)}},"headers":[]}\n`,
+              body: `{"_tag":"Request","id":"1","tag":${JSON.stringify(tag)},"payload":{"id":${JSON.stringify(script.id)}},"headers":[]}\n`,
             }),
           ).pipe(Effect.flatMap((response) => Effect.promise(() => response.json())));
 
         assert.strictEqual((yield* exportRequest(null)).exit.cause[0].error._tag, "AuthRejected");
         assert.strictEqual(
           (yield* exportRequest(token)).exit.cause[0].error._tag,
+          "ScriptExportInvalid",
+        );
+
+        assert.strictEqual(
+          (yield* exportRequest(null, "Script.exportPublic")).exit.cause[0].error._tag,
           "ScriptExportInvalid",
         );
 
@@ -237,7 +242,10 @@ it.effect(
             .pipe(asUser(token));
         }
 
+        const publicResponse = yield* exportRequest(null, "Script.exportPublic");
+        assert.strictEqual(publicResponse.exit._tag, "Success");
         const response = yield* exportRequest(token);
+        assert.deepStrictEqual(publicResponse, response);
         assert.strictEqual(response.exit._tag, "Success");
         const document = JSON.parse(response.exit.value.json);
         assert.strictEqual(document[0].name, "Untitled Script");
