@@ -1,5 +1,11 @@
 import { scriptsFixture } from "./support/scripts.ts";
-import { NO_SCRIPT_ARTWORK, ScriptId, defaultNightOrders } from "@alchemist/domain";
+import {
+  NO_SCRIPT_ARTWORK,
+  ScriptExportInvalid,
+  ScriptId,
+  ScriptNotFound,
+  defaultNightOrders,
+} from "@alchemist/domain";
 import { assert, it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { AppConfig, handleRequest } from "../src/app.ts";
@@ -365,4 +371,54 @@ it.effect(
         );
       }).pipe(Effect.provide([a.layer, s.layer, config]));
     }),
+);
+
+it.effect("serves public Script JSON anonymously as a plain file for BOTC URL import", () =>
+  Effect.gen(function* () {
+    const valid = ScriptId.make("01k8ac00000000000000000001");
+    const invalid = ScriptId.make("01k8ac00000000000000000002");
+    const json = '[{"id":"_meta","name":"Public"}]';
+
+    const get = (path: string, init?: RequestInit) =>
+      handleRequest(new Request(`${origin}${path}`, init));
+
+    const response = yield* get(`/scripts/${valid}/json`);
+    assert.strictEqual(response.status, 200);
+    assert.strictEqual(response.headers.get("Content-Type"), "application/json; charset=utf-8");
+    assert.strictEqual(response.headers.get("Access-Control-Allow-Origin"), "*");
+    assert.strictEqual(response.headers.get("Cache-Control"), "no-store");
+    assert.strictEqual(
+      response.headers.get("Content-Disposition"),
+      'inline; filename="Public.json"',
+    );
+    assert.strictEqual(yield* Effect.promise(() => response.text()), json);
+
+    const head = yield* get(`/scripts/${valid}/json/`, { method: "HEAD" });
+    assert.strictEqual(head.status, 200);
+    assert.strictEqual(yield* Effect.promise(() => head.text()), "");
+
+    assert.strictEqual((yield* get(`/scripts/${valid}/json`, { method: "OPTIONS" })).status, 204);
+    assert.strictEqual((yield* get(`/scripts/${valid}/json`, { method: "POST" })).status, 405);
+    assert.strictEqual((yield* get(`/scripts/${invalid}/json`)).status, 422);
+    assert.strictEqual((yield* get("/scripts/00000000000000000000000000/json")).status, 404);
+  }).pipe(
+    Effect.provide([
+      Layer.mock(ArtworkStorage, {}),
+      Layer.mock(Auth, {}),
+      Layer.succeed(AppConfig, { origin, assetOrigin: "https://assets.alchemist.test" }),
+      Layer.mock(Scripts, {
+        exportPublicJson: (id, assetOrigin) =>
+          assetOrigin !== "https://assets.alchemist.test"
+            ? Effect.die("unexpected asset origin")
+            : id === "01k8ac00000000000000000001"
+              ? Effect.succeed({
+                  filename: "Public.json",
+                  json: '[{"id":"_meta","name":"Public"}]',
+                })
+              : id === "01k8ac00000000000000000002"
+                ? Effect.fail(new ScriptExportInvalid({ problems: [] }))
+                : Effect.fail(new ScriptNotFound({ id })),
+      }),
+    ]),
+  ),
 );

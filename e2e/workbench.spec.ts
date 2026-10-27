@@ -849,9 +849,10 @@ test("Reminder Token count errors remain editable on a narrow screen", async ({ 
   await ordinary.screenshot({ path: test.info().outputPath("reminders-mobile.png") });
 });
 
-test("JSON export requires saved edits and copies or downloads the saved Script on a narrow screen", async ({
+test("JSON export requires saved edits and copies, downloads or links the saved Script on a narrow screen", async ({
   page,
   context,
+  request,
 }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   let exportRequests = 0;
@@ -867,7 +868,7 @@ test("JSON export requires saved edits and copies or downloads the saved Script 
   const name = page.getByRole("textbox", { name: "Script name" });
   await name.fill("Just edited");
   await page.getByRole("button", { name: "Export JSON" }).click();
-  await page.getByRole("menuitem", { name: "Copy JSON" }).click();
+  await page.getByRole("menuitem", { name: "Copy JSON", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Wait for all changes to save");
   expect(exportRequests).toBe(0);
   await expect(page.getByRole("status")).toContainText("All changes saved");
@@ -882,8 +883,14 @@ test("JSON export requires saved edits and copies or downloads the saved Script 
   await expect(page.getByRole("status")).toContainText("All changes saved");
   await page.getByRole("button", { name: "Export JSON" }).focus();
   await page.keyboard.press("ArrowDown");
-  await expect(page.getByRole("menuitem")).toHaveText(["Copy JSON", "Download JSON"]);
-  await expect(page.getByRole("menuitem", { name: "Copy JSON" })).toBeFocused();
+  await expect(page.getByRole("menuitem")).toHaveText([
+    "Copy JSON link",
+    "Copy JSON",
+    "Download JSON",
+  ]);
+  await expect(page.getByRole("menuitem", { name: "Copy JSON link" })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitem", { name: "Copy JSON", exact: true })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByText("JSON copied to clipboard", { exact: true })).toBeVisible();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
@@ -896,7 +903,7 @@ test("JSON export requires saved edits and copies or downloads the saved Script 
     };
   });
   await page.getByRole("button", { name: "Export JSON" }).click();
-  await page.getByRole("menuitem", { name: "Copy JSON" }).click();
+  await page.getByRole("menuitem", { name: "Copy JSON", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Couldn’t copy the JSON");
   const downloaded = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export JSON" }).click();
@@ -908,6 +915,20 @@ test("JSON export requires saved edits and copies or downloads the saved Script 
   if (path === null) throw new Error("Download did not produce a file");
   const json = await readFile(path, "utf8");
   expect(json).toBe(copied);
+
+  // The JSON link needs no request of its own and serves the same saved JSON anonymously.
+  // Removing the failing override restores the browser's clipboard.
+  await page.evaluate(() => Reflect.deleteProperty(navigator.clipboard, "writeText"));
+  const requestsBeforeLink = exportRequests;
+  await page.getByRole("button", { name: "Export JSON" }).click();
+  await page.getByRole("menuitem", { name: "Copy JSON link" }).click();
+  await expect(page.getByText("JSON link copied")).toBeVisible();
+  const jsonLink = await page.evaluate(() => navigator.clipboard.readText());
+  expect(new URL(jsonLink).pathname).toBe(`/scripts/${id}/json`);
+  expect(exportRequests).toBe(requestsBeforeLink);
+  const served = await request.get(jsonLink);
+  expect(served.headers()["content-type"]).toBe("application/json; charset=utf-8");
+  expect(await served.text()).toBe(json);
   await expect(page.getByRole("alert")).toHaveCount(0);
   const document = JSON.parse(json);
   expect(document[0]).toEqual({
