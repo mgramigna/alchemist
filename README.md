@@ -6,6 +6,13 @@ Built with React, TanStack Router, Tailwind CSS, and Effect. Alchemy manages the
 
 Alchemist is not affiliated with The Pandemonium Institute.
 
+## License and third-party material
+
+Original Alchemist code is [MIT licensed](LICENSE). See
+[third-party notices](THIRD_PARTY_NOTICES.md) for copied code, the BOTC schema,
+fonts, artwork, and trademarks, including the copied schema's unconfirmed
+redistribution terms.
+
 ## Screenshots
 
 Build your Script in the workbench with autosave and a live printable sheet preview.

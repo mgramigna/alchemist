@@ -6,6 +6,7 @@
 - Pristine snapshot: `tools/oxlint/upstream/anti-slop-13909c9.tar.gz` (extract with `tar -xzf`; contains `anti-slop/`). SHA-256 `b1969348b2803f61ecdde1e1fe881aadbd98fca4cb8fec44545b89d1752b811d`. Use it as the base for three-way merges on future updates.
 - Installed entry points: `tools/oxlint/anti-slop/index.ts` and `tools/oxlint/anti-slop/effect/index.ts`.
 - Dependencies: `oxlint` and `@oxlint/plugins` pinned together at `1.89.0`.
+- Upstream's root MIT license is retained in `LICENSE` (Copyright (c) 2026 Dillon Mulroy), in addition to the nested ESLint Stylistic license. Retain both notices with redistributed source or snapshots.
 
 ## Intentional deviations
 
