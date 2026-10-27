@@ -18,7 +18,10 @@ bun run dev
 
 Open <http://localhost:5173>. The command starts the frontend and backend with automatic reload. Alchemy runs the Worker and database locally, so no Cloudflare credentials are needed. Local data persists in `.alchemy/` between restarts.
 
-Alchemy loads the root `.env` automatically; shell environment variables take precedence.
+The local backend commands explicitly load the root `.env`, whose values take precedence
+over shell environment variables. They also disable Bun's automatic env-file loading so
+Alchemy's subprocesses cannot pick up `.env.production`. Edit `.env` to change local settings,
+then restart the dev processes.
 The example includes placeholder Google credentials so local pages and tests can run.
 Replace them with real development credentials to sign in with Google.
 

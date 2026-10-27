@@ -49,8 +49,8 @@
     "typecheck": "tsc -b",
     "deploy": "bun run build && bun alchemy deploy --stage prod",
     "deploy:plan": "bun run build && bun alchemy plan --stage prod",
-    "dev:worker": "bun run build && bun alchemy dev",
-    "dev:api": "bun alchemy dev --stage local",
+    "dev:worker": "bun run build && bun --no-env-file alchemy dev --stage local --env-file .env",
+    "dev:api": "bun --no-env-file alchemy dev --stage local --env-file .env",
     "dev:web": "bun run --filter @alchemist/web dev",
     "test:e2e": "playwright test"
   },
