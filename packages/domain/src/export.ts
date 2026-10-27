@@ -4,7 +4,7 @@ import { Result, Schema } from "effect";
 import { characterIcons, exportBlockers, type Character } from "./character.ts";
 import { jinxExportBlockers, jinxPair, type Jinx } from "./jinx.ts";
 import { NIGHTS, nightOrderProblem, type NightOrders } from "./night.ts";
-import type { ScriptDetails } from "./script.ts";
+import type { ScriptArtwork, ScriptDetails } from "./script.ts";
 import { decodeBotcDocument } from "./schemas/botc.ts";
 
 export const BOTC_SCHEMA_REVISION = "f10cd02e3401af227ce406287eaae7bb99a06a42";
@@ -35,6 +35,7 @@ export interface ScriptExportSource {
   readonly characters: ReadonlyArray<Character>;
   readonly nightOrders: NightOrders;
   readonly jinxes: ReadonlyArray<Jinx>;
+  readonly artwork?: ScriptArtwork | undefined;
 }
 
 export const scriptExportProblems = ({
@@ -111,7 +112,7 @@ export const scriptExportProblems = ({
 };
 
 export const botcDocument = (
-  { script, characters, nightOrders, jinxes, imported }: ScriptExportSource,
+  { script, characters, nightOrders, jinxes, imported, artwork }: ScriptExportSource,
   assetOrigin: string,
 ) => [
   {
@@ -119,6 +120,9 @@ export const botcDocument = (
     id: "_meta",
     name: script.name,
     author: script.authorCredit,
+    // Only published uploads: unresolved imported references are omitted.
+    ...(artwork?.logo && { logo: new URL(artwork.logo, assetOrigin).href }),
+    ...(artwork?.background && { background: new URL(artwork.background, assetOrigin).href }),
     firstNight: nightOrders.firstNight,
     otherNight: nightOrders.otherNight,
   },

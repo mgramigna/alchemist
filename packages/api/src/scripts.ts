@@ -5,6 +5,8 @@ import {
   sniffImageType,
   sourceProblem,
   variantsProblem,
+  IMAGE_EXTENSIONS,
+  NO_SCRIPT_ARTWORK,
   type ArtworkRestyle,
   type ArtworkSource,
   type ArtworkUpload,
@@ -45,6 +47,8 @@ import {
   type Night,
   type NightOrder,
   type NightOrders,
+  type ScriptArtwork,
+  type ScriptArtworkField,
   type ScriptDetails,
   type ScriptExportSource,
 } from "@alchemist/domain";
@@ -57,6 +61,20 @@ import { createId } from "./ids.ts";
 export interface StoredArtwork extends CharacterArtwork {
   readonly sourceType: SourceType;
 }
+
+/** A Script's current logo or background: the private original and its published copy. */
+export interface StoredScriptImage {
+  readonly sourceId: string;
+  readonly sourceType: SourceType;
+  readonly path: string;
+}
+
+export type StoredScriptArtwork = Record<ScriptArtworkField, StoredScriptImage | null>;
+
+export const publicScriptArtwork = (artwork: StoredScriptArtwork): ScriptArtwork => ({
+  logo: artwork.logo?.path ?? null,
+  background: artwork.background?.path ?? null,
+});
 
 // Originals are grouped by Script so its deletion can find them.
 export const sourceKey = (scriptId: ScriptId, sourceId: string) => `${scriptId}/${sourceId}`;
@@ -91,6 +109,30 @@ export class ScriptStore extends Context.Service<
       ownerId: string,
       scriptId: ScriptId,
       id: CharacterId,
+      now: number,
+    ) => Effect.Effect<boolean, ScriptWriteUnavailable>;
+    // The owner's Script artwork slots; None unless the owner's Script exists.
+    readonly findScriptArtwork: (
+      ownerId: string,
+      scriptId: ScriptId,
+    ) => Effect.Effect<Option.Option<StoredScriptArtwork>, ScriptReadUnavailable>;
+    // Switches the slot only while its original is still `expectedSourceId`
+    // (null: empty), also dropping any imported reference for the same slot.
+    // False means nothing was written.
+    readonly replaceScriptArtwork: (
+      ownerId: string,
+      scriptId: ScriptId,
+      field: ScriptArtworkField,
+      image: StoredScriptImage,
+      expectedSourceId: string | null,
+      now: number,
+    ) => Effect.Effect<boolean, ScriptWriteUnavailable>;
+    // Empties the slot only while its original is still `expectedSourceId`.
+    readonly deleteScriptArtwork: (
+      ownerId: string,
+      scriptId: ScriptId,
+      field: ScriptArtworkField,
+      expectedSourceId: string,
       now: number,
     ) => Effect.Effect<boolean, ScriptWriteUnavailable>;
     readonly useGenericArtwork: (
@@ -235,6 +277,26 @@ export class Scripts extends Context.Service<
       field: typeof ImportedArtwork.Type.field,
       characterId: CharacterId | null,
     ) => Effect.Effect<ScriptId, ScriptNotFound | ScriptWriteUnavailable, CurrentUser>;
+    readonly readScriptArtwork: (
+      id: ScriptId,
+    ) => Effect.Effect<ScriptArtwork, ScriptNotFound | ScriptReadUnavailable, CurrentUser>;
+    readonly uploadScriptArtwork: (
+      id: ScriptId,
+      field: ScriptArtworkField,
+      source: Uint8Array,
+    ) => Effect.Effect<
+      ScriptArtwork,
+      ScriptNotFound | ArtworkInvalid | ArtworkConflict | ScriptWriteUnavailable,
+      CurrentUser
+    >;
+    readonly removeScriptArtwork: (
+      id: ScriptId,
+      field: ScriptArtworkField,
+    ) => Effect.Effect<
+      ScriptArtwork,
+      ScriptNotFound | ArtworkConflict | ScriptWriteUnavailable,
+      CurrentUser
+    >;
     readonly reviewImport: (json: string) => Effect.Effect<ImportReview, never, CurrentUser>;
     readonly importJson: (
       json: string,
@@ -359,7 +421,9 @@ export const ScriptsLive = Layer.effect(
       Effect.forEach(variants, ({ variant, image }) => {
         const path = `${PUBLISHED_PREFIX}${createId()}.png`;
 
-        return storage.publish(path.slice(1), image).pipe(Effect.as({ variant, path }));
+        return storage
+          .publish(path.slice(1), image, "image/png")
+          .pipe(Effect.as({ variant, path }));
       });
 
     return Scripts.of({
@@ -493,6 +557,83 @@ export const ScriptsLive = Layer.effect(
 
         return id;
       }),
+      readScriptArtwork: Effect.fn("Scripts.readScriptArtwork")(function* (id) {
+        const user = yield* CurrentUser;
+        const artwork = yield* store.findScriptArtwork(user.id, id);
+
+        if (Option.isNone(artwork)) return yield* new ScriptNotFound({ id });
+
+        return publicScriptArtwork(artwork.value);
+      }),
+      uploadScriptArtwork: Effect.fn("Scripts.uploadScriptArtwork")(function* (id, field, source) {
+        const user = yield* CurrentUser;
+        const current = yield* readForWrite(store.findScriptArtwork(user.id, id));
+
+        if (Option.isNone(current)) return yield* new ScriptNotFound({ id });
+        const sourceType = sniffImageType(source);
+        const problem = sourceProblem(source);
+
+        if (problem !== undefined || sourceType === undefined)
+          return yield* new ArtworkInvalid({ message: problem ?? "Choose an image file." });
+        const sourceId = createId();
+
+        yield* storage.putSource(sourceKey(id, sourceId), source, sourceType);
+
+        // Unlike Character artwork there is no styling: the published copy is
+        // the original image, under its own fresh opaque key.
+        const image = yield* Effect.gen(function* () {
+          const path = `${PUBLISHED_PREFIX}${createId()}.${IMAGE_EXTENSIONS[sourceType]}`;
+
+          yield* storage.publish(path.slice(1), source, sourceType);
+          const next: StoredScriptImage = { sourceId, sourceType, path };
+
+          if (
+            !(yield* store.replaceScriptArtwork(
+              user.id,
+              id,
+              field,
+              next,
+              current.value[field]?.sourceId ?? null,
+              yield* Clock.currentTimeMillis,
+            ))
+          )
+            return yield* new ArtworkConflict({});
+
+          return next;
+        }).pipe(Effect.onError(() => discardSource(id, sourceId)));
+
+        const previous = current.value[field];
+
+        if (previous !== null) yield* discardSource(id, previous.sourceId);
+
+        return publicScriptArtwork({ ...current.value, [field]: image });
+      }),
+      removeScriptArtwork: Effect.fn("Scripts.removeScriptArtwork")(function* (id, field) {
+        const user = yield* CurrentUser;
+        const current = yield* readForWrite(store.findScriptArtwork(user.id, id));
+
+        if (Option.isNone(current)) return yield* new ScriptNotFound({ id });
+        const previous = current.value[field];
+        const next = publicScriptArtwork({ ...current.value, [field]: null });
+
+        // Already empty: nothing to remove.
+        if (previous === null) return next;
+
+        if (
+          !(yield* store.deleteScriptArtwork(
+            user.id,
+            id,
+            field,
+            previous.sourceId,
+            yield* Clock.currentTimeMillis,
+          ))
+        )
+          return yield* new ArtworkConflict({});
+
+        yield* discardSource(id, previous.sourceId);
+
+        return next;
+      }),
       reviewImport: Effect.fn("Scripts.reviewImport")(function* (json) {
         const user = yield* CurrentUser;
 
@@ -561,6 +702,7 @@ export const ScriptsLive = Layer.effect(
         if (Option.isNone(orders)) return yield* new ScriptNotFound({ id });
         const jinxes = yield* store.listJinxes(user.id, id);
         const imported = yield* store.readImported(user.id, id);
+        const artwork = yield* store.findScriptArtwork(user.id, id);
 
         const source = {
           script: script.value,
@@ -568,6 +710,10 @@ export const ScriptsLive = Layer.effect(
           nightOrders: orders.value,
           jinxes,
           imported: imported ?? undefined,
+          artwork: Option.match(artwork, {
+            onNone: () => NO_SCRIPT_ARTWORK,
+            onSome: publicScriptArtwork,
+          }),
         };
 
         return yield* serializeExport(source, assetOrigin);

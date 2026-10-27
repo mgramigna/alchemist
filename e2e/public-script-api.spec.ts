@@ -35,6 +35,7 @@ test("public RPC reads persisted data, exposes only public fields, and reports t
           expect(script.authorCredit).toBe("The Clocktower Collective");
           expect(script.characters).toEqual([]);
           expect(script.nightOrders).toEqual(defaultNightOrders);
+          expect(script.artwork).toEqual({ logo: null, background: null });
         }
 
         const missing = yield* client["Script.readPublic"]({
@@ -56,6 +57,7 @@ test("public RPC reads persisted data, exposes only public fields, and reports t
   expect(message.exit._tag).toBe("Success");
   // Check the actual wire payload before a typed client can strip extra fields.
   expect(Object.keys(message.exit.value).sort()).toEqual([
+    "artwork",
     "authorCredit",
     "characters",
     "id",

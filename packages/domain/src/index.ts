@@ -1,7 +1,11 @@
 export {
   AuthorCredit,
+  NO_SCRIPT_ARTWORK,
   OwnedScript,
   PublicScript,
+  SCRIPT_ARTWORK_FIELDS,
+  ScriptArtwork,
+  ScriptArtworkField,
   ScriptDetails,
   ScriptId,
   ScriptName,

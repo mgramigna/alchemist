@@ -70,3 +70,7 @@ export const uploadArtwork = Client.mutation("Artwork.upload");
 export const restyleArtwork = Client.mutation("Artwork.restyle");
 export const readArtworkSource = Client.mutation("Artwork.readSource");
 export const removeArtwork = Client.mutation("Artwork.remove");
+
+export const ownedScriptArtwork = (id: ScriptId) => Client.query("Script.readArtwork", { id });
+export const uploadScriptArtwork = Client.mutation("Script.uploadArtwork");
+export const removeScriptArtwork = Client.mutation("Script.removeArtwork");

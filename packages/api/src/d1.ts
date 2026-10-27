@@ -14,6 +14,7 @@ import {
   OwnedScript,
   PublicCharacter,
   PublicScript,
+  ScriptArtworkField,
   ScriptId,
   ScriptReadUnavailable,
   ScriptWriteUnavailable,
@@ -25,7 +26,12 @@ import {
 import { D1Client } from "@effect/sql-d1/D1Client";
 import { Effect, Layer, Option, Schema } from "effect";
 import { SqlClient } from "effect/sql";
-import { ScriptStore, type StoredArtwork } from "./scripts.ts";
+import {
+  ScriptStore,
+  publicScriptArtwork,
+  type StoredArtwork,
+  type StoredScriptArtwork,
+} from "./scripts.ts";
 
 const ScriptRow = Schema.Struct({
   id: ScriptId,
@@ -70,6 +76,32 @@ const decodeArtwork = (rows: ReadonlyArray<object>) =>
           ]),
         ),
     ),
+  );
+
+const ScriptArtworkRows = Schema.Array(
+  Schema.Struct({
+    field: ScriptArtworkField,
+    sourceId: Schema.String,
+    sourceType: Schema.Literals(SOURCE_TYPES),
+    path: Schema.String,
+  }),
+);
+
+const SCRIPT_ARTWORK_COLUMNS = `field, source_id AS sourceId, source_type AS sourceType, path`;
+
+const decodeScriptArtwork = (rows: ReadonlyArray<object>) =>
+  Schema.decodeUnknownEffect(ScriptArtworkRows)(rows).pipe(
+    Effect.map((decoded) => {
+      const slot = (field: ScriptArtworkField) => {
+        const row = decoded.find((candidate) => candidate.field === field);
+
+        return row === undefined
+          ? null
+          : { sourceId: row.sourceId, sourceType: row.sourceType, path: row.path };
+      };
+
+      return { logo: slot("logo"), background: slot("background") } satisfies StoredScriptArtwork;
+    }),
   );
 
 // Owners see the style and source ID; the private original's format stays in storage.
@@ -263,6 +295,68 @@ export const D1ScriptStore = Layer.effect(
 
         return rows.length > 0;
       }, writeUnavailable),
+      findScriptArtwork: Effect.fn("D1ScriptStore.findScriptArtwork")(function* (
+        ownerId,
+        scriptId,
+      ) {
+        const [scripts, artwork] = yield* d1.batch([
+          sql`SELECT id FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId}`,
+          sql`SELECT ${sql.literal(SCRIPT_ARTWORK_COLUMNS)} FROM script_artwork
+          WHERE script_id IN (SELECT id FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId})`,
+        ]);
+
+        if (scripts.length === 0) return Option.none();
+
+        return Option.some(yield* decodeScriptArtwork(artwork));
+      }, readUnavailable),
+      replaceScriptArtwork: Effect.fn("D1ScriptStore.replaceScriptArtwork")(function* (
+        ownerId,
+        scriptId,
+        field,
+        image,
+        expectedSourceId,
+        now,
+      ) {
+        // Insert only into an empty slot; otherwise update only the expected original.
+        const write =
+          expectedSourceId === null
+            ? sql`INSERT INTO script_artwork (script_id, field, source_id, source_type, path)
+              SELECT id, ${field}, ${image.sourceId}, ${image.sourceType}, ${image.path}
+              FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId}
+              ON CONFLICT (script_id, field) DO NOTHING RETURNING field`
+            : sql`UPDATE script_artwork SET source_id = ${image.sourceId}, source_type = ${image.sourceType}, path = ${image.path}
+              WHERE field = ${field} AND source_id = ${expectedSourceId}
+                AND script_id IN (SELECT id FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId})
+              RETURNING field`;
+
+        const [rows] = yield* d1.batch([
+          write,
+          sql`UPDATE scripts SET updated_at = ${now} WHERE id = ${scriptId} AND owner_id = ${ownerId} AND changes() > 0`,
+          // Uploaded artwork supersedes an imported reference for the same slot.
+          sql`UPDATE script_imports SET data = json_set(data, '$.artwork', json(COALESCE((
+            SELECT json_group_array(json(value)) FROM json_each(script_imports.data, '$.artwork')
+            WHERE NOT (json_extract(value, '$.field') = ${field} AND json_extract(value, '$.characterId') IS NULL)
+          ), '[]'))) WHERE script_id = ${scriptId} AND changes() > 0`,
+        ]);
+
+        return rows.length > 0;
+      }, writeUnavailable),
+      deleteScriptArtwork: Effect.fn("D1ScriptStore.deleteScriptArtwork")(function* (
+        ownerId,
+        scriptId,
+        field,
+        expectedSourceId,
+        now,
+      ) {
+        const [rows] = yield* d1.batch([
+          sql`DELETE FROM script_artwork WHERE field = ${field} AND source_id = ${expectedSourceId}
+            AND script_id IN (SELECT id FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId})
+            RETURNING field`,
+          sql`UPDATE scripts SET updated_at = ${now} WHERE id = ${scriptId} AND owner_id = ${ownerId} AND changes() > 0`,
+        ]);
+
+        return rows.length > 0;
+      }, writeUnavailable),
       useGenericArtwork: Effect.fn("D1ScriptStore.useGenericArtwork")(function* (
         ownerId,
         id,
@@ -309,12 +403,13 @@ export const D1ScriptStore = Layer.effect(
         return decoded[0]?.data ?? null;
       }, readUnavailable),
       findExport: Effect.fn("D1ScriptStore.findExport")(function* (id) {
-        const [scripts, characters, entries, jinxes, imports] = yield* d1.batch([
+        const [scripts, characters, entries, jinxes, imports, scriptArtwork] = yield* d1.batch([
           sql`SELECT id, name, author_credit FROM scripts WHERE id = ${id}`,
           sql`SELECT ${sql.literal(CHARACTER_COLUMNS)} FROM characters WHERE script_id = ${id} ORDER BY id`,
           sql`SELECT night, step, character_id FROM night_order_entries WHERE script_id = ${id} ORDER BY night, position`,
           sql`SELECT first, second, explanation FROM jinxes WHERE script_id = ${id} ORDER BY first, second`,
           sql`SELECT data FROM script_imports WHERE script_id = ${id}`,
+          sql`SELECT ${sql.literal(SCRIPT_ARTWORK_COLUMNS)} FROM script_artwork WHERE script_id = ${id}`,
         ]);
 
         const row = (yield* Schema.decodeEffect(Schema.Array(ScriptRow))(scripts))[0];
@@ -331,11 +426,12 @@ export const D1ScriptStore = Layer.effect(
           nightOrders: nightOrders(yield* Schema.decodeEffect(NightEntryRows)(entries)),
           jinxes: yield* Schema.decodeEffect(JinxRows)(jinxes),
           imported: imported[0]?.data,
+          artwork: publicScriptArtwork(yield* decodeScriptArtwork(scriptArtwork)),
         });
       }, readUnavailable),
       findPublic: Effect.fn("D1ScriptStore.findPublic")(function* (id) {
         // One batch, so the Script and its Characters come from the same snapshot.
-        const [scripts, characters, entries, jinxes, artworkRows] = yield* d1.batch([
+        const [scripts, characters, entries, jinxes, artworkRows, scriptArtwork] = yield* d1.batch([
           sql`SELECT id, name, author_credit FROM scripts WHERE id = ${id}`,
           sql`SELECT id, name, ability, team,
             first_night_instructions AS firstNightInstructions,
@@ -345,6 +441,7 @@ export const D1ScriptStore = Layer.effect(
           WHERE script_id = ${id} ORDER BY night, position`,
           sql`SELECT first, second, explanation FROM jinxes WHERE script_id = ${id} ORDER BY first, second`,
           sql`SELECT ${sql.literal(ARTWORK_COLUMNS)} FROM character_artwork WHERE script_id = ${id}`,
+          sql`SELECT ${sql.literal(SCRIPT_ARTWORK_COLUMNS)} FROM script_artwork WHERE script_id = ${id}`,
         ]);
 
         const artwork = yield* decodeArtwork(artworkRows);
@@ -358,6 +455,8 @@ export const D1ScriptStore = Layer.effect(
             id: row.id,
             name: row.name,
             authorCredit: row.author_credit,
+            // Published paths only: never the private originals.
+            artwork: publicScriptArtwork(yield* decodeScriptArtwork(scriptArtwork)),
             // Only the published variants and their Team: never the private original.
             characters: (yield* Schema.decodeEffect(Schema.Array(PublicCharacter))(characters)).map(
               (character) => {

@@ -1,3 +1,4 @@
+import { IMAGE_EXTENSIONS } from "@alchemist/domain";
 import { Rpcs } from "@alchemist/domain/rpc";
 import { Context, Effect, Layer, Option, Scheduler } from "effect";
 import { HttpRouter, HttpServer } from "effect/http";
@@ -30,7 +31,13 @@ const Routes = HttpRouter.add("POST", "/api/rpc", rpc).pipe(
 
 const rpcApp = HttpRouter.toWebHandler(Routes);
 
-const PUBLISHED_PATH = new RegExp(`^${PUBLISHED_PREFIX}[0-9a-z]{26}\\.png$`);
+const PUBLISHED_TYPES = new Map(
+  Object.entries(IMAGE_EXTENSIONS).map(([type, extension]) => [extension, type]),
+);
+
+const PUBLISHED_PATH = new RegExp(
+  `^${PUBLISHED_PREFIX}[0-9a-z]{26}\\.(${[...PUBLISHED_TYPES.keys()].join("|")})$`,
+);
 
 // Anyone, including the official BOTC app and sheet capture on other origins,
 // may read published artwork without credentials.
@@ -51,11 +58,15 @@ const servePublished = Effect.fn("App.servePublished")(function* (request: Reque
     });
   const storage = yield* ArtworkStorage;
 
-  const image = PUBLISHED_PATH.test(path)
-    ? yield* storage
-        .readPublished(path.slice(1))
-        .pipe(Effect.catchTag("ScriptReadUnavailable", () => Effect.succeed(null)))
-    : Option.none();
+  // The extension names the stored format, so it also sets the Content-Type.
+  const type = PUBLISHED_TYPES.get(PUBLISHED_PATH.exec(path)?.[1] ?? "");
+
+  const image =
+    type === undefined
+      ? Option.none()
+      : yield* storage
+          .readPublished(path.slice(1))
+          .pipe(Effect.catchTag("ScriptReadUnavailable", () => Effect.succeed(null)));
 
   if (image === null)
     return new Response("Artwork is temporarily unavailable.", {
@@ -63,7 +74,7 @@ const servePublished = Effect.fn("App.servePublished")(function* (request: Reque
       headers: { ...PUBLIC_IMAGE_HEADERS, "Cache-Control": "no-store" },
     });
 
-  if (Option.isNone(image))
+  if (type === undefined || Option.isNone(image))
     return new Response("Not found.", {
       status: 404,
       headers: { ...PUBLIC_IMAGE_HEADERS, "Cache-Control": "no-store" },
@@ -71,7 +82,7 @@ const servePublished = Effect.fn("App.servePublished")(function* (request: Reque
 
   const headers = {
     ...PUBLIC_IMAGE_HEADERS,
-    "Content-Type": "image/png",
+    "Content-Type": type,
     "Content-Length": String(image.value.bytes.length),
     "Cache-Control": PUBLISHED_CACHE_CONTROL,
     ETag: image.value.etag,

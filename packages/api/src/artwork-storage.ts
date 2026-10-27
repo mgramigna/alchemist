@@ -26,7 +26,11 @@ export class ArtworkStorage extends Context.Service<
       key: string,
     ) => Effect.Effect<Option.Option<Uint8Array>, ScriptReadUnavailable>;
     readonly deleteSource: (key: string) => Effect.Effect<void, ScriptWriteUnavailable>;
-    readonly publish: (key: string, png: Uint8Array) => Effect.Effect<void, ScriptWriteUnavailable>;
+    readonly publish: (
+      key: string,
+      image: Uint8Array,
+      contentType: SourceType,
+    ) => Effect.Effect<void, ScriptWriteUnavailable>;
     readonly readPublished: (
       key: string,
     ) => Effect.Effect<Option.Option<PublishedImage>, ScriptReadUnavailable>;
@@ -80,12 +84,12 @@ export const r2ArtworkStorage = (sources: ObjectBucket, published: ObjectBucket)
       deleteSource: Effect.fn("R2ArtworkStorage.deleteSource")(function* (key) {
         yield* write(() => sources.delete(key));
       }),
-      publish: Effect.fn("R2ArtworkStorage.publish")(function* (key, png) {
+      publish: Effect.fn("R2ArtworkStorage.publish")(function* (key, image, contentType) {
         // A precondition no existing object can satisfy: never overwrite a published image.
         const object = yield* write(() =>
-          published.put(key, png, {
+          published.put(key, image, {
             onlyIf: { etagDoesNotMatch: "*" },
-            httpMetadata: { contentType: "image/png", cacheControl: PUBLISHED_CACHE_CONTROL },
+            httpMetadata: { contentType, cacheControl: PUBLISHED_CACHE_CONTROL },
           }),
         );
 
@@ -100,7 +104,7 @@ export const r2ArtworkStorage = (sources: ObjectBucket, published: ObjectBucket)
 
         if (object === null) return Option.none();
 
-        // Variants are small, bounded PNGs, so buffering them is cheap.
+        // Published images are bounded by the upload limits, so buffering them is acceptable.
         return Option.some({
           bytes: new Uint8Array(yield* read(() => object.arrayBuffer())),
           etag: object.httpEtag,
