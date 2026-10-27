@@ -1,3 +1,4 @@
+import { ScriptId } from "@alchemist/domain";
 import { Rpcs } from "@alchemist/domain/rpc";
 import { Context, Effect, Layer, Option, Scheduler } from "effect";
 import { HttpRouter, HttpServer } from "effect/http";
@@ -87,10 +88,50 @@ const servePublished = Effect.fn("App.servePublished")(function* (request: Reque
   });
 });
 
+// Public links always export the current saved Script, using the same validation as RPC.
+const serveJson = Effect.fn("App.serveJson")(function* (request: Request, id: string) {
+  const headers = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+  };
+
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
+
+  if (request.method !== "GET" && request.method !== "HEAD")
+    return new Response(null, {
+      status: 405,
+      headers: { ...headers, Allow: "GET, HEAD, OPTIONS" },
+    });
+
+  const scripts = yield* Scripts;
+  const config = yield* AppConfig;
+
+  return yield* scripts
+    .exportPublicJson(ScriptId.make(id), config.assetOrigin ?? config.origin)
+    .pipe(
+      Effect.map(
+        ({ json }) =>
+          new Response(request.method === "HEAD" ? null : json, {
+            headers: { ...headers, "Content-Type": "application/json; charset=utf-8" },
+          }),
+      ),
+      Effect.catchTags({
+        ScriptNotFound: () => Effect.succeed(new Response(null, { status: 404, headers })),
+        ScriptExportInvalid: () => Effect.succeed(new Response(null, { status: 422, headers })),
+        ScriptReadUnavailable: () => Effect.succeed(new Response(null, { status: 503, headers })),
+      }),
+    );
+});
+
 export const handleRequest = Effect.fn("App.handleRequest")(function* (request: Request) {
   const path = new URL(request.url).pathname.replace(/\/$/, "");
 
   if (path.startsWith(PUBLISHED_PREFIX)) return yield* servePublished(request, path);
+  const json = /^\/api\/scripts\/([^/]+)\.json$/.exec(path);
+
+  if (json?.[1]) return yield* serveJson(request, json[1]);
   const isRpc = path === "/api/rpc";
 
   if (path.startsWith("/auth/") || isRpc) {

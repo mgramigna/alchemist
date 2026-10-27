@@ -24,6 +24,7 @@ import {
   CheckCircleIcon,
   CopyIcon,
   DownloadSimpleIcon,
+  GlobeIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react";
 import { useSelector } from "@tanstack/react-form";
@@ -46,6 +47,7 @@ import { useJinxes } from "../hooks/use-jinxes.ts";
 import { JinxEditor } from "./jinxes.tsx";
 import { useCharacters } from "../hooks/use-characters.ts";
 import { useNightOrders } from "../hooks/use-night-orders.ts";
+import { scriptJsonUrl } from "../lib/json-url.ts";
 import { downloadBlob } from "../lib/download.ts";
 import { characterTitle } from "../lib/characters.ts";
 import { fieldLabel } from "../lib/fields.ts";
@@ -203,7 +205,7 @@ export function Workbench({
 
   const scriptProblems = problems.filter((problem) => problem.characterId === undefined);
 
-  const exportJson = async (action: "copy" | "download") => {
+  const exportJson = async (action: "copy" | "download" | "url") => {
     if (unsaved() || structuralPending) {
       setExportError(
         "Wait for all changes to save, then retry the export. If saving failed, use Retry save first.",
@@ -237,10 +239,14 @@ export function Workbench({
         return;
       }
 
-      if (action === "copy") {
+      if (action === "copy" || action === "url") {
         try {
-          await navigator.clipboard.writeText(exit.value.json);
-          toast.success("JSON copied to clipboard");
+          await navigator.clipboard.writeText(
+            action === "url" ? scriptJsonUrl(script.id) : exit.value.json,
+          );
+          toast.success(
+            action === "url" ? "JSON URL copied to clipboard" : "JSON copied to clipboard",
+          );
         } catch {
           setExportError("Couldn’t copy the JSON. Try again or download it instead.");
         }
@@ -394,6 +400,10 @@ export function Workbench({
                 <CaretDownIcon />
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-48">
+                <DropdownMenuItem onClick={() => void exportJson("url")}>
+                  <GlobeIcon />
+                  Copy JSON URL
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => void exportJson("copy")}>
                   <CopyIcon />
                   Copy JSON

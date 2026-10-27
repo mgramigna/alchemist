@@ -1,10 +1,11 @@
 import type { PublicScript, ScriptExportProblem } from "@alchemist/domain";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
-import { CaretDownIcon, CopyIcon, DownloadSimpleIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, CopyIcon, DownloadSimpleIcon, GlobeIcon } from "@phosphor-icons/react";
 import { Predicate } from "effect";
 import { toast } from "sonner";
 import { AsyncResult } from "effect/reactivity";
 import { publicScriptExport } from "../api.ts";
+import { scriptJsonUrl } from "../lib/json-url.ts";
 import { downloadBlob } from "../lib/download.ts";
 import { fieldLabel } from "../lib/fields.ts";
 import { Button } from "./ui/button.tsx";
@@ -76,6 +77,9 @@ export function PublicJsonDownload({ script }: { readonly script: PublicScript }
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-52">
                   <DropdownMenuGroup>
+                    <DropdownMenuItem onClick={() => void copyJson(scriptJsonUrl(script.id), true)}>
+                      <GlobeIcon /> Copy JSON URL
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => void copyJson(value.json)}>
                       <CopyIcon /> Copy JSON
                     </DropdownMenuItem>
@@ -114,11 +118,15 @@ function problemLabel(problem: ScriptExportProblem, script: PublicScript) {
   return `${prefix}${problem.field === "name" && !prefix ? "Script name" : fieldLabel(problem.field)}${token}`;
 }
 
-async function copyJson(json: string) {
+async function copyJson(json: string, url = false) {
   try {
     await navigator.clipboard.writeText(json);
-    toast.success("JSON copied");
+    toast.success(url ? "JSON URL copied" : "JSON copied");
   } catch {
-    toast.error("Couldn’t copy JSON. Try again or download it instead.");
+    toast.error(
+      url
+        ? "Couldn’t copy the JSON URL. Try again."
+        : "Couldn’t copy JSON. Try again or download it instead.",
+    );
   }
 }

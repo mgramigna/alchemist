@@ -233,6 +233,20 @@ it.effect(
           "ScriptExportInvalid",
         );
 
+        const jsonUrl = `${origin}/api/scripts/${script.id}.json`;
+
+        const raw = (method = "GET") =>
+          handleRequest(
+            new Request(jsonUrl, {
+              method,
+              headers: { Origin: "https://clocktower.test" },
+            }),
+          );
+
+        assert.strictEqual((yield* raw()).status, 422);
+        assert.strictEqual((yield* raw("OPTIONS")).status, 204);
+        assert.strictEqual((yield* raw("POST")).status, 405);
+
         for (let i = 0; i < 4; i++) {
           const character = yield* scripts
             .createCharacter(script.id, "townsfolk", [])
@@ -252,6 +266,25 @@ it.effect(
         const response = yield* exportRequest(token);
         assert.deepStrictEqual(publicResponse, response);
         assert.strictEqual(response.exit._tag, "Success");
+        const rawResponse = yield* raw();
+        assert.strictEqual(rawResponse.status, 200);
+        assert.strictEqual(rawResponse.headers.get("Access-Control-Allow-Origin"), "*");
+        assert.strictEqual(rawResponse.headers.get("Cache-Control"), "no-store");
+        assert.include(rawResponse.headers.get("Content-Type") ?? "", "application/json");
+        assert.strictEqual(
+          yield* Effect.promise(() => rawResponse.text()),
+          response.exit.value.json,
+        );
+        const head = yield* raw("HEAD");
+        assert.strictEqual(head.status, 200);
+        assert.strictEqual(yield* Effect.promise(() => head.text()), "");
+        yield* scripts
+          .updateDetails(script.id, { name: "Updated link", authorCredit: "Alice" })
+          .pipe(asUser(token));
+        const updated = yield* raw();
+        assert.include(yield* Effect.promise(() => updated.text()), "Updated link");
+        const missing = yield* handleRequest(new Request(`${origin}/api/scripts/missing.json`));
+        assert.strictEqual(missing.status, 404);
         const document = JSON.parse(response.exit.value.json);
         assert.strictEqual(document[0].name, "Untitled Script");
         assert.strictEqual(document.length, 5);
