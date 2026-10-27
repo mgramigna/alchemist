@@ -51,6 +51,8 @@ export const updateCharacter = Client.mutation("Character.update");
 
 export const deleteCharacter = Client.mutation("Character.delete");
 
+export const replaceCharacterOrder = Client.mutation("CharacterOrder.replace");
+
 export const ownedNightOrders = (scriptId: ScriptId) =>
   Client.query("NightOrder.read", { scriptId }, { reactivityKeys: [ScriptKeys.script(scriptId)] });
 

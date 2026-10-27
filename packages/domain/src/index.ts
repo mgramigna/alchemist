@@ -96,6 +96,18 @@ export {
   jinxExportBlockers,
 } from "./jinx.ts";
 
+export {
+  CharacterOrder,
+  CharacterOrderInvalid,
+  CharacterSort,
+  characterOrderProblem,
+  inOrder,
+  nightActions,
+  sortCharacters,
+  standardGroup,
+  type NightActions,
+} from "./order.ts";
+
 export * from "./export.ts";
 
 export { textLength } from "./text.ts";

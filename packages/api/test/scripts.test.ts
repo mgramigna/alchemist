@@ -1,5 +1,6 @@
 import {
   CharacterNotFound,
+  CharacterOrderInvalid,
   NightOrderInvalid,
   defaultNightOrders,
   NO_SCRIPT_ARTWORK,
@@ -613,6 +614,50 @@ it.effect("token, setup and flavor drafts survive Team changes and refuse anothe
         CharacterNotFound,
       );
       assert.deepStrictEqual(yield* scripts.listCharacters(script.id).pipe(as(alice)), [moved]);
+    }).pipe(Effect.provide(f.layer));
+  }),
+);
+
+it.effect("the owner replaces the Character Order with every Character on the Script, once", () =>
+  Effect.gen(function* () {
+    const f = yield* scriptsFixture;
+    yield* Effect.gen(function* () {
+      const scripts = yield* Scripts;
+      const script = yield* scripts.create().pipe(as(alice));
+      const first = yield* scripts.createCharacter(script.id, "townsfolk", []).pipe(as(alice));
+      const second = yield* scripts.createCharacter(script.id, "townsfolk", []).pipe(as(alice));
+
+      yield* TestClock.adjust(1_000);
+
+      assert.deepStrictEqual(
+        yield* scripts.replaceCharacterOrder(script.id, [second.id, first.id]).pipe(as(alice)),
+        [second.id, first.id],
+      );
+      assert.strictEqual((yield* scripts.readOwned(script.id).pipe(as(alice))).updatedAt, 1_000);
+      assert.deepStrictEqual(
+        (yield* scripts.listCharacters(script.id).pipe(as(alice))).map(({ id }) => id),
+        [second.id, first.id],
+      );
+      assert.deepStrictEqual(
+        (yield* scripts.readPublic(script.id)).characters.map(({ id }) => id),
+        [second.id, first.id],
+      );
+
+      const missing = yield* scripts
+        .replaceCharacterOrder(script.id, [first.id])
+        .pipe(as(alice), Effect.flip);
+
+      assert.instanceOf(missing, CharacterOrderInvalid);
+      assert.instanceOf(
+        yield* scripts
+          .replaceCharacterOrder(script.id, [first.id, second.id])
+          .pipe(as(bob), Effect.flip),
+        ScriptNotFound,
+      );
+      assert.deepStrictEqual(
+        (yield* scripts.listCharacters(script.id).pipe(as(alice))).map(({ id }) => id),
+        [second.id, first.id],
+      );
     }).pipe(Effect.provide(f.layer));
   }),
 );

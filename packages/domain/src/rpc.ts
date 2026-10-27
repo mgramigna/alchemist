@@ -34,6 +34,7 @@ import {
   JinxNotFound,
 } from "./jinx.ts";
 import { Night, NightOrder, NightOrderInvalid, NightOrders } from "./night.ts";
+import { CharacterOrder, CharacterOrderInvalid } from "./order.ts";
 import { AuthRejected, AuthUnavailable, DisplayName, User } from "./auth.ts";
 import {
   AuthorCredit,
@@ -210,6 +211,12 @@ export const Rpcs = RpcGroup.make(
     payload: { scriptId: ScriptId, id: CharacterId },
     success: CharacterId,
     error: Schema.Union([ArtworkNotFound, ScriptWriteUnavailable]),
+  }).middleware(Authentication),
+  // Replaces the whole Character Order: every Character on the Script, once.
+  Rpc.make("CharacterOrder.replace", {
+    payload: { scriptId: ScriptId, order: CharacterOrder },
+    success: CharacterOrder,
+    error: Schema.Union([ScriptNotFound, CharacterOrderInvalid, ScriptWriteUnavailable]),
   }).middleware(Authentication),
   Rpc.make("Jinx.list", {
     payload: { scriptId: ScriptId },

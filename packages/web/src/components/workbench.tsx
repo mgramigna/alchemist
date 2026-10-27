@@ -68,6 +68,7 @@ import { ScriptArtworkEditor } from "./script-artwork.tsx";
 import { CharacterForm, CharacterNavigator, ExportBlockerList } from "./characters.tsx";
 import { NightOrderEditor } from "./night-orders.tsx";
 import { SheetPreview } from "./sheet-preview.tsx";
+import { CharacterOrderEditor } from "./character-order.tsx";
 import { DeleteScriptSection } from "./delete-script.tsx";
 import { sheetShowing, type SheetView } from "../lib/sheets.ts";
 import { Button, buttonVariants } from "./ui/button.tsx";
@@ -92,6 +93,7 @@ const combinedStatus = (...statuses: ReadonlyArray<SaveStatus>): SaveStatus =>
 type Page =
   | { readonly kind: "script" }
   | { readonly kind: "character"; readonly id: CharacterId }
+  | { readonly kind: "order" }
   | { readonly kind: "night"; readonly night: Night };
 
 /** The owner's editor: navigator, focused form and live preview. */
@@ -160,6 +162,12 @@ export function Workbench({
     setPage(id === null ? { kind: "script" } : { kind: "character", id });
 
     if (id !== null) setPreview((current) => sheetShowing(current, id, nights.orders));
+  };
+
+  // The Character Order shows on the Character sheet.
+  const openOrder = () => {
+    setPage({ kind: "order" });
+    setPreview("characters");
   };
 
   // Opening a night also shows its sheet in the preview.
@@ -358,6 +366,18 @@ export function Workbench({
             onSelect={setSelectedId}
             onAdd={(team, chosen) => void add(team, chosen)}
           />
+          <button
+            type="button"
+            aria-current={page.kind === "order" ? "true" : undefined}
+            onClick={openOrder}
+            className={cn(
+              "flex w-full items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-left hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+              page.kind === "order" && "bg-muted font-medium",
+            )}
+          >
+            Character Order
+            <span className="text-xs text-muted-foreground">Sort &amp; arrange</span>
+          </button>
           <section aria-labelledby="nights-nav" className="flex flex-col gap-0.5">
             <h2
               id="nights-nav"
@@ -434,7 +454,14 @@ export function Workbench({
             )}
           </div>
         </nav>
-        {page.kind === "night" ? (
+        {page.kind === "order" ? (
+          <CharacterOrderEditor
+            characters={characters}
+            nightOrders={nights.orders}
+            onChange={roster.reorder}
+            onSelect={setSelectedId}
+          />
+        ) : page.kind === "night" ? (
           <NightOrderEditor
             key={page.night}
             night={page.night}

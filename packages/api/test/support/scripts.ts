@@ -126,11 +126,18 @@ export const scriptsFixture = Effect.sync(() => {
     [...jinxes.values()].flatMap((row) => (row.scriptId === scriptId ? [row.jinx] : []));
 
   const nightOrders = new Map<string, NightOrders>();
+  // Character Order positions by `${scriptId}:${id}`; absent counts as 0, as in D1.
+  const positions = new Map<string, number>();
+
+  const positionOf = (scriptId: string, id: string) => positions.get(`${scriptId}:${id}`) ?? 0;
 
   const inScript = (scriptId: string) =>
     [...characters.values()]
       .flatMap((row) => (row.scriptId === scriptId ? [row.character] : []))
-      .sort((a, b) => a.id.localeCompare(b.id));
+      .sort(
+        (a, b) =>
+          positionOf(scriptId, a.id) - positionOf(scriptId, b.id) || a.id.localeCompare(b.id),
+      );
 
   // Callers have already checked ownership.
   const touch = (scriptId: string, now: number) => {
@@ -319,8 +326,10 @@ export const scriptsFixture = Effect.sync(() => {
       Effect.sync(() => {
         rows.set(script.id, { ...script, ownerId });
 
-        for (const character of draft.characters)
+        for (const [index, character] of draft.characters.entries()) {
           characters.set(`${script.id}:${character.id}`, { scriptId: script.id, character });
+          positions.set(`${script.id}:${character.id}`, index);
+        }
 
         for (const jinx of draft.jinxes)
           jinxes.set(`${script.id}:${jinxKey(jinx)}`, { scriptId: script.id, jinx });
@@ -415,6 +424,12 @@ export const scriptsFixture = Effect.sync(() => {
       Effect.sync(() => {
         if (Option.isNone(owned(ownerId, scriptId))) return Option.none();
 
+        const last = inScript(scriptId).at(-1);
+
+        positions.set(
+          `${scriptId}:${character.id}`,
+          last === undefined ? 0 : positionOf(scriptId, last.id) + 1,
+        );
         characters.set(`${scriptId}:${character.id}`, { scriptId, character });
         nightOrders.set(scriptId, orders);
         touch(scriptId, now);
@@ -510,6 +525,16 @@ export const scriptsFixture = Effect.sync(() => {
         if (removed) touch(scriptId, now);
 
         return removed;
+      }),
+    replaceCharacterOrder: (ownerId, scriptId, order, now) =>
+      Effect.sync(() => {
+        if (Option.isNone(owned(ownerId, scriptId))) return Option.none();
+
+        for (const [index, id] of order.entries())
+          if (characters.has(`${scriptId}:${id}`)) positions.set(`${scriptId}:${id}`, index);
+        touch(scriptId, now);
+
+        return Option.some(inScript(scriptId).map(({ id }) => id));
       }),
     findNightOrders: (ownerId, scriptId) =>
       Effect.sync(() =>

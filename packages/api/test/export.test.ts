@@ -64,36 +64,35 @@ it.effect(
             firstNight,
             otherNight: ["dusk", "dawn"],
           },
-          ...characters
-            .toSorted((a, b) => a.id.localeCompare(b.id))
-            .map((character) => ({
-              id: character.id,
-              name: character.name,
-              team: character.team,
-              ability: character.ability,
-              image:
-                character.team === "traveller"
-                  ? ["unaligned", "good", "evil"].map(
-                      (alignment) =>
-                        `https://alchemist.example/icons/generic/v1/traveller-${alignment}.svg`,
-                    )
-                  : (character.team === "demon" ? ["evil", "good"] : ["good", "evil"]).map(
-                      (alignment) =>
-                        `https://alchemist.example/icons/generic/v1/${character.team}-${alignment}.svg`,
-                    ),
-              reminders: ["Same", "Same"],
-              remindersGlobal: ["Global"],
-              setup: true,
-              flavor: "Flavor",
-              firstNightReminder: "First",
-              otherNightReminder: "Other",
-              firstNight: character.id === a.id ? 2 : 0,
-              otherNight: 0,
-              jinxes:
-                character.id === (a.id < b.id ? a.id : b.id)
-                  ? [{ id: a.id < b.id ? b.id : a.id, reason: "They interact." }]
-                  : [],
-            })),
+          // Characters export in Character Order: here, the order they were added.
+          ...characters.map((character) => ({
+            id: character.id,
+            name: character.name,
+            team: character.team,
+            ability: character.ability,
+            image:
+              character.team === "traveller"
+                ? ["unaligned", "good", "evil"].map(
+                    (alignment) =>
+                      `https://alchemist.example/icons/generic/v1/traveller-${alignment}.svg`,
+                  )
+                : (character.team === "demon" ? ["evil", "good"] : ["good", "evil"]).map(
+                    (alignment) =>
+                      `https://alchemist.example/icons/generic/v1/${character.team}-${alignment}.svg`,
+                  ),
+            reminders: ["Same", "Same"],
+            remindersGlobal: ["Global"],
+            setup: true,
+            flavor: "Flavor",
+            firstNightReminder: "First",
+            otherNightReminder: "Other",
+            firstNight: character.id === a.id ? 2 : 0,
+            otherNight: 0,
+            jinxes:
+              character.id === (a.id < b.id ? a.id : b.id)
+                ? [{ id: a.id < b.id ? b.id : a.id, reason: "They interact." }]
+                : [],
+          })),
         ];
 
         assert.deepStrictEqual(JSON.parse(result.json), expected);

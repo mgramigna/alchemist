@@ -97,11 +97,11 @@ export const removeEntry = (
 ): ReadonlyArray<NightEntry> => order.filter((candidate) => candidate !== entry);
 
 /** Moves the entry at `from` so it ends up at index `to`. */
-export const moveEntry = (
-  order: ReadonlyArray<NightEntry>,
+export const moveEntry = <A extends NightEntry>(
+  order: ReadonlyArray<A>,
   from: number,
   to: number,
-): ReadonlyArray<NightEntry> => {
+): ReadonlyArray<A> => {
   const entry = order[from];
 
   if (entry === undefined || to < 0 || to >= order.length || from === to) return order;

@@ -45,11 +45,12 @@ describe("JSON import preflight", () => {
     expect(draft).not.toBeNull();
 
     if (draft === null) return;
+    // Imports start in Standard order; these blank abilities tie, so names decide.
     expect(draft.characters.map((entry) => entry.id)).toEqual([
-      "falconanimalia",
       "antanimalia",
       "bearanimalia",
       "bullanimalia",
+      "falconanimalia",
     ]);
     expect(draft.nightOrders.firstNight).toEqual([
       "dusk",
@@ -159,7 +160,15 @@ describe("JSON import preflight", () => {
     const again = review(exported);
     expect(again.errors).toEqual([]);
     expect(again.draft?.nightOrders).toEqual(draft.nightOrders);
-    expect(again.draft?.imported.characters).toEqual(draft.imported.characters);
+    // Standard order is stable through export and reimport.
+    expect(again.draft?.characters.map(({ id }) => id)).toEqual(
+      draft.characters.map(({ id }) => id),
+    );
+
+    const byId = (characters: ReadonlyArray<{ readonly id: string }> = []) =>
+      characters.toSorted((a, b) => a.id.localeCompare(b.id));
+
+    expect(byId(again.draft?.imported.characters)).toEqual(byId(draft.imported.characters));
   });
 
   test("absent metadata defaults visibly; numeric fallback ignores absent, zero and negative priorities", () => {
