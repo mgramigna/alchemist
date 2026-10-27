@@ -227,7 +227,7 @@ it.effect("an upload supersedes the imported reference for the same slot only", 
 
     yield* Effect.gen(function* () {
       const scripts = yield* Scripts;
-      const script = yield* scripts.importJson(json, true);
+      const script = yield* scripts.importJson(json, true, "https://alchemist.example");
       const slots = (yield* scripts.readImported(script.id))?.artwork ?? [];
       assert.isTrue(slots.some((art) => art.field === "logo"));
 

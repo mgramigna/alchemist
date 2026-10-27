@@ -11,6 +11,7 @@ import { assert, it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { readFileSync } from "node:fs";
 import { ArtworkStorage } from "../src/artwork-storage.ts";
+import { ImageFetcher } from "../src/image-fetch.ts";
 import { Scripts, ScriptsLive, ScriptStore } from "../src/scripts.ts";
 import { scriptsFixture } from "./support/scripts.ts";
 
@@ -32,8 +33,8 @@ it.effect(
         const scripts = yield* Scripts;
         const review = yield* scripts.reviewImport(json);
         assert.deepStrictEqual(review.errors, []);
-        const first = yield* scripts.importJson(json, false);
-        const second = yield* scripts.importJson(json, false);
+        const first = yield* scripts.importJson(json, false, "https://alchemist.example");
+        const second = yield* scripts.importJson(json, false, "https://alchemist.example");
         assert.notStrictEqual(first.id, second.id);
         assert.strictEqual(first.authorCredit, "Original Designer");
         assert.strictEqual((yield* scripts.listOwned()).length, 2);
@@ -96,7 +97,7 @@ it.effect(
       yield* Effect.gen(function* () {
         const scripts = yield* Scripts;
         assert.instanceOf(
-          yield* scripts.importJson("{", true).pipe(Effect.flip),
+          yield* scripts.importJson("{", true, "https://alchemist.example").pipe(Effect.flip),
           ScriptImportInvalid,
         );
         assert.deepStrictEqual(yield* scripts.listOwned(), []);
@@ -105,13 +106,13 @@ it.effect(
           '[{"id":"custom","name":"","team":"townsfolk","ability":"","bloodstar":true}]';
 
         assert.instanceOf(
-          yield* scripts.importJson(extra, false).pipe(Effect.flip),
+          yield* scripts.importJson(extra, false, "https://alchemist.example").pipe(Effect.flip),
           ScriptImportInvalid,
         );
         assert.deepStrictEqual(yield* scripts.listOwned(), []);
         const review = yield* scripts.reviewImport(extra);
         assert(review.blockers.length > 0);
-        const saved = yield* scripts.importJson(extra, true);
+        const saved = yield* scripts.importJson(extra, true, "https://alchemist.example");
         assert.strictEqual(saved.name, "Imported Script");
         assert.strictEqual(saved.authorCredit, "Alice");
         assert.strictEqual((yield* scripts.listCharacters(saved.id))[0]?.ability, "");
@@ -123,13 +124,14 @@ it.effect("reports an atomic store failure without returning an imported Script"
   Effect.gen(function* () {
     const scripts = yield* Scripts;
     assert.instanceOf(
-      yield* scripts.importJson(json, false).pipe(Effect.flip),
+      yield* scripts.importJson(json, false, "https://alchemist.example").pipe(Effect.flip),
       ScriptWriteUnavailable,
     );
   }).pipe(
     Effect.provide(
       ScriptsLive.pipe(
         Layer.provide(Layer.mock(ArtworkStorage, {})),
+        Layer.provide(Layer.mock(ImageFetcher, {})),
         Layer.provide(
           Layer.mock(ScriptStore, {
             insertImport: () => Effect.fail(new ScriptWriteUnavailable({})),

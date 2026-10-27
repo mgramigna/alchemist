@@ -1,5 +1,6 @@
 import {
   ScriptId,
+  type ImportedArtwork,
   type ImportedData,
   type Jinx,
   jinxKey,
@@ -14,6 +15,7 @@ import {
 } from "@alchemist/domain";
 import { Effect, Layer, Option } from "effect";
 import { ArtworkStorage } from "../../src/artwork-storage.ts";
+import { imageFetcherFixture } from "./images.ts";
 import {
   ScriptStore,
   ScriptsLive,
@@ -97,6 +99,7 @@ export const scriptsFixture = Effect.sync(() => {
             variants: stored.variants,
             sourceId: stored.sourceId,
             style: stored.style,
+            ...(stored.imported && { imported: stored.imported }),
           },
         };
   };
@@ -254,7 +257,10 @@ export const scriptsFixture = Effect.sync(() => {
         if (Option.isNone(owned(ownerId, scriptId))) return false;
         const removed = artwork.delete(`${scriptId}:${id}`);
 
-        if (removed) touch(scriptId, now);
+        if (removed) {
+          dropImported(scriptId, "image", id);
+          touch(scriptId, now);
+        }
 
         return removed;
       }),
@@ -264,7 +270,48 @@ export const scriptsFixture = Effect.sync(() => {
 
         if (Option.isNone(owned(ownerId, id)) || imported === undefined) return false;
         dropImported(id, field, characterId);
+
+        if (field === "image" && artwork.get(`${id}:${characterId}`)?.imported)
+          artwork.delete(`${id}:${characterId}`);
         touch(id, now);
+
+        return true;
+      }),
+    saveImportedArtwork: (ownerId, scriptId, reference, copy, now) =>
+      Effect.sync(() => {
+        const imported = imports.get(scriptId);
+        const characterId = reference.characterId ?? null;
+
+        const matches = (art: ImportedArtwork) =>
+          art.field === reference.field && (art.characterId ?? null) === characterId;
+
+        if (Option.isNone(owned(ownerId, scriptId)) || !imported?.artwork.some(matches))
+          return false;
+
+        if (copy?.kind === "script") {
+          if (reference.field === "image" || slotsOf(scriptId)[reference.field] !== null)
+            return false;
+          setSlot(scriptId, reference.field, copy.image);
+        }
+
+        if (copy?.kind === "character") {
+          const key = `${scriptId}:${characterId}`;
+          const current = artwork.get(key);
+
+          if (
+            !characters.has(key) ||
+            (current?.sourceId ?? null) !== copy.expectedSourceId ||
+            (current !== undefined && !current.imported)
+          )
+            return false;
+          artwork.set(key, copy.artwork);
+        }
+
+        imports.set(scriptId, {
+          ...imported,
+          artwork: imported.artwork.map((art) => (matches(art) ? reference : art)),
+        });
+        touch(scriptId, now);
 
         return true;
       }),
@@ -287,7 +334,7 @@ export const scriptsFixture = Effect.sync(() => {
         Option.fromNullishOr(rows.get(id)).pipe(
           Option.map((row) => ({
             script: project(row),
-            characters: inScript(id),
+            characters: inScript(id).map((character) => withArtwork(id, character)),
             nightOrders: nightOrders.get(id) ?? defaultNightOrders,
             jinxes: inJinxes(id),
             imported: imports.get(id),
@@ -493,8 +540,10 @@ export const scriptsFixture = Effect.sync(() => {
   });
 
   const storage = storageFixture();
+  const fetcher = imageFetcherFixture();
 
   return {
+    fetcher,
     rows,
     characters,
     nightOrders,
@@ -502,6 +551,10 @@ export const scriptsFixture = Effect.sync(() => {
     scriptArtwork,
     imports,
     storage,
-    layer: ScriptsLive.pipe(Layer.provide(store), Layer.provideMerge(storage.layer)),
+    layer: ScriptsLive.pipe(
+      Layer.provide(store),
+      Layer.provide(fetcher.layer),
+      Layer.provideMerge(storage.layer),
+    ),
   };
 });

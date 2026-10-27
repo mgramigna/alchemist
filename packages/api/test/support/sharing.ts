@@ -6,6 +6,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { AppConfig, handleRequest } from "../../src/app.ts";
 import { Auth } from "../../src/auth.ts";
 import { r2ArtworkStorage } from "../../src/artwork-storage.ts";
+import { imageFetcherFixture } from "./images.ts";
 import { D1ScriptStore } from "../../src/d1.ts";
 import { Scripts, ScriptsLive } from "../../src/scripts.ts";
 
@@ -40,6 +41,7 @@ export const sharingApplication = async (origin: string) => {
       ScriptsLive.pipe(
         Layer.provide(D1ScriptStore.pipe(Layer.provide(D1Client.layer({ db })))),
         Layer.provideMerge(storage),
+        Layer.provide(imageFetcherFixture().layer),
       ),
       Layer.mock(Auth, {
         current: (token) => Effect.succeed(token === "owner-session" ? owner : null),

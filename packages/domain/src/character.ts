@@ -134,10 +134,14 @@ export const PublishedArtwork = Schema.Struct({
 export interface PublishedArtwork extends Schema.Schema.Type<typeof PublishedArtwork> {}
 
 // The owner's view adds the style and the private source it was rendered from.
+// Imported artwork is the supplied images, unstyled: one variant per imported
+// slot, with generic icons in slots that could not be copied. Its source is the
+// first copied image, the starting point for an explicit restyle.
 export const CharacterArtwork = Schema.Struct({
   ...PublishedArtwork.fields,
   sourceId: Schema.String,
   style: ArtworkStyle,
+  imported: Schema.optionalKey(Schema.Literal(true)),
 });
 
 export interface CharacterArtwork extends Schema.Schema.Type<typeof CharacterArtwork> {}
@@ -329,6 +333,13 @@ interface Iconed {
 // Variants styled for an earlier Team wait for a restyle rather than show wrong alignments.
 export const isStale = ({ team, artwork }: Iconed) =>
   artwork !== undefined && artwork.team !== team;
+
+/** The generic icon standing in for an imported slot, cycling through the Team's variants. */
+export const genericIconAt = (team: AuthoredTeam, index: number): GenericIcon => {
+  const icons = genericIcons(team);
+
+  return icons[index % icons.length] ?? icons[0] ?? icon(team, "regular", undefined);
+};
 
 /** Published artwork styled for the current Team, otherwise the generic icons, in export order. */
 export const characterIcons = (character: Iconed): ReadonlyArray<GenericIcon> =>

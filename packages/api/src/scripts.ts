@@ -13,7 +13,12 @@ import {
   type CharacterArtwork,
   type RenderedVariant,
   type SourceType,
-  ImportedArtwork,
+  AUTO_STYLE,
+  genericIconAt,
+  INVALID_REFERENCE,
+  type ImportedArtwork,
+  type ImportedArtworkField,
+  type ImportedArtworkRepair,
   ImportedData,
   ImportDraft,
   ImportReview,
@@ -53,8 +58,9 @@ import {
   type ScriptExportSource,
 } from "@alchemist/domain";
 import { CurrentUser } from "@alchemist/domain/rpc";
-import { Clock, Context, Effect, Layer, Option, Schema } from "effect";
+import { Clock, Context, Effect, Layer, Option, Result, Schema } from "effect";
 import { ArtworkStorage } from "./artwork-storage.ts";
+import { ImageFetchFailed, ImageFetcher, type FetchedImage } from "./image-fetch.ts";
 import { createId } from "./ids.ts";
 
 /** Current artwork as stored, including the private original's format. */
@@ -81,6 +87,27 @@ export const sourceKey = (scriptId: ScriptId, sourceId: string) => `${scriptId}/
 
 // Published paths are also their bucket keys, and resolve against the asset origin.
 export const PUBLISHED_PREFIX = "/artwork/";
+
+export const PUBLISHED_TYPES = new Map(
+  Object.entries(IMAGE_EXTENSIONS).map(([type, extension]) => [extension, type]),
+);
+
+export const PUBLISHED_PATH = new RegExp(
+  `^${PUBLISHED_PREFIX}[0-9a-z]{26}\\.(${[...PUBLISHED_TYPES.keys()].join("|")})$`,
+);
+
+/**
+ * What a copy of imported artwork makes current. Character artwork switches
+ * only while its original is still `expectedSourceId` (null: none yet); a
+ * Script slot is filled only while empty.
+ */
+export type ImportedCopy =
+  | {
+      readonly kind: "character";
+      readonly artwork: StoredArtwork;
+      readonly expectedSourceId: string | null;
+    }
+  | { readonly kind: "script"; readonly image: StoredScriptImage };
 
 export class ScriptStore extends Context.Service<
   ScriptStore,
@@ -116,6 +143,7 @@ export class ScriptStore extends Context.Service<
       expectedSourceId: string | null,
       now: number,
     ) => Effect.Effect<boolean, ScriptWriteUnavailable>;
+    // Also drops any imported image reference for the Character.
     readonly deleteArtwork: (
       ownerId: string,
       scriptId: ScriptId,
@@ -146,11 +174,23 @@ export class ScriptStore extends Context.Service<
       expectedSourceId: string,
       now: number,
     ) => Effect.Effect<boolean, ScriptWriteUnavailable>;
+    // Drops the imported reference and, for a Character image, any imported
+    // artwork made from it. Uploaded artwork is never removed here.
     readonly useGenericArtwork: (
       ownerId: string,
       id: ScriptId,
-      field: typeof ImportedArtwork.Type.field,
+      field: ImportedArtworkField,
       characterId: CharacterId | null,
+      now: number,
+    ) => Effect.Effect<boolean, ScriptWriteUnavailable>;
+    // Replaces the matching imported reference with `reference` and makes the
+    // copy current, atomically and only while that reference still exists.
+    // False means nothing was written.
+    readonly saveImportedArtwork: (
+      ownerId: string,
+      scriptId: ScriptId,
+      reference: ImportedArtwork,
+      copy: ImportedCopy | null,
       now: number,
     ) => Effect.Effect<boolean, ScriptWriteUnavailable>;
     readonly insertImport: (
@@ -288,9 +328,21 @@ export class Scripts extends Context.Service<
     ) => Effect.Effect<CharacterId, ArtworkNotFound | ScriptWriteUnavailable, CurrentUser>;
     readonly useGenericArtwork: (
       id: ScriptId,
-      field: typeof ImportedArtwork.Type.field,
+      field: ImportedArtworkField,
       characterId: CharacterId | null,
     ) => Effect.Effect<ScriptId, ScriptNotFound | ScriptWriteUnavailable, CurrentUser>;
+    // Copies the reference's uncopied slots again. Published URLs on the asset
+    // origin are reused without a network request.
+    readonly retryImportedArtwork: (
+      id: ScriptId,
+      field: ImportedArtworkField,
+      characterId: CharacterId | null,
+      assetOrigin: string,
+    ) => Effect.Effect<
+      ImportedArtworkRepair,
+      ScriptNotFound | ArtworkConflict | ScriptWriteUnavailable,
+      CurrentUser
+    >;
     readonly readScriptArtwork: (
       id: ScriptId,
     ) => Effect.Effect<ScriptArtwork, ScriptNotFound | ScriptReadUnavailable, CurrentUser>;
@@ -312,9 +364,12 @@ export class Scripts extends Context.Service<
       CurrentUser
     >;
     readonly reviewImport: (json: string) => Effect.Effect<ImportReview, never, CurrentUser>;
+    // Commits the Script first, then copies its artwork; copy failures are
+    // recorded per slot and never fail the import.
     readonly importJson: (
       json: string,
       acknowledgeDiscard: boolean,
+      assetOrigin: string,
     ) => Effect.Effect<OwnedScript, ScriptImportInvalid | ScriptWriteUnavailable, CurrentUser>;
     readonly readImported: (
       id: ScriptId,
@@ -412,18 +467,37 @@ const readForWrite = <A, E, R>(effect: Effect.Effect<A, E | ScriptReadUnavailabl
     Effect.catchTag("ScriptReadUnavailable", () => Effect.fail(new ScriptWriteUnavailable({}))),
   );
 
-const ownerArtwork = ({ team, variants, sourceId, style }: StoredArtwork): CharacterArtwork => ({
+const ownerArtwork = ({
   team,
   variants,
   sourceId,
   style,
-});
+  imported,
+}: StoredArtwork): CharacterArtwork =>
+  imported ? { team, variants, sourceId, style, imported } : { team, variants, sourceId, style };
+
+const sameReference = (
+  art: ImportedArtwork,
+  field: ImportedArtworkField,
+  characterId: CharacterId | null,
+) => art.field === field && (art.characterId ?? null) === characterId;
+
+const STORE_FAILED = "Alchemist couldn’t save the copy. Retry.";
+
+// A copied slot's published image, and its bytes for a possible private source.
+// A generic icon from an earlier export has no bytes: it stays generic.
+interface SlotCopy extends Partial<FetchedImage> {
+  readonly path: string;
+}
+
+const GENERIC_PATH = /^\/icons\/generic\/v\d+\/[a-z]+-[a-z]+\.svg$/;
 
 export const ScriptsLive = Layer.effect(
   Scripts,
   Effect.gen(function* () {
     const store = yield* ScriptStore;
     const storage = yield* ArtworkStorage;
+    const fetcher = yield* ImageFetcher;
 
     // Cleanup of a private original that is no longer, or never became, current.
     // Its failure is logged by the adapter and never undoes the saved change.
@@ -440,7 +514,192 @@ export const ScriptsLive = Layer.effect(
           .pipe(Effect.as({ variant, path }));
       });
 
+    // One imported slot, copied unchanged. An image already published by
+    // Alchemist (a re-imported export) keeps its immutable URL; anything else
+    // is fetched and published under a fresh key.
+    const copySlot = (source: string, assetOrigin: string) =>
+      Effect.gen(function* () {
+        const url = URL.parse(source);
+
+        if (url === null) return yield* new ImageFetchFailed({ message: INVALID_REFERENCE });
+
+        if (url.origin === new URL(assetOrigin).origin && GENERIC_PATH.test(url.pathname))
+          return { path: url.pathname } satisfies SlotCopy;
+
+        if (url.origin === new URL(assetOrigin).origin && PUBLISHED_PATH.test(url.pathname)) {
+          const published = yield* storage
+            .readPublished(url.pathname.slice(1))
+            .pipe(Effect.mapError(() => new ImageFetchFailed({ message: STORE_FAILED })));
+
+          const contentType = Option.isSome(published)
+            ? sniffImageType(published.value.bytes)
+            : undefined;
+
+          if (Option.isNone(published) || contentType === undefined)
+            return yield* new ImageFetchFailed({
+              message: "This Alchemist image no longer exists. Replace it.",
+            });
+
+          return { bytes: published.value.bytes, contentType, path: url.pathname };
+        }
+
+        const image: FetchedImage = yield* fetcher.fetch(source);
+        const path = `${PUBLISHED_PREFIX}${createId()}.${IMAGE_EXTENSIONS[image.contentType]}`;
+
+        yield* storage
+          .publish(path.slice(1), image.bytes, image.contentType)
+          .pipe(Effect.mapError(() => new ImageFetchFailed({ message: STORE_FAILED })));
+
+        return { ...image, path };
+      });
+
+    // Attempts every uncopied slot of one reference, then records each slot's
+    // outcome and the resulting artwork in one conditional write.
+    const copyImported = Effect.fn("Scripts.copyImported")(function* (
+      ownerId: string,
+      scriptId: ScriptId,
+      field: ImportedArtworkField,
+      characterId: CharacterId | null,
+      assetOrigin: string,
+    ) {
+      const scriptArtwork = yield* readForWrite(store.findScriptArtwork(ownerId, scriptId));
+
+      if (Option.isNone(scriptArtwork)) return yield* new ScriptNotFound({ id: scriptId });
+      const imported = yield* readForWrite(store.readImported(ownerId, scriptId));
+
+      const reference = imported?.artwork.find((art) => sameReference(art, field, characterId));
+
+      if (reference === undefined) return yield* new ArtworkConflict({});
+
+      const character =
+        characterId === null
+          ? undefined
+          : Option.getOrUndefined(
+              yield* readForWrite(store.findArtwork(ownerId, scriptId, characterId)),
+            );
+
+      if (characterId !== null && character === undefined) return yield* new ArtworkConflict({});
+      const current = character?.artwork ?? null;
+
+      // Uploaded artwork supersedes the reference; it should already be gone.
+      if (current !== null && !current.imported) return yield* new ArtworkConflict({});
+
+      const results = yield* Effect.forEach(
+        reference.slots,
+        (slot) =>
+          slot.state === "copied"
+            ? Effect.succeed(undefined)
+            : copySlot(slot.source, assetOrigin).pipe(Effect.result),
+        { concurrency: 3 },
+      );
+
+      const copies = results.map((result) =>
+        result !== undefined && Result.isSuccess(result) ? result.success : undefined,
+      );
+
+      const next: ImportedArtwork = {
+        ...reference,
+        slots: reference.slots.map((slot, index) => {
+          const result = results[index];
+
+          if (result === undefined) return slot;
+
+          return Result.isSuccess(result)
+            ? { source: slot.source, state: "copied" }
+            : { source: slot.source, state: "failed", problem: result.failure.message };
+        }),
+      };
+
+      // The first image copied becomes the private source for restyling, and stays so.
+      const existingSource = field === "image" ? current : scriptArtwork.value[field];
+
+      const first = copies.find(
+        (copy): copy is Required<SlotCopy> =>
+          copy?.bytes !== undefined && copy.contentType !== undefined,
+      );
+
+      const source =
+        existingSource === null && first !== undefined
+          ? { sourceId: createId(), sourceType: first.contentType, path: first.path }
+          : undefined;
+
+      if (source !== undefined && first !== undefined)
+        yield* storage.putSource(
+          sourceKey(scriptId, source.sourceId),
+          first.bytes,
+          first.contentType,
+        );
+
+      const sourceId = source?.sourceId;
+
+      let copy: ImportedCopy | null = null;
+
+      if (characterId !== null && character !== undefined) {
+        const team = current?.team ?? character.team;
+
+        const variants = next.slots.map((slot, index) => {
+          const fallback = genericIconAt(team, index);
+          const path = copies[index]?.path ?? current?.variants[index]?.path;
+
+          return {
+            variant: fallback.variant,
+            path: slot.state === "copied" && path !== undefined ? path : fallback.path,
+          };
+        });
+
+        const original = current ?? source;
+
+        if (original !== undefined)
+          copy = {
+            kind: "character",
+            artwork: {
+              sourceId: original.sourceId,
+              sourceType: original.sourceType,
+              style: AUTO_STYLE,
+              team,
+              variants,
+              imported: true,
+            },
+            expectedSourceId: current?.sourceId ?? null,
+          };
+      } else if (source !== undefined) copy = { kind: "script", image: source };
+
+      const saved = yield* store
+        .saveImportedArtwork(ownerId, scriptId, next, copy, yield* Clock.currentTimeMillis)
+        .pipe(
+          Effect.onError(() =>
+            sourceId === undefined ? Effect.void : discardSource(scriptId, sourceId),
+          ),
+        );
+
+      if (!saved) {
+        if (sourceId !== undefined) yield* discardSource(scriptId, sourceId);
+
+        return yield* new ArtworkConflict({});
+      }
+
+      const repair: ImportedArtworkRepair = {
+        reference: next,
+        scriptArtwork: publicScriptArtwork(
+          copy?.kind === "script"
+            ? { ...scriptArtwork.value, [field]: copy.image }
+            : scriptArtwork.value,
+        ),
+      };
+
+      return copy?.kind === "character"
+        ? { ...repair, characterArtwork: ownerArtwork(copy.artwork) }
+        : repair;
+    });
+
     return Scripts.of({
+      retryImportedArtwork: Effect.fn("Scripts.retryImportedArtwork")(
+        function* (id, field, characterId, assetOrigin) {
+          const user = yield* CurrentUser;
+
+          return yield* copyImported(user.id, id, field, characterId, assetOrigin);
+        },
+      ),
       uploadArtwork: Effect.fn("Scripts.uploadArtwork")(function* (scriptId, id, upload) {
         const user = yield* CurrentUser;
         const current = yield* readForWrite(store.findArtwork(user.id, scriptId, id));
@@ -558,6 +817,12 @@ export const ScriptsLive = Layer.effect(
       useGenericArtwork: Effect.fn("Scripts.useGenericArtwork")(function* (id, field, characterId) {
         const user = yield* CurrentUser;
 
+        const current =
+          field === "image" && characterId !== null
+            ? Option.getOrNull(yield* readForWrite(store.findArtwork(user.id, id, characterId)))
+                ?.artwork
+            : null;
+
         if (
           !(yield* store.useGenericArtwork(
             user.id,
@@ -568,6 +833,9 @@ export const ScriptsLive = Layer.effect(
           ))
         )
           return yield* new ScriptNotFound({ id });
+
+        // Imported artwork was removed with the reference; uploads are untouched.
+        if (current?.imported) yield* discardSource(id, current.sourceId);
 
         return id;
       }),
@@ -653,32 +921,55 @@ export const ScriptsLive = Layer.effect(
 
         return reviewImport(json, user.displayName);
       }),
-      importJson: Effect.fn("Scripts.importJson")(function* (json, acknowledgeDiscard) {
-        const user = yield* CurrentUser;
-        const review = reviewImport(json, user.displayName);
+      importJson: Effect.fn("Scripts.importJson")(
+        function* (json, acknowledgeDiscard, assetOrigin) {
+          const user = yield* CurrentUser;
+          const review = reviewImport(json, user.displayName);
 
-        if (review.draft === null)
-          return yield* new ScriptImportInvalid({ messages: review.errors });
+          if (review.draft === null)
+            return yield* new ScriptImportInvalid({ messages: review.errors });
 
-        if (review.discarded.length && !acknowledgeDiscard)
-          return yield* new ScriptImportInvalid({
-            messages: [
-              "Acknowledge the listed unsupported fields before discarding them.",
-              ...review.discarded,
-            ],
+          if (review.discarded.length && !acknowledgeDiscard)
+            return yield* new ScriptImportInvalid({
+              messages: [
+                "Acknowledge the listed unsupported fields before discarding them.",
+                ...review.discarded,
+              ],
+            });
+          const now = yield* Clock.currentTimeMillis;
+
+          const script = OwnedScript.make({
+            id: ScriptId.make(createId()),
+            ...review.draft.script,
+            updatedAt: now,
           });
-        const now = yield* Clock.currentTimeMillis;
 
-        const script = OwnedScript.make({
-          id: ScriptId.make(createId()),
-          ...review.draft.script,
-          updatedAt: now,
-        });
+          yield* store.insertImport(user.id, script, review.draft);
 
-        yield* store.insertImport(user.id, script, review.draft);
+          // The Script is saved: from here, no artwork problem may fail the import.
+          // Each failure stays on its slot (or the slot stays pending) for retry.
+          yield* Effect.forEach(
+            review.draft.imported.artwork.filter((art) =>
+              art.slots.some((slot) => slot.state === "pending"),
+            ),
+            (art) =>
+              copyImported(
+                user.id,
+                script.id,
+                art.field,
+                art.characterId ?? null,
+                assetOrigin,
+              ).pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logError("Imported artwork copy was not saved", cause),
+                ),
+              ),
+            { concurrency: 4, discard: true },
+          );
 
-        return script;
-      }),
+          return script;
+        },
+      ),
       readImported: Effect.fn("Scripts.readImported")(function* (id) {
         const user = yield* CurrentUser;
 

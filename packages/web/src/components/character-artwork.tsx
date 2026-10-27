@@ -315,9 +315,11 @@ export function CharacterArtworkEditor({
             ? "Generic icons follow the Team until you add artwork. Upload an image and Alchemist styles every alignment version."
             : stale
               ? `These icons were styled for ${teamLabel(artwork.team)}. Generic icons stand in until they are restyled for ${teamLabel(team)}.`
-              : cut
-                ? `${cut.detected ? "Automatic cutout" : "Studio cutout"}: ${CUTOUT_LABELS[cut.mode]}.`
-                : "Your artwork, styled for each alignment."}
+              : artwork.imported
+                ? "Imported icons, exactly as supplied. Choose a Look or open the Studio to restyle them from the first imported image."
+                : cut
+                  ? `${cut.detected ? "Automatic cutout" : "Studio cutout"}: ${CUTOUT_LABELS[cut.mode]}.`
+                  : "Your artwork, styled for each alignment."}
         </p>
         {artwork !== undefined && changed.length > 0 && (
           <p className="text-sm">
@@ -350,10 +352,10 @@ export function CharacterArtworkEditor({
         )}
       >
         <ul className="flex flex-wrap gap-4" aria-label="Icon variants">
-          {characterIcons(character).map(({ variant }) => (
-            <li key={variant} className="flex flex-col items-center gap-1 text-xs">
-              <CharacterToken character={character} variant={variant} className="size-20" />
-              {ICON_VARIANT_LABELS[variant]}
+          {characterIcons(character).map(({ variant }, index) => (
+            <li key={index} className="flex flex-col items-center gap-1 text-xs">
+              <CharacterToken character={character} index={index} className="size-20" />
+              {artwork?.imported && !stale ? `Image ${index + 1}` : ICON_VARIANT_LABELS[variant]}
             </li>
           ))}
         </ul>
@@ -475,6 +477,8 @@ function LookPicker({
 
   // A color set in the Studio replaces the Look until another Look is chosen.
   const custom = artwork.style.color !== undefined || artwork.style.detail !== undefined;
+  // Imported icons have no Look yet; choosing one restyles them.
+  const styled = !artwork.imported;
 
   const label = (look: ArtworkLook) =>
     look === "auto"
@@ -499,7 +503,7 @@ function LookPicker({
                 type="radio"
                 name={name}
                 value={look}
-                checked={!custom && artwork.style.look === look}
+                checked={styled && !custom && artwork.style.look === look}
                 onChange={() => onChoose(look)}
                 className="sr-only"
               />

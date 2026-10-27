@@ -8,14 +8,21 @@ import { cn } from "cn";
 export function CharacterToken({
   character,
   variant,
+  index,
   className,
 }: {
   readonly character: Pick<PublicCharacter, "team" | "artwork">;
   readonly variant?: IconVariant;
+  // A position in export order; imported artwork may repeat a variant.
+  readonly index?: number;
   readonly className?: string;
 }) {
   const icons = characterIcons(character);
-  const icon = icons.find((candidate) => candidate.variant === variant) ?? icons[0];
+
+  const icon =
+    (index === undefined ? undefined : icons[index]) ??
+    icons.find((candidate) => candidate.variant === variant) ??
+    icons[0];
 
   return (
     <img

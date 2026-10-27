@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { botcDocument, botcSchemaProblems, reviewImport } from "../src/index.ts";
+import { INVALID_REFERENCE, botcDocument, botcSchemaProblems, reviewImport } from "../src/index.ts";
 import fixture from "./fixtures/import-script.json" with { type: "json" };
 
 const review = (entries: ReadonlyArray<unknown>) =>
@@ -133,7 +133,7 @@ describe("JSON import preflight", () => {
         format: "array",
         slots: [
           { source: "https://example.org/shade.png", state: "pending" },
-          { source: "broken image", state: "failed" },
+          { source: "broken image", state: "failed", problem: INVALID_REFERENCE },
         ],
       },
       {

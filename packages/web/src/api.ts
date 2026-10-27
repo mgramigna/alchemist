@@ -76,6 +76,7 @@ export const importedScriptData = (id: ScriptId) =>
   );
 
 export const useGenericArtwork = Client.mutation("Script.useGenericArtwork");
+export const retryImportedArtwork = Client.mutation("Script.retryImportedArtwork");
 
 export const uploadArtwork = Client.mutation("Artwork.upload");
 export const restyleArtwork = Client.mutation("Artwork.restyle");
