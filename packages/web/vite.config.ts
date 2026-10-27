@@ -23,6 +23,7 @@ export default defineConfig({
       // origin from the Worker's strict auth checks. Preserve Host instead.
       "/api": { target: "http://127.0.0.1:1337", changeOrigin: false },
       "/auth": { target: "http://127.0.0.1:1337", changeOrigin: false },
+      "/artwork": { target: "http://127.0.0.1:1337", changeOrigin: false },
     },
   },
   build: { outDir: "dist" },
