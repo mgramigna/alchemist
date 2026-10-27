@@ -37,6 +37,9 @@ import {
   Character,
   CharacterId,
   CharacterNotFound,
+  CharacterOrderInvalid,
+  characterOrderProblem,
+  type CharacterOrder,
   NightOrderInvalid,
   OwnedScript,
   PublicScript,
@@ -283,6 +286,13 @@ export class ScriptStore extends Context.Service<
       ownerId: string,
       scriptId: ScriptId,
     ) => Effect.Effect<Option.Option<NightOrders>, ScriptReadUnavailable>;
+    // Positions each listed Character by its index. None means the Script is not the owner's.
+    readonly replaceCharacterOrder: (
+      ownerId: string,
+      scriptId: ScriptId,
+      order: CharacterOrder,
+      now: number,
+    ) => Effect.Effect<Option.Option<CharacterOrder>, ScriptWriteUnavailable>;
     // Storage refuses entries naming another Script's Characters, failing the whole write.
     readonly replaceNightOrder: (
       ownerId: string,
@@ -446,6 +456,14 @@ export class Scripts extends Context.Service<
       scriptId: ScriptId,
       pair: JinxPair,
     ) => Effect.Effect<JinxPair, JinxNotFound | ScriptWriteUnavailable, CurrentUser>;
+    readonly replaceCharacterOrder: (
+      scriptId: ScriptId,
+      order: CharacterOrder,
+    ) => Effect.Effect<
+      CharacterOrder,
+      ScriptNotFound | CharacterOrderInvalid | ScriptWriteUnavailable,
+      CurrentUser
+    >;
     readonly readNightOrders: (
       scriptId: ScriptId,
     ) => Effect.Effect<NightOrders, ScriptNotFound | ScriptReadUnavailable, CurrentUser>;
@@ -1243,6 +1261,34 @@ export const ScriptsLive = Layer.effect(
 
         return canonical;
       }),
+      replaceCharacterOrder: Effect.fn("Scripts.replaceCharacterOrder")(
+        function* (scriptId, order) {
+          const user = yield* CurrentUser;
+          const script = yield* readForWrite(store.findOwned(user.id, scriptId));
+
+          if (Option.isNone(script)) return yield* new ScriptNotFound({ id: scriptId });
+
+          const characters = yield* readForWrite(store.listCharacters(user.id, scriptId));
+
+          const problem = characterOrderProblem(
+            order,
+            characters.map(({ id }) => id),
+          );
+
+          if (problem !== undefined) return yield* new CharacterOrderInvalid({ message: problem });
+
+          const saved = yield* store.replaceCharacterOrder(
+            user.id,
+            scriptId,
+            order,
+            yield* Clock.currentTimeMillis,
+          );
+
+          if (Option.isNone(saved)) return yield* new ScriptNotFound({ id: scriptId });
+
+          return saved.value;
+        },
+      ),
       readNightOrders: Effect.fn("Scripts.readNightOrders")(function* (scriptId) {
         const user = yield* CurrentUser;
         const orders = yield* store.findNightOrders(user.id, scriptId);

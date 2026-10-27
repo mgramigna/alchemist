@@ -88,6 +88,8 @@ export const Handlers = Rpcs.toLayer(
       "Jinx.create": ({ scriptId, ...pair }) => scripts.createJinx(scriptId, pair),
       "Jinx.update": ({ scriptId, ...jinx }) => scripts.updateJinx(scriptId, jinx),
       "Jinx.delete": ({ scriptId, ...pair }) => scripts.deleteJinx(scriptId, pair),
+      "CharacterOrder.replace": ({ scriptId, order }) =>
+        scripts.replaceCharacterOrder(scriptId, order),
       "NightOrder.read": ({ scriptId }) => scripts.readNightOrders(scriptId),
       "NightOrder.replace": ({ scriptId, night, order }) =>
         scripts.replaceNightOrder(scriptId, night, order),

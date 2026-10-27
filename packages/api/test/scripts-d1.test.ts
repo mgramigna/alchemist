@@ -225,6 +225,56 @@ test("D1 Character writes are owner-scoped, atomic with the Script change time, 
     }),
   ));
 
+test("D1 Character Order appends new Characters, replaces positions for the owner only, and orders every read", () =>
+  run(
+    Effect.gen(function* () {
+      const scripts = yield* ScriptStore;
+      const mine = script("01k8ae00000000000000000011", 10);
+      yield* scripts.insert("alice", mine);
+
+      const make = (n: number, name: string) =>
+        Character.make({
+          id: CharacterId.make(`01k8ae1000000000000000001${n}`),
+          name,
+          ability: "",
+          team: "townsfolk",
+          ...noInstructions,
+        });
+
+      const [a, b, c] = [make(1, "A"), make(2, "B"), make(3, "C")];
+
+      for (const character of [a, b, c])
+        yield* scripts.insertCharacter("alice", mine.id, character, defaultNightOrders, 20);
+
+      expect(Option.isNone(yield* scripts.replaceCharacterOrder("bob", mine.id, [c.id], 30))).toBe(
+        true,
+      );
+      expect(
+        Option.getOrNull(
+          yield* scripts.replaceCharacterOrder("alice", mine.id, [c.id, a.id, b.id], 30),
+        ),
+      ).toEqual([c.id, a.id, b.id]);
+      expect(Option.getOrNull(yield* scripts.findOwned("alice", mine.id))?.updatedAt).toBe(30);
+
+      // A later Character joins the end.
+      const d = make(4, "D");
+      yield* scripts.insertCharacter("alice", mine.id, d, defaultNightOrders, 40);
+
+      expect((yield* scripts.listCharacters("alice", mine.id)).map((row) => row.name)).toEqual([
+        "C",
+        "A",
+        "B",
+        "D",
+      ]);
+      expect(
+        Option.getOrNull(yield* scripts.findPublic(mine.id))?.characters.map((row) => row.name),
+      ).toEqual(["C", "A", "B", "D"]);
+      expect(
+        Option.getOrNull(yield* scripts.findExport(mine.id))?.characters.map((row) => row.name),
+      ).toEqual(["C", "A", "B", "D"]);
+    }),
+  ));
+
 test("D1 Night Orders default on creation, replace atomically, refuse other Scripts' Characters, and lose deleted members", () =>
   run(
     Effect.gen(function* () {
@@ -530,7 +580,8 @@ test("D1 imports reused IDs atomically, keeps integration data across edits, and
       yield* scripts.insertImport("bob", second, draft);
       expect(
         (yield* scripts.listCharacters("alice", first.id)).map((character) => character.id),
-      ).toEqual(["moon", "moth", "seer", "shade"]);
+        // Imported Characters keep the draft's Standard order.
+      ).toEqual(draft.characters.map((character) => character.id));
       expect((yield* scripts.listCharacters("bob", second.id)).length).toBe(4);
       expect(Option.getOrThrow(yield* scripts.findNightOrders("alice", first.id))).toEqual(
         draft.nightOrders,
@@ -541,7 +592,7 @@ test("D1 imports reused IDs atomically, keeps integration data across edits, and
       const snapshot = Option.getOrThrow(yield* scripts.findExport(first.id));
       expect(snapshot).toEqual({
         script: { name: first.name, authorCredit: first.authorCredit },
-        characters: [...draft.characters].sort((a, b) => a.id.localeCompare(b.id)),
+        characters: draft.characters,
         nightOrders: draft.nightOrders,
         jinxes: draft.jinxes,
         imported: draft.imported,

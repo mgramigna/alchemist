@@ -1,3 +1,4 @@
+import { sortCharacters } from "./order.ts";
 import { Result, Schema } from "effect";
 import { AuthoredTeam, Character, CharacterArtwork, CharacterId } from "./character.ts";
 import { Jinx, JinxExplanation, jinxPair } from "./jinx.ts";
@@ -447,7 +448,8 @@ export const reviewImport = (json: string, authorCredit: string): ImportReview =
       name: metadata?.name ?? "Imported Script",
       authorCredit: metadata?.author ?? authorCredit,
     },
-    characters,
+    // Imported Scripts start in Standard order; the owner can adjust it afterwards.
+    characters: sortCharacters(characters, "standard", nightOrders),
     nightOrders,
     jinxes,
     imported: {
