@@ -25,6 +25,7 @@ export class ArtworkStorage extends Context.Service<
     readonly readSource: (
       key: string,
     ) => Effect.Effect<Option.Option<Uint8Array>, ScriptReadUnavailable>;
+    readonly deleteSources: (prefix: string) => Effect.Effect<void, ScriptWriteUnavailable>;
     readonly deleteSource: (key: string) => Effect.Effect<void, ScriptWriteUnavailable>;
     readonly publish: (
       key: string,
@@ -63,7 +64,12 @@ export interface ObjectBucket {
       readonly httpMetadata: { readonly contentType: string; readonly cacheControl?: string };
     },
   ): Promise<{ readonly key: string } | null>;
-  delete(key: string): Promise<void>;
+  delete(key: string | string[]): Promise<void>;
+  list(options: { readonly prefix: string; readonly cursor?: string }): Promise<{
+    readonly objects: ReadonlyArray<{ readonly key: string }>;
+    readonly truncated: boolean;
+    readonly cursor?: string;
+  }>;
 }
 
 /** R2 adapter over the two Worker bucket bindings. */
@@ -80,6 +86,19 @@ export const r2ArtworkStorage = (sources: ObjectBucket, published: ObjectBucket)
         if (object === null) return Option.none();
 
         return Option.some(new Uint8Array(yield* read(() => object.arrayBuffer())));
+      }),
+      deleteSources: Effect.fn("R2ArtworkStorage.deleteSources")(function* (prefix) {
+        let cursor: string | undefined;
+
+        do {
+          const page = yield* write(() =>
+            sources.list(cursor === undefined ? { prefix } : { prefix, cursor }),
+          );
+
+          if (page.objects.length > 0)
+            yield* write(() => sources.delete(page.objects.map((object) => object.key)));
+          cursor = page.truncated ? page.cursor : undefined;
+        } while (cursor !== undefined);
       }),
       deleteSource: Effect.fn("R2ArtworkStorage.deleteSource")(function* (key) {
         yield* write(() => sources.delete(key));

@@ -472,6 +472,39 @@ export const D1ScriptStore = Layer.effect(
           }),
         );
       }, readUnavailable),
+      pendingDeletions: Effect.fn("D1ScriptStore.pendingDeletions")(function* (ownerId) {
+        const rows =
+          yield* sql`SELECT script_id AS id FROM script_deletions WHERE owner_id = ${ownerId} AND cleanup_pending = 1`;
+
+        return (yield* Schema.decodeUnknownEffect(Schema.Array(Schema.Struct({ id: ScriptId })))(
+          rows,
+        )).map((row) => row.id);
+      }, readUnavailable),
+      finishDeletion: Effect.fn("D1ScriptStore.finishDeletion")(function* (ownerId, id) {
+        yield* sql`UPDATE script_deletions SET cleanup_pending = 0 WHERE script_id = ${id} AND owner_id = ${ownerId}`;
+      }, writeUnavailable),
+      deleteOwned: Effect.fn("D1ScriptStore.deleteOwned")(function* (ownerId, id) {
+        const results = yield* d1.batch([
+          sql`INSERT INTO script_deletions (script_id, owner_id)
+            SELECT id, owner_id FROM scripts WHERE id = ${id} AND owner_id = ${ownerId}
+            ON CONFLICT (script_id) DO NOTHING`,
+          ...[
+            "night_order_entries",
+            "jinxes",
+            "character_artwork",
+            "script_artwork",
+            "script_imports",
+            "characters",
+          ].map(
+            (table) => sql`DELETE FROM ${sql.literal(table)}
+              WHERE script_id IN (SELECT id FROM scripts WHERE id = ${id} AND owner_id = ${ownerId})`,
+          ),
+          sql`DELETE FROM scripts WHERE id = ${id} AND owner_id = ${ownerId}`,
+          sql`UPDATE script_deletions SET cleanup_pending = 1 WHERE script_id = ${id} AND owner_id = ${ownerId} RETURNING script_id`,
+        ]);
+
+        return (results[8]?.length ?? 0) > 0;
+      }, writeUnavailable),
       insert: Effect.fn("D1ScriptStore.insert")(function* (ownerId, script) {
         yield* d1.batch([
           sql`INSERT INTO scripts (id, owner_id, name, author_credit, created_at, updated_at)

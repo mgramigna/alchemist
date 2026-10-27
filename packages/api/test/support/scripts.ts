@@ -1,4 +1,5 @@
 import {
+  ScriptId,
   type ImportedData,
   type Jinx,
   jinxKey,
@@ -27,7 +28,13 @@ export const storageFixture = () => {
   const sources = new Map<string, Uint8Array>();
   const published = new Map<string, Uint8Array>();
   const publishedTypes = new Map<string, string>();
-  const control = { failPublishAfter: Number.POSITIVE_INFINITY, failSourceWrites: false };
+
+  const control = {
+    failPublishAfter: Number.POSITIVE_INFINITY,
+    failSourceWrites: false,
+    failCleanup: false,
+    failCleanupAfter: Number.POSITIVE_INFINITY,
+  };
 
   const layer = Layer.succeed(ArtworkStorage, {
     putSource: (key, bytes) =>
@@ -35,6 +42,19 @@ export const storageFixture = () => {
         ? Effect.fail(new ScriptWriteUnavailable({}))
         : Effect.sync(() => void sources.set(key, bytes)),
     readSource: (key) => Effect.sync(() => Option.fromNullishOr(sources.get(key))),
+    deleteSources: (prefix) =>
+      Effect.suspend(() => {
+        if (control.failCleanup) return Effect.fail(new ScriptWriteUnavailable({}));
+
+        for (const key of sources.keys()) {
+          if (!key.startsWith(prefix)) continue;
+
+          if (control.failCleanupAfter-- <= 0) return Effect.fail(new ScriptWriteUnavailable({}));
+          sources.delete(key);
+        }
+
+        return Effect.void;
+      }),
     deleteSource: (key) => Effect.sync(() => void sources.delete(key)),
     publish: (key, image, contentType) =>
       Effect.suspend(() => {
@@ -81,6 +101,8 @@ export const scriptsFixture = Effect.sync(() => {
         };
   };
 
+  const deletions = new Map<string, string>();
+  const completedDeletions = new Set<string>();
   const rows = new Map<string, OwnedScript & { readonly ownerId: string }>();
 
   const project = (row: OwnedScript): OwnedScript => ({
@@ -144,6 +166,35 @@ export const scriptsFixture = Effect.sync(() => {
   ) => scriptArtwork.set(scriptId, { ...slotsOf(scriptId), [field]: image });
 
   const store = Layer.succeed(ScriptStore, {
+    pendingDeletions: (ownerId) =>
+      Effect.sync(() =>
+        [...deletions].flatMap(([id, owner]) =>
+          owner === ownerId && !completedDeletions.has(id) ? [ScriptId.make(id)] : [],
+        ),
+      ),
+    finishDeletion: (_, id) => Effect.sync(() => void completedDeletions.add(id)),
+    deleteOwned: (ownerId, id) =>
+      Effect.sync(() => {
+        if (Option.isSome(owned(ownerId, id))) {
+          deletions.set(id, ownerId);
+          rows.delete(id);
+          imports.delete(id);
+          scriptArtwork.delete(id);
+          nightOrders.delete(id);
+
+          for (const [key, row] of characters) if (row.scriptId === id) characters.delete(key);
+
+          for (const [key, row] of jinxes) if (row.scriptId === id) jinxes.delete(key);
+
+          for (const key of artwork.keys()) if (key.startsWith(`${id}:`)) artwork.delete(key);
+        }
+
+        const allowed = deletions.get(id) === ownerId;
+
+        if (allowed) completedDeletions.delete(id);
+
+        return allowed;
+      }),
     findScriptArtwork: (ownerId, scriptId) =>
       Effect.sync(() => owned(ownerId, scriptId).pipe(Option.map(() => slotsOf(scriptId)))),
     replaceScriptArtwork: (ownerId, scriptId, field, image, expectedSourceId, now) =>

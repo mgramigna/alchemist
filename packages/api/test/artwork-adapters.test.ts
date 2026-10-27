@@ -377,3 +377,24 @@ test("the Worker serves Script artwork in its published format", () =>
         expect((yield* handleRequest(new Request(`https://a.test/${path}`))).status).toBe(404);
     }),
   ));
+
+test("R2 prefix deletion spans pages, is repeatable, and leaves other Scripts and published images intact", async () => {
+  const prefix = "deleted-script/";
+  await Promise.all(
+    Array.from({ length: 1003 }, (_, i) =>
+      sources.put(`${prefix}${String(i).padStart(4, "0")}`, png(10, 10)),
+    ),
+  );
+  await sources.put("another-script/original", png(10, 10));
+  await published.put("artwork/deleted-script.png", png(10, 10));
+  await run(
+    Effect.gen(function* () {
+      const storage = yield* ArtworkStorage;
+      yield* storage.deleteSources(prefix);
+      yield* storage.deleteSources(prefix);
+    }),
+  );
+  expect((await sources.list({ prefix })).objects).toHaveLength(0);
+  expect(await sources.get("another-script/original")).not.toBeNull();
+  expect(await published.get("artwork/deleted-script.png")).not.toBeNull();
+});

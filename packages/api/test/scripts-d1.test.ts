@@ -618,3 +618,90 @@ test("D1 imports reused IDs atomically, keeps integration data across edits, and
     await db.prepare("DROP TRIGGER refuse_import").run();
   }
 });
+
+test("D1 deletes the complete dependency graph atomically, retains an owner receipt and refuses late writes", async () => {
+  const id = ScriptId.make("01k8af00000000000000000035");
+  const { reviewImport } = await import("@alchemist/domain");
+
+  const json = await readFile(
+    new URL("../../domain/test/fixtures/import-script.json", import.meta.url),
+    "utf8",
+  );
+
+  const draft = reviewImport(json, "Alice").draft;
+  expect(draft).not.toBeNull();
+
+  if (draft === null) return;
+  await run(
+    Effect.gen(function* () {
+      yield* (yield* ScriptStore).insertImport("alice", script(id, 1), draft);
+    }),
+  );
+  await db
+    .prepare(
+      "INSERT INTO script_artwork VALUES (?, 'logo', 'original', 'image/png', '/artwork/retained.png')",
+    )
+    .bind(id)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO character_artwork SELECT script_id, id, 'original', 'image/png', '{\"look\":\"auto\"}', team, '[]' FROM characters WHERE script_id = ? LIMIT 1",
+    )
+    .bind(id)
+    .run();
+
+  // A late failure must roll back the receipt and every dependent deletion.
+  await db
+    .prepare(
+      "CREATE TRIGGER reject_script_deletion BEFORE DELETE ON scripts WHEN OLD.id = '01k8af00000000000000000035' BEGIN SELECT RAISE(ABORT, 'injected failure'); END",
+    )
+    .run();
+  expect(
+    await run(
+      Effect.gen(function* () {
+        return yield* (yield* ScriptStore).deleteOwned("alice", id).pipe(Effect.isFailure);
+      }),
+    ),
+  ).toBe(true);
+  expect(
+    (await db.prepare("SELECT * FROM script_deletions WHERE script_id = ?").bind(id).all()).results,
+  ).toHaveLength(0);
+  expect(
+    (await db.prepare("SELECT * FROM characters WHERE script_id = ?").bind(id).all()).results
+      .length,
+  ).toBeGreaterThan(0);
+  await db.prepare("DROP TRIGGER reject_script_deletion").run();
+
+  await run(
+    Effect.gen(function* () {
+      const scripts = yield* ScriptStore;
+      expect(yield* scripts.deleteOwned("bob", id)).toBe(false);
+      expect(yield* scripts.deleteOwned("alice", id)).toBe(true);
+      expect(yield* scripts.deleteOwned("alice", id)).toBe(true);
+      expect(yield* scripts.deleteOwned("bob", id)).toBe(false);
+      expect(Option.isNone(yield* scripts.findPublic(id))).toBe(true);
+      expect(Option.isNone(yield* scripts.findExport(id))).toBe(true);
+      expect(
+        Option.isNone(
+          yield* scripts.updateDetails("alice", id, { name: "Late", authorCredit: "" }, 100),
+        ),
+      ).toBe(true);
+      expect(yield* scripts.pendingDeletions("alice")).toContain(id);
+      yield* scripts.finishDeletion("alice", id);
+      expect(yield* scripts.pendingDeletions("alice")).not.toContain(id);
+    }),
+  );
+
+  for (const table of [
+    "characters",
+    "night_order_entries",
+    "jinxes",
+    "character_artwork",
+    "script_artwork",
+    "script_imports",
+  ]) {
+    expect(
+      (await db.prepare(`SELECT * FROM ${table} WHERE script_id = ?`).bind(id).all()).results,
+    ).toHaveLength(0);
+  }
+});

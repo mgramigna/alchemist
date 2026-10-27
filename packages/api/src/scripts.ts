@@ -85,6 +85,17 @@ export const PUBLISHED_PREFIX = "/artwork/";
 export class ScriptStore extends Context.Service<
   ScriptStore,
   {
+    readonly pendingDeletions: (
+      ownerId: string,
+    ) => Effect.Effect<ReadonlyArray<ScriptId>, ScriptReadUnavailable>;
+    readonly finishDeletion: (
+      ownerId: string,
+      id: ScriptId,
+    ) => Effect.Effect<void, ScriptWriteUnavailable>;
+    readonly deleteOwned: (
+      ownerId: string,
+      id: ScriptId,
+    ) => Effect.Effect<boolean, ScriptWriteUnavailable>;
     // The Character's saved Team and current artwork; None unless the owner's Character exists.
     readonly findArtwork: (
       ownerId: string,
@@ -246,6 +257,9 @@ export class ScriptStore extends Context.Service<
 export class Scripts extends Context.Service<
   Scripts,
   {
+    readonly delete: (
+      id: ScriptId,
+    ) => Effect.Effect<ScriptId, ScriptNotFound | ScriptWriteUnavailable, CurrentUser>;
     readonly uploadArtwork: (
       scriptId: ScriptId,
       id: CharacterId,
@@ -718,6 +732,18 @@ export const ScriptsLive = Layer.effect(
 
         return yield* serializeExport(source, assetOrigin);
       }),
+      delete: Effect.fn("Scripts.delete")(function* (id) {
+        const user = yield* CurrentUser;
+
+        if (!(yield* store.deleteOwned(user.id, id))) return yield* new ScriptNotFound({ id });
+
+        // D1 deletion is committed already. A storage failure stays visible;
+        // repeating this operation uses the durable receipt to retry cleanup.
+        yield* storage.deleteSources(`${id}/`);
+        yield* store.finishDeletion(user.id, id);
+
+        return id;
+      }),
       create: Effect.fn("Scripts.create")(function* () {
         const user = yield* CurrentUser;
         const now = yield* Clock.currentTimeMillis;
@@ -736,6 +762,15 @@ export const ScriptsLive = Layer.effect(
       }),
       listOwned: Effect.fn("Scripts.listOwned")(function* () {
         const user = yield* CurrentUser;
+
+        // Recover interrupted/failed cleanup on the next workspace visit,
+        // including after a lost response or a browser restart.
+        for (const id of yield* store.pendingDeletions(user.id)) {
+          yield* storage.deleteSources(`${id}/`).pipe(
+            Effect.andThen(store.finishDeletion(user.id, id)),
+            Effect.mapError(() => new ScriptReadUnavailable({})),
+          );
+        }
 
         return yield* store.listOwned(user.id);
       }),
