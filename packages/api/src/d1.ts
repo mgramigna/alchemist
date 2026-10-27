@@ -60,19 +60,20 @@ const ArtworkRows = Schema.Array(
     style: Schema.fromJsonString(ArtworkStyle),
     team: AuthoredTeam,
     variants: Schema.fromJsonString(Schema.Array(ArtworkVariant)),
+    imported: Schema.Literals([0, 1]),
   }),
 );
 
-const ARTWORK_COLUMNS = `character_id AS characterId, source_id AS sourceId, source_type AS sourceType, style, team, variants`;
+const ARTWORK_COLUMNS = `character_id AS characterId, source_id AS sourceId, source_type AS sourceType, style, team, variants, imported`;
 
 const decodeArtwork = (rows: ReadonlyArray<object>) =>
   Schema.decodeUnknownEffect(ArtworkRows)(rows).pipe(
     Effect.map(
       (decoded) =>
         new Map(
-          decoded.map(({ characterId, ...artwork }): [CharacterId, StoredArtwork] => [
+          decoded.map(({ characterId, imported, ...artwork }): [CharacterId, StoredArtwork] => [
             characterId,
-            artwork,
+            imported === 1 ? { ...artwork, imported: true } : artwork,
           ]),
         ),
     ),
@@ -124,6 +125,7 @@ const decodeCharacters = (rows: ReadonlyArray<object>, artworkRows: ReadonlyArra
               variants: stored.variants,
               sourceId: stored.sourceId,
               style: stored.style,
+              ...(stored.imported && { imported: stored.imported }),
             },
           };
     });
@@ -257,13 +259,13 @@ export const D1ScriptStore = Layer.effect(
         // expected original. Either way the owner's Character must exist.
         const write =
           expectedSourceId === null
-            ? sql`INSERT INTO character_artwork (script_id, character_id, source_id, source_type, style, team, variants)
-              SELECT c.script_id, c.id, ${values.source}, ${values.type}, ${values.style}, ${artwork.team}, ${values.variants}
+            ? sql`INSERT INTO character_artwork (script_id, character_id, source_id, source_type, style, team, variants, imported)
+              SELECT c.script_id, c.id, ${values.source}, ${values.type}, ${values.style}, ${artwork.team}, ${values.variants}, 0
               FROM characters c JOIN scripts s ON s.id = c.script_id
               WHERE c.id = ${id} AND s.id = ${scriptId} AND s.owner_id = ${ownerId}
               ON CONFLICT (script_id, character_id) DO NOTHING RETURNING character_id`
             : sql`UPDATE character_artwork SET source_id = ${values.source}, source_type = ${values.type},
-                style = ${values.style}, team = ${artwork.team}, variants = ${values.variants}
+                style = ${values.style}, team = ${artwork.team}, variants = ${values.variants}, imported = 0
               WHERE character_id = ${id} AND source_id = ${expectedSourceId}
                 AND script_id IN (SELECT id FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId})
               RETURNING character_id`;
@@ -291,6 +293,11 @@ export const D1ScriptStore = Layer.effect(
             AND script_id IN (SELECT id FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId})
             RETURNING character_id`,
           sql`UPDATE scripts SET updated_at = ${now} WHERE id = ${scriptId} AND owner_id = ${ownerId} AND changes() > 0`,
+          // Generic icons replace imported images too, so no reference remains to repair.
+          sql`UPDATE script_imports SET data = json_set(data, '$.artwork', json(COALESCE((
+            SELECT json_group_array(json(value)) FROM json_each(script_imports.data, '$.artwork')
+            WHERE NOT (json_extract(value, '$.field') = 'image' AND json_extract(value, '$.characterId') IS ${id})
+          ), '[]'))) WHERE script_id = ${scriptId} AND changes() > 0`,
         ]);
 
         return rows.length > 0;
@@ -370,9 +377,68 @@ export const D1ScriptStore = Layer.effect(
             WHERE NOT (json_extract(value, '$.field') = ${field} AND json_extract(value, '$.characterId') IS ${characterId})
           ), '[]'))) WHERE script_id IN (SELECT id FROM scripts WHERE id = ${id} AND owner_id = ${ownerId}) RETURNING script_id`,
           sql`UPDATE scripts SET updated_at = ${now} WHERE id = ${id} AND owner_id = ${ownerId} AND changes() > 0`,
+          // Imported artwork made from the reference goes with it; uploads stay.
+          sql`DELETE FROM character_artwork WHERE ${field} = 'image' AND imported = 1
+            AND script_id = ${id} AND character_id IS ${characterId} AND changes() > 0`,
         ]);
 
         return rows.length > 0;
+      }, writeUnavailable),
+      saveImportedArtwork: Effect.fn("D1ScriptStore.saveImportedArtwork")(function* (
+        ownerId,
+        scriptId,
+        reference,
+        copy,
+        now,
+      ) {
+        const characterId = reference.characterId ?? null;
+
+        // Every write is conditional on the reference still existing, so a
+        // concurrent upload, restyle or fallback choice wins.
+        const exists = sql`EXISTS (SELECT 1 FROM script_imports i, json_each(i.data, '$.artwork') a
+          WHERE i.script_id = ${scriptId} AND json_extract(a.value, '$.field') = ${reference.field}
+            AND json_extract(a.value, '$.characterId') IS ${characterId})`;
+
+        const owned = sql`(SELECT id FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId})`;
+
+        const write =
+          copy === null
+            ? []
+            : copy.kind === "script"
+              ? [
+                  sql`INSERT INTO script_artwork (script_id, field, source_id, source_type, path)
+                  SELECT id, ${reference.field}, ${copy.image.sourceId}, ${copy.image.sourceType}, ${copy.image.path}
+                  FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId} AND ${exists}
+                  ON CONFLICT (script_id, field) DO NOTHING RETURNING field`,
+                ]
+              : copy.expectedSourceId === null
+                ? [
+                    sql`INSERT INTO character_artwork (script_id, character_id, source_id, source_type, style, team, variants, imported)
+                    SELECT c.script_id, c.id, ${copy.artwork.sourceId}, ${copy.artwork.sourceType}, ${JSON.stringify(copy.artwork.style)},
+                      ${copy.artwork.team}, ${JSON.stringify(copy.artwork.variants)}, 1
+                    FROM characters c WHERE c.id = ${characterId} AND c.script_id IN ${owned} AND ${exists}
+                    ON CONFLICT (script_id, character_id) DO NOTHING RETURNING character_id`,
+                  ]
+                : [
+                    sql`UPDATE character_artwork SET variants = ${JSON.stringify(copy.artwork.variants)}
+                    WHERE character_id = ${characterId} AND source_id = ${copy.expectedSourceId} AND imported = 1
+                      AND script_id IN ${owned} AND ${exists}
+                    RETURNING character_id`,
+                  ];
+
+        const results = yield* d1.batch([
+          ...write,
+          sql`UPDATE script_imports SET data = json_set(data, '$.artwork', json((
+            SELECT json_group_array(CASE
+              WHEN json_extract(value, '$.field') = ${reference.field} AND json_extract(value, '$.characterId') IS ${characterId}
+              THEN json(${JSON.stringify(reference)}) ELSE json(value) END)
+            FROM json_each(script_imports.data, '$.artwork')
+          ))) WHERE script_id IN ${owned} AND ${exists}
+            ${write.length > 0 ? sql`AND changes() > 0` : sql``} RETURNING script_id`,
+          sql`UPDATE scripts SET updated_at = ${now} WHERE id = ${scriptId} AND owner_id = ${ownerId} AND changes() > 0`,
+        ]);
+
+        return results.slice(0, write.length + 1).every((rows) => rows.length > 0);
       }, writeUnavailable),
       insertImport: Effect.fn("D1ScriptStore.insertImport")(function* (ownerId, script, draft) {
         // One atomic D1 batch, including the final integration/artwork write.
@@ -403,14 +469,16 @@ export const D1ScriptStore = Layer.effect(
         return decoded[0]?.data ?? null;
       }, readUnavailable),
       findExport: Effect.fn("D1ScriptStore.findExport")(function* (id) {
-        const [scripts, characters, entries, jinxes, imports, scriptArtwork] = yield* d1.batch([
-          sql`SELECT id, name, author_credit FROM scripts WHERE id = ${id}`,
-          sql`SELECT ${sql.literal(CHARACTER_COLUMNS)} FROM characters WHERE script_id = ${id} ORDER BY id`,
-          sql`SELECT night, step, character_id FROM night_order_entries WHERE script_id = ${id} ORDER BY night, position`,
-          sql`SELECT first, second, explanation FROM jinxes WHERE script_id = ${id} ORDER BY first, second`,
-          sql`SELECT data FROM script_imports WHERE script_id = ${id}`,
-          sql`SELECT ${sql.literal(SCRIPT_ARTWORK_COLUMNS)} FROM script_artwork WHERE script_id = ${id}`,
-        ]);
+        const [scripts, characters, entries, jinxes, imports, scriptArtwork, artwork] =
+          yield* d1.batch([
+            sql`SELECT id, name, author_credit FROM scripts WHERE id = ${id}`,
+            sql`SELECT ${sql.literal(CHARACTER_COLUMNS)} FROM characters WHERE script_id = ${id} ORDER BY id`,
+            sql`SELECT night, step, character_id FROM night_order_entries WHERE script_id = ${id} ORDER BY night, position`,
+            sql`SELECT first, second, explanation FROM jinxes WHERE script_id = ${id} ORDER BY first, second`,
+            sql`SELECT data FROM script_imports WHERE script_id = ${id}`,
+            sql`SELECT ${sql.literal(SCRIPT_ARTWORK_COLUMNS)} FROM script_artwork WHERE script_id = ${id}`,
+            sql`SELECT ${sql.literal(ARTWORK_COLUMNS)} FROM character_artwork WHERE script_id = ${id}`,
+          ]);
 
         const row = (yield* Schema.decodeEffect(Schema.Array(ScriptRow))(scripts))[0];
 
@@ -422,7 +490,8 @@ export const D1ScriptStore = Layer.effect(
 
         return Option.some({
           script: { name: row.name, authorCredit: row.author_credit },
-          characters: yield* decodeCharacters(characters),
+          // Published variants export for anonymous downloads too.
+          characters: yield* decodeCharacters(characters, artwork),
           nightOrders: nightOrders(yield* Schema.decodeEffect(NightEntryRows)(entries)),
           jinxes: yield* Schema.decodeEffect(JinxRows)(jinxes),
           imported: imported[0]?.data,

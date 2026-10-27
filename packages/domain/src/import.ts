@@ -1,8 +1,8 @@
 import { Result, Schema } from "effect";
-import { AuthoredTeam, Character, CharacterId } from "./character.ts";
+import { AuthoredTeam, Character, CharacterArtwork, CharacterId } from "./character.ts";
 import { Jinx, JinxExplanation, jinxPair } from "./jinx.ts";
 import { NIGHT_STEPS, NightOrder, NightOrders, nightOrderProblem, type Night } from "./night.ts";
-import { ScriptDetails } from "./script.ts";
+import { ScriptArtwork, ScriptDetails } from "./script.ts";
 import {
   ScriptExportProblem,
   botcDocument,
@@ -61,15 +61,52 @@ export const ImportedMetadata = Schema.Struct({
   bootlegger: Schema.optionalKey(Schema.Array(Schema.String).check(Schema.isMaxLength(10))),
 });
 
+// Pending slots have not been attempted yet (or an attempt was interrupted);
+// copied slots are published Alchemist images; failed slots wait for repair.
+export const ImportedSlotState = Schema.Literals(["pending", "copied", "failed"]);
+
+export const ImportedSlot = Schema.Struct({
+  source: Schema.String,
+  state: ImportedSlotState,
+  // Why the last copy attempt failed, in words the owner can act on.
+  problem: Schema.optionalKey(Schema.String),
+});
+
+export interface ImportedSlot extends Schema.Schema.Type<typeof ImportedSlot> {}
+
+/**
+ * One imported image field and its supplied slots, kept while the imported
+ * images are current so exports preserve the single/array form. An upload or
+ * restyle supersedes it. Sources are owner-only and never exported.
+ */
 export const ImportedArtwork = Schema.Struct({
-  // An absent Character ID identifies Script artwork. Sources are owner-only.
+  // An absent Character ID identifies Script artwork.
   characterId: Schema.optionalKey(CharacterId),
   field: Schema.Literals(["image", "logo", "background"]),
   format: Schema.Literals(["single", "array"]),
-  slots: Schema.Array(
-    Schema.Struct({ source: Schema.String, state: Schema.Literals(["pending", "failed"]) }),
-  ),
+  slots: Schema.Array(ImportedSlot),
 });
+
+export interface ImportedArtwork extends Schema.Schema.Type<typeof ImportedArtwork> {}
+
+export type ImportedArtworkField = ImportedArtwork["field"];
+
+/** Whether any slot still lacks a copied Alchemist image. */
+export const needsRepair = (artwork: ImportedArtwork) =>
+  artwork.slots.some((slot) => slot.state !== "copied");
+
+/**
+ * The outcome of copying an imported field again: its reference with each
+ * slot's new state, plus the artwork the owner now sees. The Character's
+ * artwork is absent while none of its slots is copied.
+ */
+export const ImportedArtworkRepair = Schema.Struct({
+  reference: ImportedArtwork,
+  characterArtwork: Schema.optionalKey(CharacterArtwork),
+  scriptArtwork: ScriptArtwork,
+});
+
+export interface ImportedArtworkRepair extends Schema.Schema.Type<typeof ImportedArtworkRepair> {}
 
 export const ImportedData = Schema.Struct({
   metadata: ImportedMetadata,
@@ -152,6 +189,8 @@ const decodeEntries = Schema.decodeUnknownResult(
 );
 
 const isString = Schema.is(Schema.String);
+
+export const INVALID_REFERENCE = "This is not an image URL.";
 const uri = Schema.is(Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9+.-]*:[^\s]+$/i)));
 
 // Unknown input is confined to the JSON parser boundary and decoded before use.
@@ -362,11 +401,11 @@ export const reviewImport = (json: string, authorCredit: string): ImportReview =
       } else jinxes.push({ first: pair.first, second: pair.second, explanation: jinx.reason });
     }
 
-  const artwork: Array<typeof ImportedArtwork.Type> = [];
+  const artwork: Array<ImportedArtwork> = [];
 
   const addArtwork = (
     sources: string | ReadonlyArray<string> | undefined,
-    field: typeof ImportedArtwork.Type.field,
+    field: ImportedArtworkField,
     characterId?: CharacterId,
   ) => {
     if (sources === undefined) return;
@@ -377,15 +416,18 @@ export const reviewImport = (json: string, authorCredit: string): ImportReview =
     const reference = {
       field,
       format: single ? ("single" as const) : ("array" as const),
-      slots: slots.map((source) => ({
-        source,
-        state: uri(source) ? ("pending" as const) : ("failed" as const),
-      })),
+      slots: slots.map((source) =>
+        uri(source)
+          ? { source, state: "pending" as const }
+          : { source, state: "failed" as const, problem: INVALID_REFERENCE },
+      ),
     };
 
     artwork.push(characterId === undefined ? reference : { ...reference, characterId });
     warnings.push(
-      `${characterId ?? "Script"} ${field}: ${valid ? "pending artwork copy" : "invalid artwork reference"}. ${field === "image" ? "Generic icons are used" : "Artwork is omitted"} until repaired; external images are not fetched.`,
+      valid
+        ? `${characterId ?? "Script"} ${field}: copied into Alchemist when you import, unchanged. If a copy fails, ${field === "image" ? "generic icons are used in that slot" : "the artwork is omitted"} until you retry or replace it.`
+        : `${characterId ?? "Script"} ${field}: invalid artwork reference. ${field === "image" ? "Generic icons are used" : "Artwork is omitted"} until you replace it.`,
     );
   };
 

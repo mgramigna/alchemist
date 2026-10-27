@@ -1,5 +1,6 @@
 import {
   ImportedArtwork,
+  ImportedArtworkRepair,
   ImportedData,
   ImportJson,
   ImportReview,
@@ -77,6 +78,17 @@ export const Rpcs = RpcGroup.make(
     },
     success: ScriptId,
     error: Schema.Union([ScriptNotFound, ScriptWriteUnavailable]),
+  }).middleware(Authentication),
+  // Fetches the field's uncopied slots again; copied slots are kept as they are.
+  Rpc.make("Script.retryImportedArtwork", {
+    payload: {
+      id: ScriptId,
+      field: ImportedArtwork.fields.field,
+      characterId: Schema.NullOr(CharacterId),
+    },
+    success: ImportedArtworkRepair,
+    // ArtworkConflict: the reference was replaced or removed meanwhile.
+    error: Schema.Union([ScriptNotFound, ArtworkConflict, ScriptWriteUnavailable]),
   }).middleware(Authentication),
   Rpc.make("Script.readArtwork", {
     payload: { id: ScriptId },

@@ -1,7 +1,7 @@
 import type { ImportedData } from "./import.ts";
 import { textLength } from "./text.ts";
 import { Result, Schema } from "effect";
-import { characterIcons, exportBlockers, type Character } from "./character.ts";
+import { characterIcons, exportBlockers, genericIconAt, type Character } from "./character.ts";
 import { jinxExportBlockers, jinxPair, type Jinx } from "./jinx.ts";
 import { NIGHTS, nightOrderProblem, type NightOrders } from "./night.ts";
 import type { ScriptArtwork, ScriptDetails } from "./script.ts";
@@ -160,9 +160,11 @@ export const botcSchemaProblems = (document: unknown): ReadonlyArray<ScriptExpor
   return Result.isSuccess(result) ? [] : [{ field: "schema", message: result.failure.message }];
 };
 
-// Uploaded artwork exports its published variants. Otherwise preserve imported
-// slot shape/cardinality while every unresolved slot uses a local generic.
-// Private sources, uploaded or external, never enter the export document.
+// Uploaded artwork exports its published variants. An imported reference stays
+// only while imported images are current: its slots then preserve the supplied
+// single/array form and cardinality, each copied slot exporting its Alchemist
+// copy and every other slot a local generic. Private sources, uploaded or
+// external, never enter the export document.
 const exportImages = (
   character: Character,
   imported: ImportedData | undefined,
@@ -174,8 +176,12 @@ const exportImages = (
     (art) => art.characterId === character.id && art.field === "image",
   );
 
-  if (artwork === undefined || character.artwork !== undefined) return icons;
-  const slots = artwork.slots.map((_, index) => icons[index % icons.length] ?? icons[0]);
+  if (artwork === undefined) return icons;
+
+  const slots = artwork.slots.map(
+    (_, index) =>
+      icons[index] ?? new URL(genericIconAt(character.team, index).path, assetOrigin).href,
+  );
 
   return artwork.format === "single" ? slots[0] : slots;
 };

@@ -439,7 +439,7 @@ it.effect("an upload supersedes an imported image reference awaiting repair", ()
         })),
       ]);
 
-      const script = yield* scripts.importJson(json, false);
+      const script = yield* scripts.importJson(json, false, "https://alchemist.example");
       const [one] = yield* scripts.listCharacters(script.id);
       assert(one);
       const artwork = yield* scripts.uploadArtwork(script.id, one.id, upload("townsfolk"));

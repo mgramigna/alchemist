@@ -15,6 +15,7 @@ import { assert, it } from "@effect/vitest";
 import { Effect, Exit, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import { ArtworkStorage } from "../src/artwork-storage.ts";
+import { ImageFetcher } from "../src/image-fetch.ts";
 import { Scripts, ScriptsLive, ScriptStore } from "../src/scripts.ts";
 import { scriptsFixture } from "./support/scripts.ts";
 
@@ -72,6 +73,7 @@ it.effect("anonymous read projects only public data and preserves independent Au
     Effect.provide(
       ScriptsLive.pipe(
         Layer.provide(Layer.mock(ArtworkStorage, {})),
+        Layer.provide(Layer.mock(ImageFetcher, {})),
         Layer.provide(
           Layer.mock(ScriptStore, {
             findPublic: (requested) => {
@@ -96,6 +98,7 @@ it.effect("unknown Script has a typed not-found result", () =>
     Effect.provide(
       ScriptsLive.pipe(
         Layer.provide(Layer.mock(ArtworkStorage, {})),
+        Layer.provide(Layer.mock(ImageFetcher, {})),
         Layer.provide(Layer.mock(ScriptStore, { findPublic: () => Effect.succeedNone })),
       ),
     ),
@@ -113,6 +116,7 @@ it.effect("storage failure stays unavailable rather than looking like a missing 
     Effect.provide(
       ScriptsLive.pipe(
         Layer.provide(Layer.mock(ArtworkStorage, {})),
+        Layer.provide(Layer.mock(ImageFetcher, {})),
         Layer.provide(
           Layer.mock(ScriptStore, {
             findPublic: () => Effect.fail(new ScriptReadUnavailable({})),

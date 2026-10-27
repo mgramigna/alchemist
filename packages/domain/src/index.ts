@@ -44,6 +44,7 @@ export {
   exportBlockers,
   genericIcons,
   characterIcons,
+  genericIconAt,
   isStale,
   IconVariant,
   ArtworkVariant,

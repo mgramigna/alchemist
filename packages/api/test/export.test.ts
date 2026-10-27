@@ -168,7 +168,7 @@ it.effect(
         const scripts = yield* Scripts;
 
         const script = yield* scripts
-          .importJson(json, true)
+          .importJson(json, true, "https://alchemist.example")
           .pipe(Effect.provideService(CurrentUser, alice));
 
         const exported = yield* scripts.exportPublicJson(script.id, "https://alchemist.example");

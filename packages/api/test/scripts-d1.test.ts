@@ -645,7 +645,7 @@ test("D1 deletes the complete dependency graph atomically, retains an owner rece
     .run();
   await db
     .prepare(
-      "INSERT INTO character_artwork SELECT script_id, id, 'original', 'image/png', '{\"look\":\"auto\"}', team, '[]' FROM characters WHERE script_id = ? LIMIT 1",
+      "INSERT INTO character_artwork SELECT script_id, id, 'original', 'image/png', '{\"look\":\"auto\"}', team, '[]', 0 FROM characters WHERE script_id = ? LIMIT 1",
     )
     .bind(id)
     .run();

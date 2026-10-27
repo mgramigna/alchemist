@@ -1,11 +1,10 @@
-import { IMAGE_EXTENSIONS } from "@alchemist/domain";
 import { Rpcs } from "@alchemist/domain/rpc";
 import { Context, Effect, Layer, Option, Scheduler } from "effect";
 import { HttpRouter, HttpServer } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 import { Auth } from "./auth.ts";
 import { ArtworkStorage, PUBLISHED_CACHE_CONTROL } from "./artwork-storage.ts";
-import { PUBLISHED_PREFIX, Scripts } from "./scripts.ts";
+import { PUBLISHED_PATH, PUBLISHED_PREFIX, PUBLISHED_TYPES, Scripts } from "./scripts.ts";
 import { AuthenticationLive, Handlers, ExportOrigin } from "./rpc.ts";
 import { authResponse, handleAuth, sameOrigin } from "./auth-http.ts";
 
@@ -30,14 +29,6 @@ const Routes = HttpRouter.add("POST", "/api/rpc", rpc).pipe(
 );
 
 const rpcApp = HttpRouter.toWebHandler(Routes);
-
-const PUBLISHED_TYPES = new Map(
-  Object.entries(IMAGE_EXTENSIONS).map(([type, extension]) => [extension, type]),
-);
-
-const PUBLISHED_PATH = new RegExp(
-  `^${PUBLISHED_PREFIX}[0-9a-z]{26}\\.(${[...PUBLISHED_TYPES.keys()].join("|")})$`,
-);
 
 // Anyone, including the official BOTC app and sheet capture on other origins,
 // may read published artwork without credentials.

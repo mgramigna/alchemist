@@ -54,7 +54,17 @@ export const Handlers = Rpcs.toLayer(
       "Script.removeArtwork": ({ id, field }) => scripts.removeScriptArtwork(id, field),
       "Script.reviewImport": ({ json }) => scripts.reviewImport(json),
       "Script.import": ({ json, acknowledgeDiscard }) =>
-        scripts.importJson(json, acknowledgeDiscard),
+        Effect.gen(function* () {
+          const config = yield* ExportOrigin;
+
+          return yield* scripts.importJson(json, acknowledgeDiscard, config.origin);
+        }),
+      "Script.retryImportedArtwork": ({ id, field, characterId }) =>
+        Effect.gen(function* () {
+          const config = yield* ExportOrigin;
+
+          return yield* scripts.retryImportedArtwork(id, field, characterId, config.origin);
+        }),
       "Script.readImported": ({ id }) => scripts.readImported(id),
       "Script.delete": ({ id }) => scripts.delete(id),
       "Script.create": () => scripts.create(),

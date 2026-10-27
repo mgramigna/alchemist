@@ -312,7 +312,13 @@ export function Workbench({
           }}
         />
       </header>
-      <ImportedArtworkNotice scriptId={script.id} characters={roster.characters} />
+      <ImportedArtworkNotice
+        scriptId={script.id}
+        characters={roster.characters}
+        onCharacterArtwork={roster.setArtwork}
+        onScriptArtwork={setArtwork}
+        onOpen={setSelectedId}
+      />
       <div className="grid gap-6 lg:grid-cols-12">
         <nav
           aria-label="Script sections"
