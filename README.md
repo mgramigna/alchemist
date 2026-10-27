@@ -6,6 +6,21 @@ Built with React, TanStack Router, Tailwind CSS, and Effect. Alchemy manages the
 
 Alchemist is not affiliated with The Pandemonium Institute.
 
+## Screenshots
+
+Build your Script in the workbench with autosave and a live printable sheet preview.
+
+![Workbench showing a sample Script, its Character roster, and the live sheet preview](docs/screenshots/workbench.png)
+
+Edit Character abilities, Teams, and Reminder Tokens alongside the preview.
+
+![Character editor showing the Apothecary's ability and Reminder Tokens](docs/screenshots/character-editor.png)
+
+Customize uploaded artwork in the Character Studio, with cutout, color, texture,
+and positioning controls and previews of each icon variant.
+
+![Character Studio showing uploaded chalice artwork, regular and flipped icon previews, and styling controls](docs/screenshots/character-studio.png)
+
 ## Local development
 
 Requires Bun 1.4.3 and Node.js 24.11.1 or newer.
