@@ -116,6 +116,11 @@ export const Rpcs = RpcGroup.make(
     success: Schema.Struct({ filename: Schema.String, json: Schema.String }),
     error: Schema.Union([ScriptNotFound, ScriptReadUnavailable, ScriptExportInvalid]),
   }).middleware(Authentication),
+  Rpc.make("Script.delete", {
+    payload: { id: ScriptId },
+    success: ScriptId,
+    error: Schema.Union([ScriptNotFound, ScriptWriteUnavailable]),
+  }).middleware(Authentication),
   Rpc.make("Script.create", {
     success: OwnedScript,
     error: ScriptWriteUnavailable,

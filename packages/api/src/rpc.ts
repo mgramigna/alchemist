@@ -56,6 +56,7 @@ export const Handlers = Rpcs.toLayer(
       "Script.import": ({ json, acknowledgeDiscard }) =>
         scripts.importJson(json, acknowledgeDiscard),
       "Script.readImported": ({ id }) => scripts.readImported(id),
+      "Script.delete": ({ id }) => scripts.delete(id),
       "Script.create": () => scripts.create(),
       "Script.listOwned": () => scripts.listOwned(),
       "Script.readOwned": ({ id }) => scripts.readOwned(id),
