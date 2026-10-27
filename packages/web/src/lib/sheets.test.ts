@@ -64,7 +64,7 @@ test("captures are 300 DPI pages at either paper size", () => {
   expect(capturePixels("a4")).toEqual({ width: 2481, height: 3509 });
 });
 
-test("fallback tokens are inlined and coloured by the Team's rail", () => {
+test("fallback tokens are inlined and colored by the Team's rail", () => {
   const good = decodeURIComponent(fallbackIcon("townsfolk"));
 
   expect(good).toMatch(/^data:image\/svg\+xml,<svg /);

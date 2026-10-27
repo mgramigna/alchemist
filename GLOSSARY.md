@@ -40,7 +40,7 @@ Whether a Character plays for Good or Evil. It defaults from the Team, and Trave
 _Avoid_: Side, faction
 
 **Reminder Token**:
-A labelled marker associated with a Character that a Storyteller uses to track game information.
+A labeled marker associated with a Character that a Storyteller uses to track game information.
 _Avoid_: Night reminder, Night Instructions
 
 **Global Reminder Token**:

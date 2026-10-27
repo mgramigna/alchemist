@@ -316,6 +316,35 @@ it.effect(
 
         assert.strictEqual(source.exit.value.bytes, base64(png(900, 700)));
 
+        // Studio settings outside their ranges are refused at the RPC boundary.
+        const restyle = (style: Readonly<Record<string, string | number | boolean>>) =>
+          call(
+            "Artwork.restyle",
+            JSON.stringify({
+              scriptId: script.id,
+              id: character.id,
+              sourceId: uploaded.exit.value.sourceId,
+              style,
+              team: "townsfolk",
+              variants: [
+                { variant: "regular", image: base64(variant) },
+                { variant: "flipped", image: base64(variant) },
+              ],
+            }),
+          );
+
+        for (const style of [
+          { look: "auto", size: 2 },
+          { look: "auto", outline: -1 },
+          { look: "auto", cutout: "eraser" },
+          { look: "auto", color: "original" },
+        ])
+          assert.strictEqual((yield* restyle(style)).exit._tag, "Failure");
+
+        const studio = { look: "lines", size: 0.5, offsetX: -20, teamShades: true };
+        const restyled = yield* restyle(studio);
+        assert.deepStrictEqual(restyled.exit.value.style, studio);
+
         const image = yield* handleRequest(
           new Request(`${origin}${uploaded.exit.value.variants[0].path}`),
         );

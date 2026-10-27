@@ -24,7 +24,7 @@ When a skill says "fetch the relevant ticket", read the GitHub issue.
 
 ## Wayfinding operations
 
-- Map: one issue labelled `wayfinder:map`, holding Notes, Decisions-so-far,
+- Map: one issue labeled `wayfinder:map`, holding Notes, Decisions-so-far,
   and Fog.
 - Child tickets: link to the map using GitHub sub-issues. If unavailable,
   add children to a task list in the map and put `Part of #<map>` in each

@@ -6,8 +6,8 @@ export const CharacterId = Schema.String.pipe(Schema.brand("CharacterId"));
 
 export type CharacterId = typeof CharacterId.Type;
 
-// Every Team the model recognises. Fabled and Loric stay representable so later
-// slices (such as import) can recognise them, but they cannot be authored yet.
+// Every Team the model recognizes. Fabled and Loric stay representable so later
+// slices (such as import) can recognize them, but they cannot be authored yet.
 export const Team = Schema.Literals([
   "townsfolk",
   "outsider",
@@ -87,8 +87,41 @@ export const ArtworkLook = Schema.Literals(["auto", "solid", "shaded", "lines"])
 
 export type ArtworkLook = typeof ArtworkLook.Type;
 
+// How the backdrop is removed: detected, the image's own transparency, light
+// paper behind an ink drawing, or a flood in from the edges.
+export const ArtworkCutout = Schema.Literals(["auto", "alpha", "light", "edge"]);
+
+export type ArtworkCutout = typeof ArtworkCutout.Type;
+
+// Solid fills the silhouette; Shaded keeps the art's own light and dark.
+export const ArtworkColor = Schema.Literals(["solid", "shaded"]);
+
+export type ArtworkColor = typeof ArtworkColor.Type;
+
+const between = (minimum: number, maximum: number) =>
+  Schema.Finite.check(Schema.isBetween({ minimum, maximum }));
+
 // Saved per Character and replayed whenever the variants are re-rendered.
-export const ArtworkStyle = Schema.Struct({ look: ArtworkLook });
+// Each Studio setting is absent until the owner changes it; absent means automatic.
+export const ArtworkStyle = Schema.Struct({
+  look: ArtworkLook,
+  cutout: Schema.optionalKey(ArtworkCutout),
+  tolerance: Schema.optionalKey(between(0, 0.3)),
+  // Color and interior lines override the Look.
+  color: Schema.optionalKey(ArtworkColor),
+  detail: Schema.optionalKey(between(0, 1)),
+  // Outsider cyan and Minion orange for those Teams' regular variants.
+  teamShades: Schema.optionalKey(Schema.Boolean),
+  texture: Schema.optionalKey(between(0, 1)),
+  outline: Schema.optionalKey(between(0, 10)),
+  shadow: Schema.optionalKey(between(0, 1)),
+  shadowBlur: Schema.optionalKey(between(0, 30)),
+  shadowY: Schema.optionalKey(between(-20, 30)),
+  // Size is the art's longer side as a share of the icon; offsets are in icon pixels.
+  size: Schema.optionalKey(between(0.3, 1)),
+  offsetX: Schema.optionalKey(between(-120, 120)),
+  offsetY: Schema.optionalKey(between(-120, 120)),
+});
 
 export interface ArtworkStyle extends Schema.Schema.Type<typeof ArtworkStyle> {}
 

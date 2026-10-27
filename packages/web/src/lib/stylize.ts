@@ -1,14 +1,19 @@
 import {
+  AUTO_FINISH,
   ICON_SIZE,
+  type ArtworkColor,
+  type ArtworkCutout,
   type ArtworkLook,
+  type ArtworkStyle,
   type AuthoredTeam,
   type IconVariant,
 } from "@alchemist/domain";
 
 /*
- * The approved v1 stylizer (#13): a local cutout, then alignment-coloured
+ * The approved v1 stylizer (#13): a local cutout, then alignment-colored
  * 400×400 variants with procedural texture, a pale outline and a shadow.
- * No hosted segmentation; the automatic cutout can fail on hard images.
+ * The Studio adjusts each step through the saved style. No hosted
+ * segmentation; the cutout can fail on hard images.
  */
 
 const N = ICON_SIZE * ICON_SIZE;
@@ -19,12 +24,15 @@ const PALETTES = {
   good: ["#bfe6ff", "#3f8fe6", "#0f357a"],
   evil: ["#ffc39a", "#e24a2c", "#6e0d0d"],
   gold: ["#fbecc0", "#cf9f45", "#6a4612"],
+  // Team shades: the regular variant of an Outsider or Minion.
+  outsider: ["#c4f6ff", "#2fb6cc", "#0b4a5e"],
+  minion: ["#ffe0a3", "#ee8a26", "#73300a"],
 } as const;
 
 type Palette = keyof typeof PALETTES;
 
 /** How the backdrop was removed. */
-export type CutoutMode = "alpha" | "light" | "edge";
+export type CutoutMode = Exclude<ArtworkCutout, "auto">;
 
 export const CUTOUT_LABELS: Record<CutoutMode, string> = {
   alpha: "kept the image’s own transparency",
@@ -32,22 +40,11 @@ export const CUTOUT_LABELS: Record<CutoutMode, string> = {
   edge: "removed the backdrop by flooding in from the edges",
 };
 
-// The automatic finish. Studio adjustments are a later slice.
-const FINISH = {
-  tolerance: 0.08,
-  texture: 0.5,
-  outline: 3,
-  shadow: 0.55,
-  shadowBlur: 10,
-  shadowY: 6,
-  size: 0.8,
-};
-
 const LOOKS = {
-  solid: { tint: false, detail: 0 },
-  shaded: { tint: true, detail: 0 },
-  lines: { tint: true, detail: 0.9 },
-} as const;
+  solid: { color: "solid", detail: 0 },
+  shaded: { color: "shaded", detail: 0 },
+  lines: { color: "shaded", detail: 0.9 },
+} as const satisfies Record<string, { color: ArtworkColor; detail: number }>;
 
 export type ResolvedLook = keyof typeof LOOKS;
 
@@ -55,15 +52,54 @@ export type ResolvedLook = keyof typeof LOOKS;
 export const resolveLook = (look: ArtworkLook, mode: CutoutMode): ResolvedLook =>
   look === "auto" ? (mode === "edge" ? "lines" : "solid") : look;
 
+/** The color and interior lines a Look gives, before any Studio override. */
+export const lookColor = (look: ArtworkLook, mode: CutoutMode) => LOOKS[resolveLook(look, mode)];
+
+/** Every rendering setting, with absent Studio settings filled in automatically. */
+export interface Finish {
+  readonly color: ArtworkColor;
+  readonly detail: number;
+  readonly teamShades: boolean;
+  readonly texture: number;
+  readonly outline: number;
+  readonly shadow: number;
+  readonly shadowBlur: number;
+  readonly shadowY: number;
+  readonly size: number;
+  readonly offsetX: number;
+  readonly offsetY: number;
+}
+
+export const resolveFinish = (style: ArtworkStyle, mode: CutoutMode): Finish => {
+  const look = lookColor(style.look, mode);
+
+  return {
+    color: style.color ?? look.color,
+    detail: style.detail ?? look.detail,
+    teamShades: style.teamShades ?? AUTO_FINISH.teamShades,
+    texture: style.texture ?? AUTO_FINISH.texture,
+    outline: style.outline ?? AUTO_FINISH.outline,
+    shadow: style.shadow ?? AUTO_FINISH.shadow,
+    shadowBlur: style.shadowBlur ?? AUTO_FINISH.shadowBlur,
+    shadowY: style.shadowY ?? AUTO_FINISH.shadowY,
+    size: style.size ?? AUTO_FINISH.size,
+    offsetX: style.offsetX ?? AUTO_FINISH.offsetX,
+    offsetY: style.offsetY ?? AUTO_FINISH.offsetY,
+  };
+};
+
 interface VariantSpec {
   readonly variant: IconVariant;
   readonly left: Palette;
-  // A Traveller splits at the centre of the art's bounding box.
+  // A Traveller splits at the center of the art's bounding box.
   readonly right?: Palette;
 }
 
 /** Export order: [regular, flipped], or [unaligned, good, evil] for Travellers. */
-export const variantSpecs = (team: AuthoredTeam): ReadonlyArray<VariantSpec> => {
+export const variantSpecs = (
+  team: AuthoredTeam,
+  teamShades = false,
+): ReadonlyArray<VariantSpec> => {
   if (team === "traveller")
     return [
       { variant: "unaligned", left: "good", right: "evil" },
@@ -73,11 +109,11 @@ export const variantSpecs = (team: AuthoredTeam): ReadonlyArray<VariantSpec> => 
 
   return team === "minion" || team === "demon"
     ? [
-        { variant: "regular", left: "evil" },
+        { variant: "regular", left: teamShades && team === "minion" ? "minion" : "evil" },
         { variant: "flipped", left: "good" },
       ]
     : [
-        { variant: "regular", left: "good" },
+        { variant: "regular", left: teamShades && team === "outsider" ? "outsider" : "good" },
         { variant: "flipped", left: "evil" },
       ];
 };
@@ -97,7 +133,7 @@ const borderIndices = (w: number, h: number) => {
   return out;
 };
 
-/** Own transparency first; a light, flat, colourless border means ink on paper; else flood. */
+/** Own transparency first; a light, flat, colorless border means ink on paper; else flood. */
 export const detectCutout = (d: Uint8ClampedArray, w: number, h: number): CutoutMode => {
   let transparent = 0;
 
@@ -137,7 +173,7 @@ const lightKey = (d: Uint8ClampedArray, tolerance: number) => {
     d[i + 3] = Math.round((d[i + 3] ?? 0) * clamp01((cut - lum(d, i)) / 0.2));
 };
 
-// Backdrop removal: grow a region from the border through similar neighbours, then feather.
+// Backdrop removal: grow a region from the border through similar neighbors, then feather.
 const edgeFlood = (d: Uint8ClampedArray, w: number, h: number, tolerance: number) => {
   const at = (i: number) => d[i] ?? 0;
 
@@ -217,11 +253,17 @@ const edgeFlood = (d: Uint8ClampedArray, w: number, h: number, tolerance: number
 };
 
 /** Applies a cutout in place, returning the mode used. */
-export const applyCutout = (d: Uint8ClampedArray, w: number, h: number): CutoutMode => {
-  const mode = detectCutout(d, w, h);
+export const applyCutout = (
+  d: Uint8ClampedArray,
+  w: number,
+  h: number,
+  choice: ArtworkCutout = "auto",
+  tolerance: number = AUTO_FINISH.tolerance,
+): CutoutMode => {
+  const mode = choice === "auto" ? detectCutout(d, w, h) : choice;
 
-  if (mode === "light") lightKey(d, FINISH.tolerance);
-  else if (mode === "edge") edgeFlood(d, w, h, FINISH.tolerance);
+  if (mode === "light") lightKey(d, tolerance);
+  else if (mode === "edge") edgeFlood(d, w, h, tolerance);
 
   return mode;
 };
@@ -245,7 +287,7 @@ export const visibleBounds = (d: Uint8ClampedArray, w: number, h: number) => {
   return x1 < 0 ? undefined : { x: x0, y: y0, width: x1 - x0 + 1, height: y1 - y0 + 1 };
 };
 
-// Procedural mottling: avoids Bloodstar's texture asset, whose licence is unconfirmed.
+// Procedural mottling: avoids Bloodstar's texture asset, whose license is unconfirmed.
 let noise: Float32Array | undefined;
 
 const textureNoise = () => {
@@ -312,10 +354,17 @@ const context2d = (element: HTMLCanvasElement) => {
   return context;
 };
 
+/** A decoded original at working resolution, ready to cut out with any settings. */
+export interface Source {
+  readonly image: ImageData;
+}
+
 /** The art after cutout, trimmed to its visible bounds. */
 export interface Cutout {
   readonly canvas: HTMLCanvasElement;
   readonly mode: CutoutMode;
+  // Whether the mode was detected rather than chosen in the Studio.
+  readonly detected: boolean;
 }
 
 // Working resolution; the published variants are only 400px.
@@ -323,8 +372,8 @@ const WORKING_SIZE = 600;
 
 export class StylizeFailed extends Error {}
 
-/** Decodes an original and cuts out its art. */
-export const cutoutFrom = async (source: Blob): Promise<Cutout> => {
+/** Decodes an original at working resolution. */
+export const decodeSource = async (source: Blob): Promise<Source> => {
   const bitmap = await createImageBitmap(source).catch(() => {
     throw new StylizeFailed("This browser couldn’t read that image. Try a PNG or JPEG.");
   });
@@ -332,23 +381,38 @@ export const cutoutFrom = async (source: Blob): Promise<Cutout> => {
   const scale = Math.min(1, WORKING_SIZE / Math.max(bitmap.width, bitmap.height));
   const width = Math.max(1, Math.round(bitmap.width * scale));
   const height = Math.max(1, Math.round(bitmap.height * scale));
-  const work = canvas(width, height);
-  const context = context2d(work);
+  const context = context2d(canvas(width, height));
   context.imageSmoothingQuality = "high";
   context.drawImage(bitmap, 0, 0, width, height);
   bitmap.close();
-  const image = context.getImageData(0, 0, width, height);
-  const mode = applyCutout(image.data, width, height);
+
+  return { image: context.getImageData(0, 0, width, height) };
+};
+
+/** Cuts out the art with the style's cutout settings, leaving the source untouched. */
+export const cutOut = (source: Source, style: ArtworkStyle): Cutout => {
+  const { width, height } = source.image;
+  const image = new ImageData(new Uint8ClampedArray(source.image.data), width, height);
+  const choice = style.cutout ?? AUTO_FINISH.cutout;
+
+  const mode = applyCutout(
+    image.data,
+    width,
+    height,
+    choice,
+    style.tolerance ?? AUTO_FINISH.tolerance,
+  );
+
   const bounds = visibleBounds(image.data, width, height);
 
   if (bounds === undefined)
     throw new StylizeFailed(
-      "Nothing was left after removing the background. Try artwork with a transparent background.",
+      "Nothing was left after removing the background. Try a lower tolerance, another cutout, or artwork with a transparent background.",
     );
   const trimmed = canvas(bounds.width, bounds.height);
   context2d(trimmed).putImageData(image, -bounds.x, -bounds.y);
 
-  return { canvas: trimmed, mode };
+  return { canvas: trimmed, mode, detected: choice === "auto" };
 };
 
 interface Box {
@@ -446,13 +510,21 @@ const luminanceRange = (luminance: Float32Array, d: Uint8ClampedArray) => {
   return hi - lo < 0.1 ? { lo: 0, hi: 1 } : { lo, hi };
 };
 
-const renderVariant = (cut: Cutout, look: ResolvedLook, spec: VariantSpec) => {
-  const { tint, detail } = LOOKS[look];
+const renderVariant = (cut: Cutout, finish: Finish, spec: VariantSpec) => {
+  const { detail } = finish;
+  const tint = finish.color === "shaded";
   const source = cut.canvas;
-  const scale = (FINISH.size * ICON_SIZE) / Math.max(source.width, source.height);
+  const scale = (finish.size * ICON_SIZE) / Math.max(source.width, source.height);
   const w = source.width * scale;
   const h = source.height * scale;
-  const box = { x: (ICON_SIZE - w) / 2, y: (ICON_SIZE - h) / 2, w, h };
+
+  const box = {
+    x: (ICON_SIZE - w) / 2 + finish.offsetX,
+    y: (ICON_SIZE - h) / 2 + finish.offsetY,
+    w,
+    h,
+  };
+
   const placed = canvas(ICON_SIZE, ICON_SIZE);
   const context = context2d(placed);
   context.imageSmoothingQuality = "high";
@@ -483,7 +555,7 @@ const renderVariant = (cut: Cutout, look: ResolvedLook, spec: VariantSpec) => {
       b += (CREAM[2] - b) * t;
     }
 
-    const mottle = 1 - FINISH.texture * 0.75 * (1 - (texture[p] ?? 0));
+    const mottle = 1 - finish.texture * 0.75 * (1 - (texture[p] ?? 0));
     d[i] = r * mottle;
     d[i + 1] = g * mottle;
     d[i + 2] = b * mottle;
@@ -492,25 +564,29 @@ const renderVariant = (cut: Cutout, look: ResolvedLook, spec: VariantSpec) => {
   context.putImageData(image, 0, 0);
   const composite = canvas(ICON_SIZE, ICON_SIZE);
   const compositeContext = context2d(composite);
-  const ring = canvas(ICON_SIZE, ICON_SIZE);
-  const ringContext = context2d(ring);
 
-  for (const radius of [FINISH.outline, FINISH.outline / 2])
-    for (let k = 0; k < 24; k++) {
-      const angle = (k / 24) * Math.PI * 2;
-      ringContext.drawImage(placed, Math.cos(angle) * radius, Math.sin(angle) * radius);
-    }
+  if (finish.outline > 0) {
+    const ring = canvas(ICON_SIZE, ICON_SIZE);
+    const ringContext = context2d(ring);
 
-  ringContext.globalCompositeOperation = "source-in";
-  ringContext.fillStyle = `rgb(${CREAM.join(",")})`;
-  ringContext.fillRect(0, 0, ICON_SIZE, ICON_SIZE);
-  compositeContext.drawImage(ring, 0, 0);
+    for (const radius of [finish.outline, finish.outline / 2])
+      for (let k = 0; k < 24; k++) {
+        const angle = (k / 24) * Math.PI * 2;
+        ringContext.drawImage(placed, Math.cos(angle) * radius, Math.sin(angle) * radius);
+      }
+
+    ringContext.globalCompositeOperation = "source-in";
+    ringContext.fillStyle = `rgb(${CREAM.join(",")})`;
+    ringContext.fillRect(0, 0, ICON_SIZE, ICON_SIZE);
+    compositeContext.drawImage(ring, 0, 0);
+  }
+
   compositeContext.drawImage(placed, 0, 0);
   const out = canvas(ICON_SIZE, ICON_SIZE);
   const outContext = context2d(out);
-  outContext.shadowColor = `rgba(0,0,0,${FINISH.shadow})`;
-  outContext.shadowBlur = FINISH.shadowBlur;
-  outContext.shadowOffsetY = FINISH.shadowY;
+  outContext.shadowColor = `rgba(0,0,0,${finish.shadow})`;
+  outContext.shadowBlur = finish.shadowBlur;
+  outContext.shadowOffsetY = finish.shadowY;
   outContext.drawImage(composite, 0, 0);
 
   return out;
@@ -533,14 +609,34 @@ export interface StyledVariant {
   readonly image: Uint8Array;
 }
 
+const renderSet = (cut: Cutout, team: AuthoredTeam, style: ArtworkStyle) => {
+  const finish = resolveFinish(style, cut.mode);
+
+  return variantSpecs(team, finish.teamShades).map((spec) => ({
+    variant: spec.variant,
+    canvas: renderVariant(cut, finish, spec),
+  }));
+};
+
 /** Every variant the Team exports, as 400×400 PNGs. */
-export const renderVariants = (cut: Cutout, team: AuthoredTeam, look: ArtworkLook) =>
+export const renderVariants = (
+  cut: Cutout,
+  team: AuthoredTeam,
+  style: ArtworkStyle,
+): Promise<ReadonlyArray<StyledVariant>> =>
   Promise.all(
-    variantSpecs(team).map(async (spec) => ({
-      variant: spec.variant,
-      image: await pngOf(renderVariant(cut, resolveLook(look, cut.mode), spec)),
+    renderSet(cut, team, style).map(async ({ variant, canvas: rendered }) => ({
+      variant,
+      image: await pngOf(rendered),
     })),
   );
+
+/** The Studio's live preview: every variant as an image URL, nothing published. */
+export const previewVariants = (cut: Cutout, team: AuthoredTeam, style: ArtworkStyle) =>
+  renderSet(cut, team, style).map(({ variant, canvas: rendered }) => ({
+    variant,
+    url: rendered.toDataURL("image/png"),
+  }));
 
 /** A quick preview of the Team's first variant in a Look, for the Look picker. */
 export const lookThumbnail = (cut: Cutout, team: AuthoredTeam, look: ArtworkLook) => {
@@ -548,5 +644,5 @@ export const lookThumbnail = (cut: Cutout, team: AuthoredTeam, look: ArtworkLook
 
   return spec === undefined
     ? undefined
-    : renderVariant(cut, resolveLook(look, cut.mode), spec).toDataURL("image/png");
+    : renderVariant(cut, resolveFinish({ look }, cut.mode), spec).toDataURL("image/png");
 };

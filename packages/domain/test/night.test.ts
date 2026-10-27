@@ -38,7 +38,7 @@ test("moving and removing entries, including standard steps", () => {
   expect(removeEntry(order, id(1))).toEqual(["dusk", id(2), "dawn"]);
 });
 
-test("position and neighbours count standard steps", () => {
+test("position and neighbors count standard steps", () => {
   const order = ["dusk", id(1), "dawn"] as const;
   expect(nightPosition(order, id(1))).toEqual({
     position: 2,

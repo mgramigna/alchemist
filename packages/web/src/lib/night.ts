@@ -54,10 +54,10 @@ export const positionSummary = (
 
   if (position === undefined) return undefined;
 
-  const neighbours = [
+  const neighbors = [
     position.after === undefined ? "first" : `after ${entryTitle(position.after, characters)}`,
     position.before === undefined ? "last" : `before ${entryTitle(position.before, characters)}`,
   ];
 
-  return `#${position.position} of ${position.total} · ${neighbours.join(", ")}`;
+  return `#${position.position} of ${position.total} · ${neighbors.join(", ")}`;
 };

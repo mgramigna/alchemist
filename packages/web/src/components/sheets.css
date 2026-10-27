@@ -1,6 +1,6 @@
 /*
  * Printable sheets (Variant B from #14). Sizes are natural page pixels and
- * fixed colours, independent of the app theme, so the preview and the PNG
+ * fixed colors, independent of the app theme, so the preview and the PNG
  * capture match. Every size multiplies --u, which shrinks when a sheet must
  * fit one page.
  */
@@ -88,7 +88,8 @@ button[data-slot="sheet-row"]:focus-visible {
   opacity: 0.45;
 }
 
-[data-slot="sheet-footer"] {
+/* Scoped: the UI kit's drawer uses the same data-slot. */
+[data-slot="sheet"] [data-slot="sheet-footer"] {
   flex-shrink: 0;
   padding: calc(4 * var(--u)) 0 calc(8 * var(--u));
   color: #888;
@@ -98,7 +99,8 @@ button[data-slot="sheet-row"]:focus-visible {
 
 /* ── Character sheet ─────────────────────────────────────────────────── */
 
-[data-slot="sheet-title"] {
+/* Scoped: the UI kit's drawer uses the same data-slot. */
+[data-slot="sheet"] [data-slot="sheet-title"] {
   flex-shrink: 0;
   padding: calc(20 * var(--u)) calc(32 * var(--u)) calc(16 * var(--u));
   background: var(--sheet-band);

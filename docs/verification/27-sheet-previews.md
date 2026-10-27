@@ -13,7 +13,7 @@ read. The PNG download in #28 is meant to capture these same components.
 
 - Character sheet: a dark title band (Cinzel name, Sorts Mill Goudy italic Author
   Credit). Good Teams are on the left; Evil, then Travellers, then Jinxes are on the
-  right. Each Team has a colour rail, and Travellers use a blue-to-red rail. The
+  right. Each Team has a color rail, and Travellers use a blue-to-red rail. The
   sheet uses regular or unaligned generic icons and has the
   non-affiliation footer. Small Scripts stay top-aligned.
 - Night sheet: First Night upright and Other Nights rotated 180°, with the Script

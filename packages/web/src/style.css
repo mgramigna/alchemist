@@ -152,3 +152,9 @@
     @apply font-heading;
   }
 }
+
+/* Shows where artwork is transparent, behind Studio previews. */
+@utility checkerboard {
+  background-image: repeating-conic-gradient(var(--muted) 0% 25%, var(--background) 0% 50%);
+  background-size: 16px 16px;
+}
