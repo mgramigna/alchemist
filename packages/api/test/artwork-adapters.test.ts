@@ -18,7 +18,12 @@ import {
 } from "../src/artwork-storage.ts";
 import { D1ScriptStore } from "../src/d1.ts";
 import { Auth } from "../src/auth.ts";
-import { ScriptStore, Scripts, type StoredArtwork } from "../src/scripts.ts";
+import {
+  ScriptStore,
+  Scripts,
+  type StoredArtwork,
+  type StoredScriptImage,
+} from "../src/scripts.ts";
 import { png } from "./support/images.ts";
 
 const mf = new Miniflare({
@@ -187,9 +192,12 @@ test("R2 never overwrites a published key and the Worker serves it publicly with
       const artworkStorage = yield* ArtworkStorage;
       const image = png(400, 400, 7);
       const key = "artwork/01k8ae00000000000000000009.png";
-      yield* artworkStorage.publish(key, image);
+      yield* artworkStorage.publish(key, image, "image/png");
 
-      const overwrite = yield* artworkStorage.publish(key, png(400, 400, 8)).pipe(Effect.flip);
+      const overwrite = yield* artworkStorage
+        .publish(key, png(400, 400, 8), "image/png")
+        .pipe(Effect.flip);
+
       expect(overwrite._tag).toBe("ScriptWriteUnavailable");
 
       const response = yield* handleRequest(
@@ -231,5 +239,141 @@ test("R2 never overwrites a published key and the Worker serves it publicly with
       yield* artworkStorage.deleteSource(`${scriptId}/original`);
       expect(yield* artworkStorage.readSource(`${scriptId}/original`)).toEqual(Option.none());
       expect(yield* artworkStorage.readPublished(`${scriptId}/original`)).toEqual(Option.none());
+    }),
+  ));
+
+test("D1 switches Script artwork only from the expected original, scoped to the owner, and projects paths", () =>
+  run(
+    Effect.gen(function* () {
+      const scripts = yield* ScriptStore;
+
+      const image = (sourceId: string, extension = "png"): StoredScriptImage => ({
+        sourceId,
+        sourceType: extension === "png" ? "image/png" : "image/jpeg",
+        path: `/artwork/${sourceId}.${extension}`,
+      });
+
+      const first = image("bbbbbbbbbbbbbbbbbbbbbbbbb1");
+      const second = image("bbbbbbbbbbbbbbbbbbbbbbbbb2", "jpg");
+
+      expect(yield* scripts.findScriptArtwork("alice", scriptId)).toEqual(
+        Option.some({ logo: null, background: null }),
+      );
+      expect(yield* scripts.findScriptArtwork("bob", scriptId)).toEqual(Option.none());
+
+      expect(yield* scripts.replaceScriptArtwork("bob", scriptId, "logo", first, null, 10)).toBe(
+        false,
+      );
+      expect(yield* scripts.replaceScriptArtwork("alice", scriptId, "logo", first, null, 10)).toBe(
+        true,
+      );
+      // A second "first upload" or a stale expected original writes nothing.
+      expect(yield* scripts.replaceScriptArtwork("alice", scriptId, "logo", second, null, 11)).toBe(
+        false,
+      );
+      expect(
+        yield* scripts.replaceScriptArtwork("alice", scriptId, "logo", second, "stale", 11),
+      ).toBe(false);
+      expect(
+        yield* scripts.replaceScriptArtwork("alice", scriptId, "background", second, null, 12),
+      ).toBe(true);
+
+      expect(yield* scripts.findScriptArtwork("alice", scriptId)).toEqual(
+        Option.some({ logo: first, background: second }),
+      );
+      expect(
+        (yield* scripts.findOwned("alice", scriptId)).pipe(Option.map((s) => s.updatedAt)),
+      ).toEqual(Option.some(12));
+
+      const paths = { logo: first.path, background: second.path };
+      expect(Option.getOrNull(yield* scripts.findPublic(scriptId))?.artwork).toEqual(paths);
+      expect(Option.getOrNull(yield* scripts.findExport(scriptId))?.artwork).toEqual(paths);
+      expect(JSON.stringify(yield* scripts.findPublic(scriptId))).not.toContain("image/png");
+
+      // Removal is scoped to the owner and the expected original.
+      expect(yield* scripts.deleteScriptArtwork("bob", scriptId, "logo", first.sourceId, 13)).toBe(
+        false,
+      );
+      expect(yield* scripts.deleteScriptArtwork("alice", scriptId, "logo", "stale", 13)).toBe(
+        false,
+      );
+      expect(
+        yield* scripts.deleteScriptArtwork("alice", scriptId, "logo", first.sourceId, 13),
+      ).toBe(true);
+      expect(Option.getOrNull(yield* scripts.findPublic(scriptId))?.artwork).toEqual({
+        logo: null,
+        background: second.path,
+      });
+    }),
+  ));
+
+test("D1 Script artwork supersedes only the matching imported reference", () =>
+  run(
+    Effect.gen(function* () {
+      const scripts = yield* ScriptStore;
+      const importedId = ScriptId.make("01k8ae00000000000000000003");
+
+      yield* scripts.insertImport(
+        "alice",
+        OwnedScript.make({ id: importedId, name: "Imported", authorCredit: "A", updatedAt: 1 }),
+        {
+          script: { name: "Imported", authorCredit: "A" },
+          characters: [],
+          nightOrders: defaultNightOrders,
+          jinxes: [],
+          imported: {
+            metadata: {},
+            characters: [],
+            artwork: (["logo", "background"] as const).map((field) => ({
+              field,
+              format: "single" as const,
+              slots: [{ source: `https://example.org/${field}.png`, state: "pending" as const }],
+            })),
+          },
+        },
+      );
+
+      expect(
+        yield* scripts.replaceScriptArtwork(
+          "alice",
+          importedId,
+          "logo",
+          {
+            sourceId: "ccccccccccccccccccccccccc1",
+            sourceType: "image/png",
+            path: "/artwork/ccccccccccccccccccccccccc1.png",
+          },
+          null,
+          2,
+        ),
+      ).toBe(true);
+      expect(
+        (yield* scripts.readImported("alice", importedId))?.artwork.map(({ field }) => field),
+      ).toEqual(["background"]);
+    }),
+  ));
+
+test("the Worker serves Script artwork in its published format", () =>
+  run(
+    Effect.gen(function* () {
+      const artworkStorage = yield* ArtworkStorage;
+      const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 4, 5, 6]);
+      const key = "artwork/01k8ae0000000000000000000a.jpg";
+      yield* artworkStorage.publish(key, jpeg, "image/jpeg");
+
+      const response = yield* handleRequest(new Request(`https://a.test/${key}`));
+      expect(response.status).toBe(200);
+      expect(Object.fromEntries(response.headers)).toMatchObject({
+        "access-control-allow-origin": "*",
+        "cache-control": PUBLISHED_CACHE_CONTROL,
+        "content-type": "image/jpeg",
+      });
+      expect(new Uint8Array(yield* Effect.promise(() => response.arrayBuffer()))).toEqual(jpeg);
+
+      for (const path of [
+        "artwork/01k8ae0000000000000000000a.svg",
+        "artwork/01k8ae0000000000000000000a.jpeg",
+      ])
+        expect((yield* handleRequest(new Request(`https://a.test/${path}`))).status).toBe(404);
     }),
   ));

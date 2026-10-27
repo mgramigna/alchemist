@@ -38,6 +38,8 @@ import {
   AuthorCredit,
   OwnedScript,
   PublicScript,
+  ScriptArtwork,
+  ScriptArtworkField,
   ScriptId,
   ScriptName,
   ScriptNotFound,
@@ -75,6 +77,24 @@ export const Rpcs = RpcGroup.make(
     },
     success: ScriptId,
     error: Schema.Union([ScriptNotFound, ScriptWriteUnavailable]),
+  }).middleware(Authentication),
+  Rpc.make("Script.readArtwork", {
+    payload: { id: ScriptId },
+    success: ScriptArtwork,
+    error: Schema.Union([ScriptNotFound, ScriptReadUnavailable]),
+  }).middleware(Authentication),
+  // Script artwork is published unchanged, without Character styling. The
+  // server keeps the original private and switches references only after publishing.
+  Rpc.make("Script.uploadArtwork", {
+    payload: { id: ScriptId, field: ScriptArtworkField, source: Schema.Uint8Array },
+    success: ScriptArtwork,
+    error: Schema.Union([ScriptNotFound, ArtworkInvalid, ArtworkConflict, ScriptWriteUnavailable]),
+  }).middleware(Authentication),
+  // Clears the slot. Published images stay available for earlier exports.
+  Rpc.make("Script.removeArtwork", {
+    payload: { id: ScriptId, field: ScriptArtworkField },
+    success: ScriptArtwork,
+    error: Schema.Union([ScriptNotFound, ArtworkConflict, ScriptWriteUnavailable]),
   }).middleware(Authentication),
   Rpc.make("Script.reviewImport", {
     payload: { json: ImportJson },

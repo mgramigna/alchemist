@@ -48,6 +48,10 @@ export const Handlers = Rpcs.toLayer(
         }),
       "Script.useGenericArtwork": ({ id, field, characterId }) =>
         scripts.useGenericArtwork(id, field, characterId),
+      "Script.readArtwork": ({ id }) => scripts.readScriptArtwork(id),
+      "Script.uploadArtwork": ({ id, field, source }) =>
+        scripts.uploadScriptArtwork(id, field, source),
+      "Script.removeArtwork": ({ id, field }) => scripts.removeScriptArtwork(id, field),
       "Script.reviewImport": ({ json }) => scripts.reviewImport(json),
       "Script.import": ({ json, acknowledgeDiscard }) =>
         scripts.importJson(json, acknowledgeDiscard),

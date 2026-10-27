@@ -19,6 +19,14 @@ export const SOURCE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif
 
 export type SourceType = (typeof SOURCE_TYPES)[number];
 
+/** Published file extensions. Script artwork is published in its original format. */
+export const IMAGE_EXTENSIONS: Record<SourceType, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+
 const startsWith = (bytes: Uint8Array, signature: ReadonlyArray<number>, offset = 0) =>
   bytes.length >= offset + signature.length &&
   signature.every((byte, index) => bytes[offset + index] === byte);

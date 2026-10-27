@@ -1,6 +1,7 @@
 import {
   Character,
   CharacterId,
+  NO_SCRIPT_ARTWORK,
   OwnedScript,
   ScriptId,
   defaultNightOrders,
@@ -107,6 +108,7 @@ test("D1 owner queries are scoped by owner, ordered by last change, and updates 
         id: older.id,
         name: "Renamed",
         authorCredit: "Credit",
+        artwork: NO_SCRIPT_ARTWORK,
         characters: [],
         nightOrders: defaultNightOrders,
         jinxes: [],
@@ -543,6 +545,7 @@ test("D1 imports reused IDs atomically, keeps integration data across edits, and
         nightOrders: draft.nightOrders,
         jinxes: draft.jinxes,
         imported: draft.imported,
+        artwork: NO_SCRIPT_ARTWORK,
       });
       expect(Option.isNone(yield* scripts.findExport(ScriptId.make("missing")))).toBe(true);
       expect(

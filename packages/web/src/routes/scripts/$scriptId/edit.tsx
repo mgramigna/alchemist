@@ -3,7 +3,13 @@ import { LockIcon } from "@phosphor-icons/react";
 import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-router";
 import { Effect, Option, Schema } from "effect";
 import { AtomRegistry } from "effect/reactivity";
-import { ownedJinxes, ownedCharacters, ownedNightOrders, ownedScript } from "../../../api.ts";
+import {
+  ownedJinxes,
+  ownedCharacters,
+  ownedNightOrders,
+  ownedScript,
+  ownedScriptArtwork,
+} from "../../../api.ts";
 import { SignInWithGoogle } from "../../../components/account.tsx";
 import { Button, buttonVariants } from "../../../components/ui/button.tsx";
 import {
@@ -28,11 +34,13 @@ export const Route = createFileRoute("/scripts/$scriptId/edit")({
     const characters = ownedCharacters(id.value);
     const jinxes = ownedJinxes(id.value);
     const nightOrders = ownedNightOrders(id.value);
+    const artwork = ownedScriptArtwork(id.value);
     // Reopening always starts from the latest saved state.
     context.registry.refresh(script);
     context.registry.refresh(characters);
     context.registry.refresh(nightOrders);
     context.registry.refresh(jinxes);
+    context.registry.refresh(artwork);
 
     return Effect.runPromise(
       Effect.all({
@@ -44,6 +52,7 @@ export const Route = createFileRoute("/scripts/$scriptId/edit")({
         nightOrders: AtomRegistry.getResult(context.registry, nightOrders, {
           suspendOnWaiting: true,
         }),
+        artwork: AtomRegistry.getResult(context.registry, artwork, { suspendOnWaiting: true }),
       }).pipe(
         // Missing and someone else's Scripts look the same to the Workbench.
         Effect.catchTags({
@@ -74,6 +83,7 @@ function EditScript() {
       characters={loaded.characters}
       nightOrders={loaded.nightOrders}
       jinxes={loaded.jinxes}
+      artwork={loaded.artwork}
     />
   );
 }

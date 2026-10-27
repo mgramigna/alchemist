@@ -9,16 +9,24 @@ import {
   type Character,
   type NightOrders,
   type OwnedScript,
+  type ScriptArtworkField,
 } from "@alchemist/domain";
 import { Effect, Layer, Option } from "effect";
 import { ArtworkStorage } from "../../src/artwork-storage.ts";
-import { ScriptStore, ScriptsLive, type StoredArtwork } from "../../src/scripts.ts";
+import {
+  ScriptStore,
+  ScriptsLive,
+  publicScriptArtwork,
+  type StoredArtwork,
+  type StoredScriptArtwork,
+} from "../../src/scripts.ts";
 
 // In-memory buckets. Publishing refuses existing keys like the R2 adapter, and
 // `failPublishAfter` makes the nth later publish fail to exercise partial writes.
 export const storageFixture = () => {
   const sources = new Map<string, Uint8Array>();
   const published = new Map<string, Uint8Array>();
+  const publishedTypes = new Map<string, string>();
   const control = { failPublishAfter: Number.POSITIVE_INFINITY, failSourceWrites: false };
 
   const layer = Layer.succeed(ArtworkStorage, {
@@ -28,11 +36,12 @@ export const storageFixture = () => {
         : Effect.sync(() => void sources.set(key, bytes)),
     readSource: (key) => Effect.sync(() => Option.fromNullishOr(sources.get(key))),
     deleteSource: (key) => Effect.sync(() => void sources.delete(key)),
-    publish: (key, png) =>
+    publish: (key, image, contentType) =>
       Effect.suspend(() => {
         if (published.has(key) || control.failPublishAfter-- <= 0)
           return Effect.fail(new ScriptWriteUnavailable({}));
-        published.set(key, png);
+        published.set(key, image);
+        publishedTypes.set(key, contentType);
 
         return Effect.void;
       }),
@@ -44,13 +53,17 @@ export const storageFixture = () => {
       ),
   });
 
-  return { sources, published, control, layer };
+  return { sources, published, publishedTypes, control, layer };
 };
 
 // In-memory ScriptStore with the same owner scoping as the D1 adapter.
 export const scriptsFixture = Effect.sync(() => {
   const imports = new Map<string, ImportedData>();
   const artwork = new Map<string, StoredArtwork>();
+  const scriptArtwork = new Map<string, StoredScriptArtwork>();
+
+  const slotsOf = (scriptId: string) =>
+    scriptArtwork.get(scriptId) ?? { logo: null, background: null };
 
   const withArtwork = (scriptId: string, character: Character): Character => {
     const stored = artwork.get(`${scriptId}:${character.id}`);
@@ -111,7 +124,53 @@ export const scriptsFixture = Effect.sync(() => {
   const owned = (ownerId: string, id: string) =>
     Option.fromNullishOr(rows.get(id)).pipe(Option.filter((row) => row.ownerId === ownerId));
 
+  // Drops imported references the new artwork supersedes.
+  const dropImported = (scriptId: string, field: string, characterId: string | null) => {
+    const imported = imports.get(scriptId);
+
+    if (imported !== undefined)
+      imports.set(scriptId, {
+        ...imported,
+        artwork: imported.artwork.filter(
+          (art) => art.field !== field || (art.characterId ?? null) !== characterId,
+        ),
+      });
+  };
+
+  const setSlot = (
+    scriptId: string,
+    field: ScriptArtworkField,
+    image: StoredScriptArtwork[ScriptArtworkField],
+  ) => scriptArtwork.set(scriptId, { ...slotsOf(scriptId), [field]: image });
+
   const store = Layer.succeed(ScriptStore, {
+    findScriptArtwork: (ownerId, scriptId) =>
+      Effect.sync(() => owned(ownerId, scriptId).pipe(Option.map(() => slotsOf(scriptId)))),
+    replaceScriptArtwork: (ownerId, scriptId, field, image, expectedSourceId, now) =>
+      Effect.sync(() => {
+        if (
+          Option.isNone(owned(ownerId, scriptId)) ||
+          (slotsOf(scriptId)[field]?.sourceId ?? null) !== expectedSourceId
+        )
+          return false;
+        setSlot(scriptId, field, image);
+        dropImported(scriptId, field, null);
+        touch(scriptId, now);
+
+        return true;
+      }),
+    deleteScriptArtwork: (ownerId, scriptId, field, expectedSourceId, now) =>
+      Effect.sync(() => {
+        if (
+          Option.isNone(owned(ownerId, scriptId)) ||
+          slotsOf(scriptId)[field]?.sourceId !== expectedSourceId
+        )
+          return false;
+        setSlot(scriptId, field, null);
+        touch(scriptId, now);
+
+        return true;
+      }),
     findArtwork: (ownerId, scriptId, id) =>
       Effect.sync(() => {
         const row = characters.get(`${scriptId}:${id}`);
@@ -134,15 +193,7 @@ export const scriptsFixture = Effect.sync(() => {
         )
           return false;
         artwork.set(key, next);
-        const imported = imports.get(scriptId);
-
-        if (imported !== undefined)
-          imports.set(scriptId, {
-            ...imported,
-            artwork: imported.artwork.filter(
-              (art) => art.field !== "image" || art.characterId !== id,
-            ),
-          });
+        dropImported(scriptId, "image", id);
         touch(scriptId, now);
 
         return true;
@@ -161,12 +212,7 @@ export const scriptsFixture = Effect.sync(() => {
         const imported = imports.get(id);
 
         if (Option.isNone(owned(ownerId, id)) || imported === undefined) return false;
-        imports.set(id, {
-          ...imported,
-          artwork: imported.artwork.filter(
-            (art) => art.field !== field || (art.characterId ?? null) !== characterId,
-          ),
-        });
+        dropImported(id, field, characterId);
         touch(id, now);
 
         return true;
@@ -194,6 +240,7 @@ export const scriptsFixture = Effect.sync(() => {
             nightOrders: nightOrders.get(id) ?? defaultNightOrders,
             jinxes: inJinxes(id),
             imported: imports.get(id),
+            artwork: publicScriptArtwork(slotsOf(id)),
           })),
         ),
       ),
@@ -204,6 +251,7 @@ export const scriptsFixture = Effect.sync(() => {
             id: row.id,
             name: row.name,
             authorCredit: row.authorCredit,
+            artwork: publicScriptArtwork(slotsOf(id)),
             characters: inScript(id).map((character) => {
               const stored = artwork.get(`${id}:${character.id}`);
 
@@ -400,6 +448,7 @@ export const scriptsFixture = Effect.sync(() => {
     characters,
     nightOrders,
     artwork,
+    scriptArtwork,
     imports,
     storage,
     layer: ScriptsLive.pipe(Layer.provide(store), Layer.provideMerge(storage.layer)),

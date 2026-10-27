@@ -81,6 +81,13 @@ function PublicScript() {
     <article className="mx-auto flex w-full max-w-4xl flex-col gap-8">
       <header className="flex flex-col gap-3">
         <p className="text-sm text-muted-foreground">Shared Script · Read only</p>
+        {script.artwork.logo !== null && (
+          <img
+            src={script.artwork.logo}
+            alt={`${script.name || "Untitled Script"} logo`}
+            className="max-h-32 w-fit max-w-full object-contain"
+          />
+        )}
         <h1 className="text-3xl font-semibold wrap-anywhere">{script.name || "Untitled Script"}</h1>
         <p className="wrap-anywhere">By {script.authorCredit || "Uncredited"}</p>
       </header>

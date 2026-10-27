@@ -14,6 +14,7 @@ import {
   type Night,
   type NightOrders,
   type OwnedScript,
+  type ScriptArtwork,
   type ScriptDetails,
 } from "@alchemist/domain";
 import {
@@ -62,6 +63,7 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog.tsx";
 import { CharacterArtworkEditor } from "./character-artwork.tsx";
+import { ScriptArtworkEditor } from "./script-artwork.tsx";
 import { CharacterForm, CharacterNavigator, ExportBlockerList } from "./characters.tsx";
 import { NightOrderEditor } from "./night-orders.tsx";
 import { SheetPreview } from "./sheet-preview.tsx";
@@ -96,8 +98,10 @@ export function Workbench({
   characters: initialCharacters,
   nightOrders: initialNightOrders,
   jinxes: initialJinxes,
+  artwork: initialArtwork,
 }: {
   readonly script: OwnedScript;
+  readonly artwork: ScriptArtwork;
   readonly characters: ReadonlyArray<Character>;
   readonly nightOrders: NightOrders;
   readonly jinxes: ReadonlyArray<Jinx>;
@@ -114,6 +118,7 @@ export function Workbench({
     creatingJinx.waiting ||
     deletingJinx.waiting;
 
+  const [artwork, setArtwork] = useState(initialArtwork);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const update = useAtomSet(updateScriptDetails, { mode: "promiseExit" });
@@ -483,6 +488,7 @@ export function Workbench({
                 blockers={blockers}
                 onSelect={setSelectedId}
               />
+              <ScriptArtworkEditor scriptId={script.id} artwork={artwork} onArtwork={setArtwork} />
               <ShareLink script={script} />
             </form.Form>
           </form.AppForm>

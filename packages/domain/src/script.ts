@@ -34,10 +34,29 @@ export const OwnedScript = Schema.Struct({
 
 export interface OwnedScript extends Schema.Schema.Type<typeof OwnedScript> {}
 
+// The Script's own artwork slots, exported as `_meta.logo` and `_meta.background`.
+export const ScriptArtworkField = Schema.Literals(["logo", "background"]);
+
+export type ScriptArtworkField = typeof ScriptArtworkField.Type;
+
+export const SCRIPT_ARTWORK_FIELDS = ScriptArtworkField.literals;
+
+// Published image paths, resolved against the asset origin like Character variants.
+// Owners and viewers see the same thing: private originals never leave storage.
+export const ScriptArtwork = Schema.Struct({
+  logo: Schema.NullOr(Schema.String),
+  background: Schema.NullOr(Schema.String),
+});
+
+export interface ScriptArtwork extends Schema.Schema.Type<typeof ScriptArtwork> {}
+
+export const NO_SCRIPT_ARTWORK: ScriptArtwork = { logo: null, background: null };
+
 export const PublicScript = Schema.Struct({
   id: ScriptId,
   name: Schema.String,
   authorCredit: Schema.String,
+  artwork: ScriptArtwork,
   characters: Schema.Array(PublicCharacter),
   nightOrders: NightOrders,
   jinxes: Schema.Array(Jinx),
