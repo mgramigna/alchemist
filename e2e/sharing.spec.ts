@@ -116,8 +116,12 @@ sharing(
         ),
       ).toBe(true);
       await jsonSection.getByRole("button", { name: "Export JSON" }).click();
-      await expect(recipient.getByRole("menuitem")).toHaveCount(2);
-      await recipient.getByRole("menuitem", { name: "Copy JSON" }).click();
+      await expect(recipient.getByRole("menuitem")).toHaveText([
+        "Copy JSON link",
+        "Copy JSON",
+        "Download JSON",
+      ]);
+      await recipient.getByRole("menuitem", { name: "Copy JSON", exact: true }).click();
       await expect(recipient.getByText("JSON copied", { exact: true })).toBeVisible();
       const copied = await recipient.evaluate(() => navigator.clipboard.readText());
 
@@ -132,6 +136,18 @@ sharing(
       expect(document[0]).toMatchObject({ name: "Shared Alchemy", author: "The Collective" });
       expect(document).toHaveLength(5);
       expect(JSON.parse(copied)).toEqual(document);
+
+      // The JSON link is what the official BOTC app imports: a plain anonymous file.
+      await jsonSection.getByRole("button", { name: "Export JSON" }).click();
+      await recipient.getByRole("menuitem", { name: "Copy JSON link" }).click();
+      await expect(recipient.getByText("JSON link copied")).toBeVisible();
+      const jsonLink = await recipient.evaluate(() => navigator.clipboard.readText());
+      expect(jsonLink).toBe(new URL(`${new URL(link).pathname}/json`, link).href);
+      const served = await anonymous.request.get(jsonLink);
+      expect(served.status()).toBe(200);
+      expect(served.headers()["content-type"]).toBe("application/json; charset=utf-8");
+      expect(served.headers()["access-control-allow-origin"]).toBe("*");
+      expect(await served.json()).toEqual(document);
 
       const denied = await recipient.evaluate(async (id) => {
         const response = await fetch("/api/rpc", {

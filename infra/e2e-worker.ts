@@ -12,7 +12,7 @@ export default Cloudflare.Worker(
     assets: {
       directory: "./packages/web/dist",
       notFoundHandling: "single-page-application",
-      runWorkerFirst: ["/api", "/api/*", "/auth", "/auth/*", "/artwork/*"],
+      runWorkerFirst: ["/api", "/api/*", "/auth", "/auth/*", "/artwork/*", "/scripts/*/json"],
     },
     dev: { port: 1338, strictPort: true },
   },

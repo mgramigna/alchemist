@@ -1,12 +1,13 @@
 import type { PublicScript, ScriptExportProblem } from "@alchemist/domain";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
-import { CaretDownIcon, CopyIcon, DownloadSimpleIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, CopyIcon, DownloadSimpleIcon, LinkIcon } from "@phosphor-icons/react";
 import { Predicate } from "effect";
 import { toast } from "sonner";
 import { AsyncResult } from "effect/reactivity";
 import { publicScriptExport } from "../api.ts";
 import { downloadBlob } from "../lib/download.ts";
 import { fieldLabel } from "../lib/fields.ts";
+import { scriptJsonUrl } from "../lib/script.ts";
 import { Button } from "./ui/button.tsx";
 import {
   DropdownMenu,
@@ -76,6 +77,9 @@ export function PublicJsonDownload({ script }: { readonly script: PublicScript }
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-52">
                   <DropdownMenuGroup>
+                    <DropdownMenuItem onClick={() => void copyJsonLink(script.id)}>
+                      <LinkIcon /> Copy JSON link
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => void copyJson(value.json)}>
                       <CopyIcon /> Copy JSON
                     </DropdownMenuItem>
@@ -93,7 +97,8 @@ export function PublicJsonDownload({ script }: { readonly script: PublicScript }
                 </DropdownMenuContent>
               </DropdownMenu>
               <p className="text-sm text-muted-foreground">
-                Copy or download the current saved Script in BOTC JSON format.
+                Copy a JSON link to import into the official BOTC app, or copy or download the
+                current saved Script in BOTC JSON format.
               </p>
             </>
           ),
@@ -120,5 +125,14 @@ async function copyJson(json: string) {
     toast.success("JSON copied");
   } catch {
     toast.error("Couldn’t copy JSON. Try again or download it instead.");
+  }
+}
+
+async function copyJsonLink(id: string) {
+  try {
+    await navigator.clipboard.writeText(scriptJsonUrl(id));
+    toast.success("JSON link copied. Paste it into the official BOTC app to import.");
+  } catch {
+    toast.error("Couldn’t copy the JSON link. Try again or download the JSON instead.");
   }
 }

@@ -24,6 +24,7 @@ import {
   CheckCircleIcon,
   CopyIcon,
   DownloadSimpleIcon,
+  LinkIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react";
 import { useSelector } from "@tanstack/react-form";
@@ -50,7 +51,7 @@ import { downloadBlob } from "../lib/download.ts";
 import { characterTitle } from "../lib/characters.ts";
 import { fieldLabel } from "../lib/fields.ts";
 import { NIGHT_LABELS } from "../lib/night.ts";
-import { scriptTitle } from "../lib/script.ts";
+import { scriptJsonUrl, scriptTitle } from "../lib/script.ts";
 import { createAutosave, type SaveStatus } from "../lib/autosave.ts";
 import {
   AlertDialog,
@@ -203,7 +204,7 @@ export function Workbench({
 
   const scriptProblems = problems.filter((problem) => problem.characterId === undefined);
 
-  const exportJson = async (action: "copy" | "download") => {
+  const exportJson = async (action: "copy" | "download" | "link") => {
     if (unsaved() || structuralPending) {
       setExportError(
         "Wait for all changes to save, then retry the export. If saving failed, use Retry save first.",
@@ -218,8 +219,21 @@ export function Workbench({
       return;
     }
 
-    setExporting(true);
     setExportError(null);
+
+    // The link serves the saved Script, so the checks above are all it needs.
+    if (action === "link") {
+      try {
+        await navigator.clipboard.writeText(scriptJsonUrl(script.id));
+        toast.success("JSON link copied. Paste it into the official BOTC app to import.");
+      } catch {
+        setExportError("Couldn’t copy the JSON link. Try again.");
+      }
+
+      return;
+    }
+
+    setExporting(true);
 
     try {
       const exit = await getExport({ payload: { id: script.id } });
@@ -393,7 +407,11 @@ export function Workbench({
                 Export JSON
                 <CaretDownIcon />
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-48">
+              <DropdownMenuContent className="w-52">
+                <DropdownMenuItem onClick={() => void exportJson("link")}>
+                  <LinkIcon />
+                  Copy JSON link
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => void exportJson("copy")}>
                   <CopyIcon />
                   Copy JSON

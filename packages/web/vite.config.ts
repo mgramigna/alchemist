@@ -24,6 +24,8 @@ export default defineConfig({
       "/api": { target: "http://127.0.0.1:1337", changeOrigin: false },
       "/auth": { target: "http://127.0.0.1:1337", changeOrigin: false },
       "/artwork": { target: "http://127.0.0.1:1337", changeOrigin: false },
+      // Public Script JSON links; the Script page itself stays in the SPA.
+      "^/scripts/[^/]+/json/?$": { target: "http://127.0.0.1:1337", changeOrigin: false },
     },
   },
   build: { outDir: "dist" },
