@@ -67,6 +67,7 @@ import { ScriptArtworkEditor } from "./script-artwork.tsx";
 import { CharacterForm, CharacterNavigator, ExportBlockerList } from "./characters.tsx";
 import { NightOrderEditor } from "./night-orders.tsx";
 import { SheetPreview } from "./sheet-preview.tsx";
+import { DeleteScriptSection } from "./delete-script.tsx";
 import { sheetShowing, type SheetView } from "../lib/sheets.ts";
 import { Button, buttonVariants } from "./ui/button.tsx";
 import { Input } from "./ui/input.tsx";
@@ -490,6 +491,7 @@ export function Workbench({
               />
               <ScriptArtworkEditor scriptId={script.id} artwork={artwork} onArtwork={setArtwork} />
               <ShareLink script={script} />
+              <DeleteScriptSection script={script} />
             </form.Form>
           </form.AppForm>
         ) : (

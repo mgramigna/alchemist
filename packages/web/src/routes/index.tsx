@@ -149,11 +149,14 @@ function ScriptList() {
       ) : (
         <ul aria-label="Your Scripts" className="flex flex-col gap-3">
           {value.map((script) => (
-            <li key={script.id} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <li
+              key={script.id}
+              className="flex items-center rounded-xl border border-border bg-card transition-colors has-[a:hover]:bg-muted"
+            >
               <Link
                 to="/scripts/$scriptId/edit"
                 params={{ scriptId: script.id }}
-                className="flex flex-1 flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl border border-border bg-card px-5 py-4 no-underline transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl py-4 pr-3 pl-5 no-underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
               >
                 <span className="flex min-w-0 flex-col">
                   <span className="font-medium wrap-anywhere">{scriptTitle(script.name)}</span>
@@ -165,7 +168,9 @@ function ScriptList() {
                   Edited {edited.format(script.updatedAt)}
                 </span>
               </Link>
-              <DeleteScriptButton script={script} />
+              <span className="pr-3">
+                <DeleteScriptButton script={script} />
+              </span>
             </li>
           ))}
         </ul>

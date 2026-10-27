@@ -65,3 +65,18 @@ test("owner confirms deletion by keyboard on a narrow screen; share and edit dis
   expect(image.headers()["cache-control"]).toContain("immutable");
   await anonymous.close();
 });
+
+test("owner deletes a Script from the Workbench and returns to their Scripts", async ({ page }) => {
+  await signIn(page);
+  const id = await seedScript(page);
+  await page.goto(`/scripts/${id}/edit`);
+  await page.getByRole("button", { name: "Delete Script", exact: true }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText("This cannot be undone");
+  await dialog.getByRole("button", { name: "Permanently delete", exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByText("Deleted Untitled Script")).toBeVisible();
+  await expect(page.getByRole("link", { name: /Untitled Script/ })).toHaveCount(0);
+  await page.goto(`/scripts/${id}/edit`);
+  await expect(page.getByRole("heading", { name: "Script not found" })).toBeVisible();
+});
