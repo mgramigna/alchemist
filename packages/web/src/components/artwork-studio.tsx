@@ -10,7 +10,8 @@ import {
   type IconVariant,
   type StudioSetting,
 } from "@alchemist/domain";
-import { UploadSimpleIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon, UploadSimpleIcon } from "@phosphor-icons/react";
+import { cn } from "cn";
 import {
   useEffect,
   useId,
@@ -33,6 +34,7 @@ import {
   type Cutout,
   type Source,
 } from "../lib/stylize.ts";
+import { PrototypeSwitcher, usePrototypeVariant } from "./prototype-switcher.tsx";
 import { Button } from "./ui/button.tsx";
 import {
   Sheet,
@@ -44,6 +46,20 @@ import {
 } from "./ui/sheet.tsx";
 import { Spinner } from "./ui/spinner.tsx";
 import { Switch } from "./ui/switch.tsx";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx";
+
+// PROTOTYPE (#69): four Studio layouts that keep the preview visible while
+// adjusting sliders, switchable via `?studio=` on the Script edit route.
+const LAYOUTS = [
+  ["sticky", "Sticky compact preview"],
+  ["split", "Side-by-side split"],
+  ["pip", "Floating mini preview"],
+  ["tabs", "Fixed preview, tabbed controls"],
+] as const;
+
+type Layout = (typeof LAYOUTS)[number][0];
+
+const LAYOUT_KEYS = LAYOUTS.map(([key]) => key);
 
 const CUTOUTS: ReadonlyArray<readonly [ArtworkCutout, string]> = [
   ["auto", "Auto-detect"],
@@ -127,9 +143,16 @@ export function ArtworkStudio({
   readonly onSave: (style: ArtworkStyle) => Promise<string | undefined>;
   readonly onReplace: (file: File, style: ArtworkStyle) => void;
 }) {
+  const layout = usePrototypeVariant("studio", LAYOUT_KEYS);
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="gap-0 overflow-hidden data-[side=right]:w-full data-[side=right]:sm:max-w-xl">
+      <SheetContent
+        className={cn(
+          "gap-0 overflow-hidden data-[side=right]:w-full",
+          layout === "split" ? "data-[side=right]:sm:max-w-4xl" : "data-[side=right]:sm:max-w-xl",
+        )}
+      >
         <SheetHeader className="shrink-0 border-b pr-12">
           <SheetTitle>Studio</SheetTitle>
           <SheetDescription>
@@ -139,6 +162,7 @@ export function ArtworkStudio({
         </SheetHeader>
         {open && (
           <StudioBody
+            layout={layout}
             saved={saved}
             team={team}
             loadSource={loadSource}
@@ -147,12 +171,14 @@ export function ArtworkStudio({
             onClose={() => onOpenChange(false)}
           />
         )}
+        <PrototypeSwitcher param="studio" variants={LAYOUTS} current={layout} />
       </SheetContent>
     </Sheet>
   );
 }
 
 function StudioBody({
+  layout,
   saved,
   team,
   loadSource,
@@ -160,6 +186,7 @@ function StudioBody({
   onReplace,
   onClose,
 }: {
+  readonly layout: Layout;
   readonly saved: ArtworkStyle;
   readonly team: AuthoredTeam;
   readonly loadSource: () => Promise<Source>;
@@ -234,99 +261,122 @@ function StudioBody({
     else setSaving({ kind: "failed", message });
   };
 
+  const previews = usePreviews(ready, team, draft);
+
+  const status = (
+    <>
+      {loaded.kind === "loading" && (
+        <p role="status" className="flex items-center gap-2 text-muted-foreground">
+          <Spinner aria-hidden="true" role={undefined} />
+          Loading the original artwork…
+        </p>
+      )}
+      {loaded.kind === "failed" && (
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-destructive">
+          {loaded.message}
+          <Button variant="outline" size="sm" onClick={() => setAttempt((n) => n + 1)}>
+            Try again
+          </Button>
+        </div>
+      )}
+      {cutting?.kind === "failed" && (
+        <p role="alert" className="text-destructive">
+          {cutting.message}
+        </p>
+      )}
+    </>
+  );
+
+  const preview = (fit: PreviewFit) =>
+    ready !== undefined && (
+      <StudioPreview
+        fit={fit}
+        previews={previews}
+        onMove={(x, y) => {
+          set("offsetX", tidy(clamp("offsetX", x)));
+          set("offsetY", tidy(clamp("offsetY", y)));
+        }}
+        onResize={(size) => set("size", tidy(clamp("size", size)))}
+        offset={{ x: finish.offsetX, y: finish.offsetY }}
+        size={finish.size}
+      />
+    );
+
+  const groups = {
+    cutout: (
+      <Group title="Cutout">
+        {ready !== undefined && <CutoutPreview cut={ready} />}
+        <Choices
+          label="Cutout"
+          options={CUTOUTS}
+          value={draft.cutout ?? AUTO_FINISH.cutout}
+          onChange={(value) => set("cutout", value)}
+        />
+        <RangeControl
+          setting="tolerance"
+          value={draft.tolerance ?? AUTO_FINISH.tolerance}
+          onChange={(value) => set("tolerance", value)}
+          hint="Higher removes more of the backdrop or paper."
+        />
+      </Group>
+    ),
+    color: (
+      <Group title="Color">
+        <Choices
+          label="Color"
+          options={COLORS}
+          value={finish.color}
+          disabled={mode === undefined}
+          onChange={(value) => set("color", value)}
+        />
+        <RangeControl
+          setting="detail"
+          value={finish.detail}
+          disabled={mode === undefined}
+          onChange={(value) => set("detail", value)}
+        />
+        <TeamShades
+          checked={finish.teamShades}
+          team={team}
+          onChange={(checked) => set("teamShades", checked)}
+        />
+      </Group>
+    ),
+    finish: (
+      <Group title="Finish">
+        {(["texture", "outline", "shadow", "shadowBlur", "shadowY"] as const).map((setting) => (
+          <RangeControl
+            key={setting}
+            setting={setting}
+            value={finish[setting]}
+            onChange={(value) => set(setting, value)}
+          />
+        ))}
+      </Group>
+    ),
+    position: (
+      <Group title="Size and position">
+        {(["size", "offsetX", "offsetY"] as const).map((setting) => (
+          <RangeControl
+            key={setting}
+            setting={setting}
+            value={finish[setting]}
+            onChange={(value) => set(setting, value)}
+          />
+        ))}
+      </Group>
+    ),
+  };
+
+  const replacement = <TransparentReplacement onChoose={(file) => onReplace(file, draft)} />;
+  const parts = { status, preview, groups, replacement, previews };
+
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4">
-        {loaded.kind === "loading" && (
-          <p role="status" className="flex items-center gap-2 text-muted-foreground">
-            <Spinner aria-hidden="true" role={undefined} />
-            Loading the original artwork…
-          </p>
-        )}
-        {loaded.kind === "failed" && (
-          <div role="alert" className="flex flex-wrap items-center gap-2 text-destructive">
-            {loaded.message}
-            <Button variant="outline" size="sm" onClick={() => setAttempt((n) => n + 1)}>
-              Try again
-            </Button>
-          </div>
-        )}
-        {ready !== undefined && (
-          <StudioPreview
-            cut={ready}
-            team={team}
-            settings={draft}
-            onMove={(x, y) => {
-              set("offsetX", tidy(clamp("offsetX", x)));
-              set("offsetY", tidy(clamp("offsetY", y)));
-            }}
-            onResize={(size) => set("size", tidy(clamp("size", size)))}
-            offset={{ x: finish.offsetX, y: finish.offsetY }}
-            size={finish.size}
-          />
-        )}
-        {cutting?.kind === "failed" && (
-          <p role="alert" className="text-destructive">
-            {cutting.message}
-          </p>
-        )}
-        <Group title="Cutout">
-          {ready !== undefined && <CutoutPreview cut={ready} />}
-          <Choices
-            label="Cutout"
-            options={CUTOUTS}
-            value={draft.cutout ?? AUTO_FINISH.cutout}
-            onChange={(value) => set("cutout", value)}
-          />
-          <RangeControl
-            setting="tolerance"
-            value={draft.tolerance ?? AUTO_FINISH.tolerance}
-            onChange={(value) => set("tolerance", value)}
-            hint="Higher removes more of the backdrop or paper."
-          />
-        </Group>
-        <Group title="Color">
-          <Choices
-            label="Color"
-            options={COLORS}
-            value={finish.color}
-            disabled={mode === undefined}
-            onChange={(value) => set("color", value)}
-          />
-          <RangeControl
-            setting="detail"
-            value={finish.detail}
-            disabled={mode === undefined}
-            onChange={(value) => set("detail", value)}
-          />
-          <TeamShades
-            checked={finish.teamShades}
-            team={team}
-            onChange={(checked) => set("teamShades", checked)}
-          />
-        </Group>
-        <Group title="Finish">
-          {(["texture", "outline", "shadow", "shadowBlur", "shadowY"] as const).map((setting) => (
-            <RangeControl
-              key={setting}
-              setting={setting}
-              value={finish[setting]}
-              onChange={(value) => set(setting, value)}
-            />
-          ))}
-        </Group>
-        <Group title="Size and position">
-          {(["size", "offsetX", "offsetY"] as const).map((setting) => (
-            <RangeControl
-              key={setting}
-              setting={setting}
-              value={finish[setting]}
-              onChange={(value) => set(setting, value)}
-            />
-          ))}
-        </Group>
-        <TransparentReplacement onChoose={(file) => onReplace(file, draft)} />
-      </div>
+      {layout === "sticky" && <StickyLayout {...parts} />}
+      {layout === "split" && <SplitLayout {...parts} />}
+      {layout === "pip" && <PipLayout {...parts} />}
+      {layout === "tabs" && <TabsLayout {...parts} />}
       <SheetFooter className="shrink-0 gap-3 border-t">
         <p className="text-sm text-muted-foreground">
           {changed.length === 0 ? (
@@ -367,6 +417,173 @@ function StudioBody({
         </div>
       </SheetFooter>
     </>
+  );
+}
+
+type Previews = ReadonlyArray<{ readonly variant: IconVariant; readonly url: string }>;
+
+// Rendering every variant takes a moment; coalesce rapid slider changes into one frame.
+function usePreviews(cut: Cutout | undefined, team: AuthoredTeam, settings: ArtworkStyle) {
+  const [previews, setPreviews] = useState<Previews>([]);
+
+  useEffect(() => {
+    if (cut === undefined) return;
+
+    const frame = requestAnimationFrame(() => setPreviews(previewVariants(cut, team, settings)));
+
+    return () => cancelAnimationFrame(frame);
+  }, [cut, team, settings]);
+
+  return previews;
+}
+
+type PreviewFit = "full" | "compact" | "column";
+
+const STAGE_SIZES: Record<PreviewFit, string> = {
+  full: "size-40 sm:size-48",
+  compact: "size-28 sm:size-32",
+  column: "size-28 sm:size-32 md:size-72",
+};
+
+type GroupKey = "cutout" | "color" | "finish" | "position";
+
+interface LayoutParts {
+  readonly status: ReactNode;
+  readonly preview: (fit: PreviewFit) => ReactNode;
+  readonly groups: Record<GroupKey, ReactNode>;
+  readonly replacement: ReactNode;
+  readonly previews: Previews;
+}
+
+const GROUP_ORDER: ReadonlyArray<readonly [GroupKey, string]> = [
+  ["cutout", "Cutout"],
+  ["color", "Color"],
+  ["finish", "Finish"],
+  ["position", "Position"],
+];
+
+const allGroups = (groups: LayoutParts["groups"]) =>
+  GROUP_ORDER.map(([key]) => <div key={key}>{groups[key]}</div>);
+
+/** PROTOTYPE A: one scroll column; a compact preview pins to the top. */
+function StickyLayout({ status, preview, groups, replacement }: LayoutParts) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="sticky top-0 z-10 flex flex-col gap-3 border-b bg-popover/95 p-4 backdrop-blur">
+        {status}
+        {preview("compact")}
+      </div>
+      <div className="flex flex-col gap-6 p-4">
+        {allGroups(groups)}
+        {replacement}
+      </div>
+    </div>
+  );
+}
+
+/** PROTOTYPE B: a wider drawer; preview column beside an independently scrolling control column. */
+function SplitLayout({ status, preview, groups, replacement }: LayoutParts) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      <div className="flex shrink-0 flex-col gap-3 border-b p-4 md:w-88 md:overflow-y-auto md:border-r md:border-b-0">
+        {status}
+        {preview("column")}
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4">
+        {allGroups(groups)}
+        {replacement}
+      </div>
+    </div>
+  );
+}
+
+/** PROTOTYPE C: today's layout, plus a picture-in-picture preview once the real one scrolls away. */
+function PipLayout({ status, preview, groups, replacement, previews }: LayoutParts) {
+  const scroller = useRef<HTMLDivElement>(null);
+  const anchor = useRef<HTMLDivElement>(null);
+  const [away, setAway] = useState(false);
+
+  useEffect(() => {
+    const root = scroller.current;
+    const target = anchor.current;
+
+    if (root === null || target === null) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setAway(entry !== undefined && !entry.isIntersecting),
+      { root, threshold: 0.4 },
+    );
+
+    observer.observe(target);
+
+    return () => observer.disconnect();
+  }, []);
+
+  const [first, ...rest] = previews;
+
+  return (
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div ref={scroller} className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4">
+        {status}
+        <div ref={anchor}>{preview("full")}</div>
+        {allGroups(groups)}
+        {replacement}
+      </div>
+      {away && first !== undefined && (
+        <button
+          type="button"
+          onClick={() => scroller.current?.scrollTo({ top: 0, behavior: "smooth" })}
+          className="absolute right-4 bottom-4 z-10 flex flex-col items-center gap-1.5 rounded-xl border bg-popover p-2 text-xs text-muted-foreground shadow-lg transition hover:shadow-xl"
+        >
+          <img
+            src={first.url}
+            alt=""
+            width={ICON_SIZE}
+            height={ICON_SIZE}
+            className="checkerboard size-28 rounded-md border"
+          />
+          <span className="flex gap-1">
+            {rest.map(({ variant, url }) => (
+              <img key={variant} src={url} alt="" className="size-8" />
+            ))}
+          </span>
+          <span className="flex items-center gap-1">
+            <ArrowUpIcon /> Back to preview
+          </span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** PROTOTYPE D: preview never scrolls; one control group at a time in tabs below it. */
+function TabsLayout({ status, preview, groups, replacement }: LayoutParts) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 flex-col gap-3 border-b p-4">
+        {status}
+        {preview("full")}
+      </div>
+      <Tabs defaultValue="cutout" className="min-h-0 flex-1 gap-0">
+        <TabsList className="mx-4 mt-3 w-auto shrink-0">
+          {GROUP_ORDER.map(([key, label]) => (
+            <TabsTrigger key={key} value={key}>
+              {label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {GROUP_ORDER.map(([key]) => (
+          <TabsContent
+            key={key}
+            value={key}
+            className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4"
+          >
+            {groups[key]}
+            {key === "cutout" && replacement}
+          </TabsContent>
+        ))}
+      </Tabs>
+    </div>
   );
 }
 
@@ -506,36 +723,23 @@ const SIZE_STEP = 0.02;
  * art, scrolled to resize it, or focused and moved with the keyboard.
  */
 function StudioPreview({
-  cut,
-  team,
-  settings,
+  fit,
+  previews,
   offset,
   size,
   onMove,
   onResize,
 }: {
-  readonly cut: Cutout;
-  readonly team: AuthoredTeam;
-  readonly settings: ArtworkStyle;
+  readonly fit: PreviewFit;
+  readonly previews: Previews;
   readonly offset: { readonly x: number; readonly y: number };
   readonly size: number;
   readonly onMove: (x: number, y: number) => void;
   readonly onResize: (size: number) => void;
 }) {
-  const [previews, setPreviews] = useState<
-    ReadonlyArray<{ readonly variant: IconVariant; readonly url: string }>
-  >([]);
-
   const drag = useRef<{ x: number; y: number; ox: number; oy: number; k: number } | null>(null);
   const stage = useRef<HTMLDivElement>(null);
   const helpId = useId();
-
-  // Rendering every variant takes a moment; coalesce rapid slider changes into one frame.
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => setPreviews(previewVariants(cut, team, settings)));
-
-    return () => cancelAnimationFrame(frame);
-  }, [cut, team, settings]);
 
   // Scrolling resizes rather than scrolls the drawer, which React's passive wheel events can't stop.
   const resize = useRef(onResize);
@@ -615,7 +819,13 @@ function StudioPreview({
 
   return (
     <section aria-label="Live preview" className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-end gap-4">
+      <div
+        className={cn(
+          "flex items-end gap-4",
+          fit === "compact" ? "flex-nowrap" : "flex-wrap",
+          fit === "column" && "md:flex-col md:items-start",
+        )}
+      >
         <div
           ref={stage}
           role="img"
@@ -627,7 +837,10 @@ function StudioPreview({
           onPointerUp={() => (drag.current = null)}
           onPointerCancel={() => (drag.current = null)}
           onKeyDown={onKeyDown}
-          className="checkerboard size-40 shrink-0 cursor-move touch-none overflow-hidden rounded-lg border outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:size-48"
+          className={cn(
+            "checkerboard shrink-0 cursor-move touch-none overflow-hidden rounded-lg border outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+            STAGE_SIZES[fit],
+          )}
         >
           {first !== undefined && (
             <img
@@ -640,16 +853,28 @@ function StudioPreview({
             />
           )}
         </div>
-        <ul aria-label="Preview variants" className="flex flex-wrap gap-4">
+        <ul
+          aria-label="Preview variants"
+          className={cn("flex flex-wrap", fit === "compact" ? "gap-2" : "gap-4")}
+        >
           {previews.map(({ variant, url }) => (
             <li key={variant} className="flex flex-col items-center gap-1 text-xs">
-              <img src={url} alt="" width={ICON_SIZE} height={ICON_SIZE} className="size-16" />
+              <img
+                src={url}
+                alt=""
+                width={ICON_SIZE}
+                height={ICON_SIZE}
+                className={fit === "compact" ? "size-12" : "size-16"}
+              />
               {ICON_VARIANT_LABELS[variant]}
             </li>
           ))}
         </ul>
       </div>
-      <p id={helpId} className="text-xs text-muted-foreground">
+      <p
+        id={helpId}
+        className={cn("text-xs text-muted-foreground", fit === "compact" && "sr-only")}
+      >
         Drag the large preview to move the art and scroll on it to resize. With the keyboard, focus
         it and use the arrow keys to move (Shift for bigger steps) and + or − to resize.
       </p>
