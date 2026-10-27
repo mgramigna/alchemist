@@ -53,6 +53,9 @@ const measure = (page: Page, path: string) =>
 
 const studio = (page: Page) => page.getByRole("dialog", { name: "Studio" });
 
+// The large, draggable preview of the first variant.
+const stage = (page: Page) => studio(page).getByRole("img", { name: /preview: position/ });
+
 // Radios are visually hidden inside their labels; click the label as a pointer user would.
 const choose = (radio: Locator) => radio.locator("xpath=ancestor::label[1]").click();
 
@@ -295,6 +298,10 @@ test("the Studio fits a narrow screen and saves by keyboard", async ({ page }, i
   expect(dialog?.width).toBeLessThanOrEqual(375);
   await page.screenshot({ path: info.outputPath("studio-narrow.png") });
 
+  // The preview stays pinned above the controls while the last of them scroll into view (#69).
+  await studio(page).getByRole("slider", { name: "Vertical position" }).scrollIntoViewIfNeeded();
+  await expect(stage(page)).toBeInViewport({ ratio: 1 });
+
   await studio(page).getByRole("slider", { name: "Texture" }).focus();
   await page.keyboard.press("Home");
   const save = studio(page).getByRole("button", { name: "Save" });
@@ -306,4 +313,27 @@ test("the Studio fits a narrow screen and saves by keyboard", async ({ page }, i
     .poll(async () => (await readCharacter(page, scriptId, NAMES.traveller)).artwork?.style)
     .toEqual({ look: "auto", texture: 0 });
   await expect(icon).toContainText("Customized: texture");
+});
+
+test("the Studio keeps the preview beside the controls on a wide screen", async ({ page }) => {
+  await signIn(page);
+  const scriptId = await seedScript(page);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const icon = await openCharacter(page, scriptId, NAMES.traveller);
+  await upload(page, "lineart");
+  await expect(variantImages(icon).first()).toHaveAttribute("src", /^\/artwork\//);
+  await icon.getByRole("button", { name: "Customize in Studio" }).click();
+  await expect(stage(page)).toBeVisible();
+  await page.waitForFunction(() => document.getAnimations().length === 0);
+
+  // Adjusting the last slider still shows its effect on the preview (#69).
+  const before = await stage(page).locator("img").getAttribute("src");
+  const slider = studio(page).getByRole("slider", { name: "Vertical position" });
+  await slider.scrollIntoViewIfNeeded();
+  await slider.fill("40");
+  await expect(stage(page)).toBeInViewport({ ratio: 1 });
+  await expect(stage(page).locator("img")).not.toHaveAttribute("src", before ?? "");
+
+  const [preview, control] = await Promise.all([stage(page).boundingBox(), slider.boundingBox()]);
+  expect(preview!.x + preview!.width).toBeLessThan(control!.x);
 });

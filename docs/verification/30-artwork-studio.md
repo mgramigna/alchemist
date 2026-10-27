@@ -15,6 +15,8 @@ and default 6 of the approved spec in [#18](https://github.com/mgramigna/alchemi
   - scrolled on to resize it;
   - focused and moved with the arrow keys (Shift for bigger steps), or resized
     with + and −.
+- The preview stays in view while the controls scroll; see
+  [#69](69-studio-preview.md).
 - Controls follow the prototype's Studio:
   - **Cutout**: Auto-detect, Use transparency as-is, Remove backdrop from the edges,
     Remove light paper; plus a tolerance slider. An after-cutout preview names the

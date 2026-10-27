@@ -107,7 +107,9 @@ type Saving =
 /**
  * The optional Studio (#13): a drawer of styling controls beside a live,
  * unpublished preview. Saving publishes new variants; until then the
- * Character keeps its current icons.
+ * Character keeps its current icons. The preview stays in view while the
+ * controls scroll (#69): beside them on wider screens, pinned above them on
+ * tall narrow ones.
  */
 export function ArtworkStudio({
   open,
@@ -129,7 +131,7 @@ export function ArtworkStudio({
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="gap-0 overflow-hidden data-[side=right]:w-full data-[side=right]:sm:max-w-xl">
+      <SheetContent className="gap-0 overflow-hidden data-[side=right]:w-full data-[side=right]:sm:max-w-xl data-[side=right]:md:max-w-4xl">
         <SheetHeader className="shrink-0 border-b pr-12">
           <SheetTitle>Studio</SheetTitle>
           <SheetDescription>
@@ -236,96 +238,100 @@ function StudioBody({
 
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4">
-        {loaded.kind === "loading" && (
-          <p role="status" className="flex items-center gap-2 text-muted-foreground">
-            <Spinner aria-hidden="true" role={undefined} />
-            Loading the original artwork…
-          </p>
-        )}
-        {loaded.kind === "failed" && (
-          <div role="alert" className="flex flex-wrap items-center gap-2 text-destructive">
-            {loaded.message}
-            <Button variant="outline" size="sm" onClick={() => setAttempt((n) => n + 1)}>
-              Try again
-            </Button>
-          </div>
-        )}
-        {ready !== undefined && (
-          <StudioPreview
-            cut={ready}
-            team={team}
-            settings={draft}
-            onMove={(x, y) => {
-              set("offsetX", tidy(clamp("offsetX", x)));
-              set("offsetY", tidy(clamp("offsetY", y)));
-            }}
-            onResize={(size) => set("size", tidy(clamp("size", size)))}
-            offset={{ x: finish.offsetX, y: finish.offsetY }}
-            size={finish.size}
-          />
-        )}
-        {cutting?.kind === "failed" && (
-          <p role="alert" className="text-destructive">
-            {cutting.message}
-          </p>
-        )}
-        <Group title="Cutout">
-          {ready !== undefined && <CutoutPreview cut={ready} />}
-          <Choices
-            label="Cutout"
-            options={CUTOUTS}
-            value={draft.cutout ?? AUTO_FINISH.cutout}
-            onChange={(value) => set("cutout", value)}
-          />
-          <RangeControl
-            setting="tolerance"
-            value={draft.tolerance ?? AUTO_FINISH.tolerance}
-            onChange={(value) => set("tolerance", value)}
-            hint="Higher removes more of the backdrop or paper."
-          />
-        </Group>
-        <Group title="Color">
-          <Choices
-            label="Color"
-            options={COLORS}
-            value={finish.color}
-            disabled={mode === undefined}
-            onChange={(value) => set("color", value)}
-          />
-          <RangeControl
-            setting="detail"
-            value={finish.detail}
-            disabled={mode === undefined}
-            onChange={(value) => set("detail", value)}
-          />
-          <TeamShades
-            checked={finish.teamShades}
-            team={team}
-            onChange={(checked) => set("teamShades", checked)}
-          />
-        </Group>
-        <Group title="Finish">
-          {(["texture", "outline", "shadow", "shadowBlur", "shadowY"] as const).map((setting) => (
-            <RangeControl
-              key={setting}
-              setting={setting}
-              value={finish[setting]}
-              onChange={(value) => set(setting, value)}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
+        <div className="z-10 flex shrink-0 flex-col gap-3 border-b bg-popover p-4 tall:sticky tall:top-0 md:static md:w-88 md:overflow-y-auto md:border-r md:border-b-0">
+          {loaded.kind === "loading" && (
+            <p role="status" className="flex items-center gap-2 text-muted-foreground">
+              <Spinner aria-hidden="true" role={undefined} />
+              Loading the original artwork…
+            </p>
+          )}
+          {loaded.kind === "failed" && (
+            <div role="alert" className="flex flex-wrap items-center gap-2 text-destructive">
+              {loaded.message}
+              <Button variant="outline" size="sm" onClick={() => setAttempt((n) => n + 1)}>
+                Try again
+              </Button>
+            </div>
+          )}
+          {ready !== undefined && (
+            <StudioPreview
+              cut={ready}
+              team={team}
+              settings={draft}
+              onMove={(x, y) => {
+                set("offsetX", tidy(clamp("offsetX", x)));
+                set("offsetY", tidy(clamp("offsetY", y)));
+              }}
+              onResize={(size) => set("size", tidy(clamp("size", size)))}
+              offset={{ x: finish.offsetX, y: finish.offsetY }}
+              size={finish.size}
             />
-          ))}
-        </Group>
-        <Group title="Size and position">
-          {(["size", "offsetX", "offsetY"] as const).map((setting) => (
-            <RangeControl
-              key={setting}
-              setting={setting}
-              value={finish[setting]}
-              onChange={(value) => set(setting, value)}
+          )}
+          {cutting?.kind === "failed" && (
+            <p role="alert" className="text-destructive">
+              {cutting.message}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col gap-6 p-4 md:min-h-0 md:flex-1 md:overflow-y-auto">
+          <Group title="Cutout">
+            {ready !== undefined && <CutoutPreview cut={ready} />}
+            <Choices
+              label="Cutout"
+              options={CUTOUTS}
+              value={draft.cutout ?? AUTO_FINISH.cutout}
+              onChange={(value) => set("cutout", value)}
             />
-          ))}
-        </Group>
-        <TransparentReplacement onChoose={(file) => onReplace(file, draft)} />
+            <RangeControl
+              setting="tolerance"
+              value={draft.tolerance ?? AUTO_FINISH.tolerance}
+              onChange={(value) => set("tolerance", value)}
+              hint="Higher removes more of the backdrop or paper."
+            />
+          </Group>
+          <Group title="Color">
+            <Choices
+              label="Color"
+              options={COLORS}
+              value={finish.color}
+              disabled={mode === undefined}
+              onChange={(value) => set("color", value)}
+            />
+            <RangeControl
+              setting="detail"
+              value={finish.detail}
+              disabled={mode === undefined}
+              onChange={(value) => set("detail", value)}
+            />
+            <TeamShades
+              checked={finish.teamShades}
+              team={team}
+              onChange={(checked) => set("teamShades", checked)}
+            />
+          </Group>
+          <Group title="Finish">
+            {(["texture", "outline", "shadow", "shadowBlur", "shadowY"] as const).map((setting) => (
+              <RangeControl
+                key={setting}
+                setting={setting}
+                value={finish[setting]}
+                onChange={(value) => set(setting, value)}
+              />
+            ))}
+          </Group>
+          <Group title="Size and position">
+            {(["size", "offsetX", "offsetY"] as const).map((setting) => (
+              <RangeControl
+                key={setting}
+                setting={setting}
+                value={finish[setting]}
+                onChange={(value) => set(setting, value)}
+              />
+            ))}
+          </Group>
+          <TransparentReplacement onChoose={(file) => onReplace(file, draft)} />
+        </div>
       </div>
       <SheetFooter className="shrink-0 gap-3 border-t">
         <p className="text-sm text-muted-foreground">
@@ -615,7 +621,7 @@ function StudioPreview({
 
   return (
     <section aria-label="Live preview" className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-end gap-4">
+      <div className="flex items-end gap-4 md:flex-col md:items-start">
         <div
           ref={stage}
           role="img"
@@ -627,7 +633,7 @@ function StudioPreview({
           onPointerUp={() => (drag.current = null)}
           onPointerCancel={() => (drag.current = null)}
           onKeyDown={onKeyDown}
-          className="checkerboard size-40 shrink-0 cursor-move touch-none overflow-hidden rounded-lg border outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:size-48"
+          className="checkerboard size-28 shrink-0 cursor-move touch-none overflow-hidden rounded-lg border outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:size-32 md:size-72"
         >
           {first !== undefined && (
             <img
@@ -640,16 +646,23 @@ function StudioPreview({
             />
           )}
         </div>
-        <ul aria-label="Preview variants" className="flex flex-wrap gap-4">
+        <ul aria-label="Preview variants" className="flex flex-wrap gap-2 md:gap-4">
           {previews.map(({ variant, url }) => (
             <li key={variant} className="flex flex-col items-center gap-1 text-xs">
-              <img src={url} alt="" width={ICON_SIZE} height={ICON_SIZE} className="size-16" />
+              <img
+                src={url}
+                alt=""
+                width={ICON_SIZE}
+                height={ICON_SIZE}
+                className="size-12 md:size-16"
+              />
               {ICON_VARIANT_LABELS[variant]}
             </li>
           ))}
         </ul>
       </div>
-      <p id={helpId} className="text-xs text-muted-foreground">
+      {/* Too long to pin on narrow screens, but still describes the preview. */}
+      <p id={helpId} className="sr-only text-xs text-muted-foreground md:not-sr-only">
         Drag the large preview to move the art and scroll on it to resize. With the keyboard, focus
         it and use the arrow keys to move (Shift for bigger steps) and + or − to resize.
       </p>

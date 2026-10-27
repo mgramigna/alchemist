@@ -5,6 +5,8 @@
 @import "@fontsource/sorts-mill-goudy";
 
 @custom-variant dark (&:is(.dark *));
+/* Tall enough to pin a panel without crowding out what scrolls beneath it. */
+@custom-variant tall (@media (min-height: 40rem));
 
 /* Light: warm paper and ink from the Script editor prototype (#15). */
 :root {
