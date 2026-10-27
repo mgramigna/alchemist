@@ -253,10 +253,16 @@ it.effect(
         const document = JSON.parse(response.exit.value.json);
         assert.strictEqual(document[0].name, "Untitled Script");
         assert.strictEqual(document.length, 5);
-        assert.include(document[1].image[0], `${origin}/icons/generic/v1/`);
+        assert.include(document[1].image[0], "https://assets.alchemist.test/icons/generic/v1/");
         const bob = yield* signIn("bob");
         assert.strictEqual((yield* exportRequest(bob)).exit.cause[0].error._tag, "ScriptNotFound");
-      }).pipe(Effect.provide([a.layer, s.layer, config]));
+      }).pipe(
+        Effect.provide([
+          a.layer,
+          s.layer,
+          Layer.succeed(AppConfig, { origin, assetOrigin: "https://assets.alchemist.test" }),
+        ]),
+      );
     }),
 );
 

@@ -1,5 +1,6 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import { AlchemyContext } from "alchemy/AlchemyContext";
+import * as RemovalPolicy from "alchemy/RemovalPolicy";
 import { Effect, Option } from "effect";
 
 export const Database = Cloudflare.D1.Database(
@@ -16,4 +17,4 @@ export const Database = Cloudflare.D1.Database(
         : [],
     };
   }),
-);
+).pipe(RemovalPolicy.retain());

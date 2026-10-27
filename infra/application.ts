@@ -12,7 +12,11 @@ import { Database } from "./database.ts";
 import { ArtworkSources, PublishedArtwork } from "./storage.ts";
 
 // Both entrypoints use the same application; only the external identity adapter differs.
-export const application = (origin: string, identity: Layer.Layer<GoogleIdentityProvider>) =>
+export const application = (
+  origin: string,
+  identity: Layer.Layer<GoogleIdentityProvider>,
+  assetOrigin = origin,
+) =>
   Effect.gen(function* () {
     const database = yield* Cloudflare.D1.QueryDatabase(Database);
     const sources = yield* Cloudflare.R2.ReadWriteBucket(ArtworkSources);
@@ -21,7 +25,7 @@ export const application = (origin: string, identity: Layer.Layer<GoogleIdentity
     const services = Layer.mergeAll(
       ScriptsLive.pipe(Layer.provide(D1ScriptStore)),
       AuthLive.pipe(Layer.provide(D1AuthStore), Layer.provide(identity)),
-      Layer.succeed(AppConfig, { origin }),
+      Layer.succeed(AppConfig, { origin, assetOrigin }),
     ).pipe(Layer.provide(SQL.D1Layer(database)));
 
     return {

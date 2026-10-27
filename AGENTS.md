@@ -25,7 +25,7 @@ Before editing files for a substantial task:
 
 ### Commands
 
-- Bun is the package manager and the Vitest runner (`bun run test` uses `bun --bun vitest run`). Run app code and builds with Node. Do not use `bun test`; it bypasses the root Vitest config.
+- Bun is the package manager and the Vitest runner (`bun run test` uses `bun --bun vitest run`). Do not use `bun test`; it bypasses the root Vitest config.
 - Root verification: `bun run check` (runs `fmt:check`, `lint`, `typecheck`, `test`). Run it before handing off unless the user says to skip verification.
 - Effect diagnostics come from type-aware Oxlint (`bun run lint`), not `tsc`. The Effect language service has `diagnostics: false` so editors don't report them twice.
 - Shared versions live in the root `workspaces.catalog`; reference them from packages with `"catalog:"`. All `effect` / `@effect/*` v4 packages stay on the same version.

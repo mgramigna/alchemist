@@ -12,6 +12,7 @@ export class AppConfig extends Context.Service<
   AppConfig,
   {
     readonly origin: string;
+    readonly assetOrigin?: string;
   }
 >()("alchemist/AppConfig") {}
 
@@ -114,7 +115,10 @@ export const handleRequest = Effect.fn("App.handleRequest")(function* (request: 
 
   const config = yield* AppConfig;
   const services = yield* Effect.context<Auth | Scripts>();
-  const context = Context.add(services, ExportOrigin, { origin: config.origin });
+
+  const context = Context.add(services, ExportOrigin, {
+    origin: config.assetOrigin ?? config.origin,
+  });
 
   const response = yield* Effect.promise(() => rpcApp.handler(request, context));
 

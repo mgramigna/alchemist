@@ -27,6 +27,13 @@ Press Ctrl+C to stop both servers.
 For Google sign-in configuration and the real-provider smoke check, see
 [authentication setup](docs/authentication.md).
 
+## Production
+
+See [production deployment](docs/deployment.md) for Cloudflare/domain and Google
+prerequisites, private configuration, state bootstrap, manual promotion and
+required deployed smoke checks. Production uses `alchemist.town` and
+`assets.alchemist.town`; credentials never belong in Git.
+
 ## Checks
 
 ```sh
