@@ -116,7 +116,12 @@ test("D1 switches artwork only from the expected original, scoped to the owner, 
     Effect.gen(function* () {
       const scripts = yield* ScriptStore;
       const first = artwork("aaaaaaaaaaaaaaaaaaaaaaaaa1");
-      const second = artwork("aaaaaaaaaaaaaaaaaaaaaaaaa2", "minion");
+
+      // Studio settings round-trip through D1 alongside the Look.
+      const second: StoredArtwork = {
+        ...artwork("aaaaaaaaaaaaaaaaaaaaaaaaa2", "minion"),
+        style: { look: "shaded", cutout: "edge", tolerance: 0.15, teamShades: true, offsetX: -12 },
+      };
 
       expect(yield* scripts.replaceArtwork("bob", scriptId, characterId, first, null, 3)).toBe(
         false,

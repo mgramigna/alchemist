@@ -27,7 +27,7 @@ Issue: [#28](https://github.com/mgramigna/alchemist/issues/28). Decision:
   every requested sheet is blocked, with a **Try again** button. A stylesheet font
   face that has failed never loads again, so the retry re-adds the sheet faces from
   their `@font-face` rules.
-- Icons: each sheet icon carries a Team-coloured fallback token inlined as a data URL.
+- Icons: each sheet icon carries a Team-colored fallback token inlined as a data URL.
   An icon that fails to load in the preview or the offscreen copy switches to the
   token. During capture, an icon still loading after 15 s also switches. So does an
   icon that modern-screenshot can't embed (its `placeholderImage`). The status warns

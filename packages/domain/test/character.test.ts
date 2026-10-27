@@ -27,7 +27,7 @@ const instructions = (firstNightInstructions: string, otherNightInstructions: st
 
 const id = (n: number) => CharacterId.make(`01k8ae1000000000000000000${n}`);
 
-test("Fabled and Loric are recognised Teams but cannot be authored", () => {
+test("Fabled and Loric are recognized Teams but cannot be authored", () => {
   expect(Schema.is(Team)("fabled")).toBe(true);
   expect(Schema.is(Team)("loric")).toBe(true);
   expect(Schema.is(AuthoredTeam)("fabled")).toBe(false);

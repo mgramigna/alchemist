@@ -84,7 +84,7 @@ const AuthorCreditInput = Schema.toStandardSchemaV1(AuthorCredit);
 const combinedStatus = (...statuses: ReadonlyArray<SaveStatus>): SaveStatus =>
   statuses.includes("failed") ? "failed" : statuses.includes("pending") ? "pending" : "saved";
 
-// What the centre pane is editing.
+// What the center pane is editing.
 type Page =
   | { readonly kind: "script" }
   | { readonly kind: "character"; readonly id: CharacterId }

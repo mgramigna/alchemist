@@ -44,6 +44,8 @@ export {
   IconVariant,
   ArtworkVariant,
   ArtworkLook,
+  ArtworkCutout,
+  ArtworkColor,
   ArtworkStyle,
   PublishedArtwork,
   CharacterArtwork,

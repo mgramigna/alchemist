@@ -100,7 +100,7 @@ export const railOf = (team: AuthoredTeam): Rail => defaultAlignment(team) ?? "t
 const RING: Record<Rail, string> = { good: "#1d5fae", evil: "#a3171d", traveller: "#5b4a7a" };
 
 /**
- * A plain Team-coloured token, inlined so it cannot fail to load. It stands in
+ * A plain Team-colored token, inlined so it cannot fail to load. It stands in
  * for any Character icon that does not load.
  */
 export const fallbackIcon = (team: AuthoredTeam) =>

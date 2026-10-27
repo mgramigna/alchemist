@@ -13,9 +13,9 @@ spec's local-cutout/procedural-texture scope in
   section. The browser decodes it and cuts it out locally. It keeps the image's own
   transparency, removes light paper behind an ink drawing, or otherwise floods the
   backdrop in from the edges. It then renders the Team's 400×400 PNG variants:
-  `[regular, flipped]`, or `[unaligned, good, evil]` for Travellers. Colours,
+  `[regular, flipped]`, or `[unaligned, good, evil]` for Travellers. Colors,
   procedural texture, outline and shadow are ported from the approved prototype
-  (variant D). There is no keep-original-colours option.
+  (variant D). There is no keep-original-colors option.
 - The **Look** picker (Auto, Solid, Shaded, Pale lines) is a native radio group
   with rendered thumbnails. Auto shows what it chose: Solid for transparent or ink
   art, Pale lines for photos. A note states which cutout was used. The Studio
@@ -104,7 +104,7 @@ spec's local-cutout/procedural-texture scope in
 - Styled output was inspected visually from E2E screenshots. The ink chalice
   renders as a textured blue (regular) and red (flipped) silhouette with a cream
   outline. Minion's regular variant is Evil. The Traveller variants split
-  blue/red, blue/gold and gold/red at the art's bounding-box centre.
+  blue/red, blue/gold and gold/red at the art's bounding-box center.
 
 ## Limits and unsatisfactory cases
 
@@ -116,7 +116,7 @@ spec's local-cutout/procedural-texture scope in
   border will not flood away cleanly. The approved remedies are Studio tuning (#30)
   or uploading a version with a transparent background. There is no manual eraser
   or hosted segmentation in v1.
-- Lopsided art may look odd with the Traveller split at the bounding-box centre.
+- Lopsided art may look odd with the Traveller split at the bounding-box center.
   This is unchanged from the approved prototype and is to be assessed with real
   examples.
 - Styling runs in the uploader's browser, so pixels may differ slightly between

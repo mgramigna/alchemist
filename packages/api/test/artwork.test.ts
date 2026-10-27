@@ -229,6 +229,89 @@ it.effect("uploads are validated and authorized before anything is stored", () =
 );
 
 it.effect(
+  "Studio settings persist per Character, replay on Team changes and reset to auto; old variants stay published",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* scriptsFixture;
+      yield* Effect.gen(function* () {
+        const { scripts, script, character } = yield* setup;
+        const uploaded = yield* scripts.uploadArtwork(script.id, character.id, upload("outsider"));
+
+        const studio = {
+          look: "auto",
+          cutout: "edge",
+          tolerance: 0.2,
+          color: "shaded",
+          detail: 0.4,
+          teamShades: true,
+          texture: 0,
+          outline: 0,
+          shadow: 0.2,
+          shadowBlur: 4,
+          shadowY: -3,
+          size: 0.6,
+          offsetX: 30,
+          offsetY: -40,
+        } as const;
+
+        const customized = yield* scripts.restyleArtwork(script.id, character.id, {
+          sourceId: uploaded.sourceId,
+          style: studio,
+          team: "outsider",
+          variants: variantsFor("outsider", 1),
+        });
+
+        assert.deepStrictEqual(customized.style, studio);
+        assert.strictEqual(customized.sourceId, uploaded.sourceId);
+        assert.deepStrictEqual(
+          (yield* scripts.listCharacters(script.id))[0]?.artwork?.style,
+          studio,
+        );
+
+        // Viewers never see the settings, only the variants they produced.
+        const [viewed] = (yield* scripts.readPublic(script.id)).characters;
+        assert.deepStrictEqual(viewed?.artwork, {
+          team: "outsider",
+          variants: customized.variants,
+        });
+
+        // The editor replays the saved settings for the new Team; they are kept unchanged.
+        yield* scripts.updateCharacter(script.id, character.id, { ...character, team: "minion" });
+        assert.deepStrictEqual(
+          (yield* scripts.listCharacters(script.id))[0]?.artwork?.style,
+          studio,
+        );
+
+        const replayed = yield* scripts.restyleArtwork(script.id, character.id, {
+          sourceId: uploaded.sourceId,
+          style: studio,
+          team: "minion",
+          variants: variantsFor("minion", 2),
+        });
+
+        const reset = yield* scripts.restyleArtwork(script.id, character.id, {
+          sourceId: uploaded.sourceId,
+          style: { look: "auto" },
+          team: "minion",
+          variants: variantsFor("minion", 3),
+        });
+
+        assert.deepStrictEqual(reset.style, { look: "auto" });
+        assert.deepStrictEqual((yield* scripts.listCharacters(script.id))[0]?.artwork, reset);
+
+        // Every Studio replacement got fresh URLs, and none of the old ones were removed.
+        const paths = [uploaded, customized, replayed, reset].flatMap(({ variants }) =>
+          variants.map(({ path }) => path),
+        );
+
+        assert.strictEqual(new Set(paths).size, paths.length);
+
+        for (const path of paths) assert.isTrue(f.storage.published.has(path.slice(1)));
+      }).pipe(as(alice), Effect.provide(f.layer));
+    }),
+);
+
+it.effect(
   "a Team change waits for a restyle from the retained original; authored fields and style survive",
   () =>
     Effect.gen(function* () {

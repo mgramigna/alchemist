@@ -140,3 +140,41 @@ export class ArtworkNotFound extends Schema.TaggedError<
   ArtworkNotFound,
   { readonly brand: unique symbol }
 >()("ArtworkNotFound", { id: CharacterId }) {}
+
+/** A Studio setting: everything in a style except the Look. */
+export type StudioSetting = Exclude<keyof ArtworkStyle, "look">;
+
+/** Upload, Reset to auto and every absent setting use the automatic style. */
+export const AUTO_STYLE: ArtworkStyle = { look: "auto" };
+
+/** What each absent setting means. Color and interior lines follow the Look instead. */
+export const AUTO_FINISH = {
+  cutout: "auto",
+  tolerance: 0.08,
+  teamShades: false,
+  texture: 0.5,
+  outline: 3,
+  shadow: 0.55,
+  shadowBlur: 10,
+  shadowY: 6,
+  size: 0.8,
+  offsetX: 0,
+  offsetY: 0,
+} as const satisfies Omit<Required<ArtworkStyle>, "look" | "color" | "detail">;
+
+const CUSTOMIZATIONS: ReadonlyArray<readonly [string, ReadonlyArray<StudioSetting>]> = [
+  ["cutout", ["cutout", "tolerance"]],
+  ["color", ["color", "detail"]],
+  ["Team shades", ["teamShades"]],
+  ["texture", ["texture"]],
+  ["outline", ["outline"]],
+  ["shadow", ["shadow", "shadowBlur", "shadowY"]],
+  ["size", ["size"]],
+  ["position", ["offsetX", "offsetY"]],
+];
+
+/** Names the Studio settings that differ from automatic, for the Customized badge. */
+export const customizations = (style: ArtworkStyle): ReadonlyArray<string> =>
+  CUSTOMIZATIONS.flatMap(([label, keys]) =>
+    keys.some((key) => style[key] !== undefined) ? [label] : [],
+  );
