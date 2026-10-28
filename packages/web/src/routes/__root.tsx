@@ -9,6 +9,7 @@ import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { cn } from "cn";
 
 import { AccountMenu } from "../components/account.tsx";
+import { GitHubLink } from "../components/github-link.tsx";
 import { Button, buttonVariants } from "../components/ui/button.tsx";
 import { Toaster } from "../components/ui/sonner.tsx";
 import type { RouterContext } from "../router.tsx";
@@ -33,7 +34,7 @@ function RootLayout() {
       <header className="border-b border-border">
         <div
           className={cn(
-            "mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-6 md:px-12",
+            "mx-auto flex min-h-16 w-full max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 py-3 md:px-12",
             wide && "max-w-screen-2xl",
           )}
         >
@@ -47,7 +48,10 @@ function RootLayout() {
             </span>{" "}
             ALCHEMIST
           </Link>
-          <AccountMenu />
+          <div className="flex items-center gap-2">
+            <GitHubLink iconOnly />
+            <AccountMenu />
+          </div>
         </div>
       </header>
       <main
