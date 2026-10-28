@@ -150,7 +150,7 @@ export function NightOrderEditor({
   return (
     <section
       aria-labelledby="night-title"
-      className="flex min-w-0 flex-col gap-6 rounded-xl border border-border bg-card p-5 lg:col-span-5"
+      className="flex min-w-0 flex-col gap-6 rounded-xl border border-border bg-card p-5 lg:col-span-5 lg:self-start"
     >
       <div className="flex flex-col gap-1">
         <h2 id="night-title" className="text-xl font-semibold">

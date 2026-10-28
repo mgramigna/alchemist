@@ -267,7 +267,7 @@ export function CharacterForm({
     <form.AppForm>
       <form.Form
         aria-labelledby="character-title"
-        className="flex min-w-0 flex-col gap-6 rounded-xl border border-border bg-card p-5 lg:col-span-5"
+        className="flex min-w-0 flex-col gap-6 rounded-xl border border-border bg-card p-5 lg:col-span-5 lg:self-start"
       >
         <div className="flex flex-wrap items-center gap-3">
           <CharacterToken character={character} className="size-11" />
