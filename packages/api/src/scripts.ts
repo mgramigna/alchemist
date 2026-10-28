@@ -606,13 +606,13 @@ export const ScriptsLive = Layer.effect(
         reference.slots,
         (slot) =>
           slot.state === "copied"
-            ? Effect.succeed(undefined)
+            ? Effect.succeed(null)
             : copySlot(slot.source, assetOrigin).pipe(Effect.result),
         { concurrency: 3 },
       );
 
       const copies = results.map((result) =>
-        result !== undefined && Result.isSuccess(result) ? result.success : undefined,
+        result !== null && Result.isSuccess(result) ? result.success : undefined,
       );
 
       const next: ImportedArtwork = {
@@ -620,7 +620,7 @@ export const ScriptsLive = Layer.effect(
         slots: reference.slots.map((slot, index) => {
           const result = results[index];
 
-          if (result === undefined) return slot;
+          if (result === undefined || result === null) return slot;
 
           return Result.isSuccess(result)
             ? { source: slot.source, state: "copied" }

@@ -41,8 +41,8 @@
     "dev": "bun run build && bun run --no-orphans --parallel dev:api dev:web",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "lint": "oxlint",
-    "lint:fix": "oxlint --fix",
+    "lint": "oxlint --deny-warnings",
+    "lint:fix": "oxlint --fix --deny-warnings",
     "prepare": "husky && effect-tsgo patch --typescript --oxlint",
     "test": "bun --bun vitest run",
     "test:watch": "bun --bun vitest",
@@ -81,7 +81,7 @@
     ],
     "*.{js,jsx,ts,tsx}": [
       "oxfmt --no-error-on-unmatched-pattern",
-      "oxlint --fix --no-error-on-unmatched-pattern"
+      "oxlint --fix --deny-warnings --no-error-on-unmatched-pattern"
     ]
   },
   "engines": {
