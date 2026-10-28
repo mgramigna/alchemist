@@ -188,7 +188,8 @@ function ArtworkSlot({
       onDragLeave={() => setDragging(false)}
       onDrop={onDrop}
       className={cn(
-        "flex min-w-0 flex-col gap-3 rounded-lg border border-dashed p-3 transition-colors",
+        // Side by side, the slots share row tracks so their previews and hints line up.
+        "flex min-w-0 flex-col gap-3 rounded-lg border border-dashed p-3 transition-colors sm:row-span-4 sm:grid sm:grid-rows-subgrid",
         dragging && "border-ring bg-muted",
       )}
     >
@@ -253,24 +254,26 @@ function ArtworkSlot({
           </Button>
         )}
       </div>
-      <p className="text-xs text-muted-foreground">
-        PNG, JPEG, WebP or GIF up to 10 MB. You can also drop an image here.
-      </p>
-      {path !== null && credit}
-      {job.kind === "working" && (
-        <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner aria-hidden="true" role={undefined} />
-          {job.label}
+      <div className="flex flex-col gap-3">
+        <p className="text-xs text-muted-foreground">
+          PNG, JPEG, WebP or GIF up to 10 MB. You can also drop an image here.
         </p>
-      )}
-      {job.kind === "failed" && (
-        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
-          {job.message}
-          <Button variant="outline" size="sm" onClick={job.retry}>
-            Try again
-          </Button>
-        </div>
-      )}
+        {path !== null && credit}
+        {job.kind === "working" && (
+          <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Spinner aria-hidden="true" role={undefined} />
+            {job.label}
+          </p>
+        )}
+        {job.kind === "failed" && (
+          <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+            {job.message}
+            <Button variant="outline" size="sm" onClick={job.retry}>
+              Try again
+            </Button>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
