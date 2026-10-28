@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { Jinx } from "./jinx.ts";
-import { PublicCharacter } from "./character.ts";
+import { ArtworkCredit, PublicCharacter } from "./character.ts";
 import { NightOrders } from "./night.ts";
 
 export const ScriptId = Schema.String.pipe(Schema.brand("ScriptId"));
@@ -16,9 +16,12 @@ export const AuthorCredit = Schema.String.check(
   Schema.isMaxLength(100, { message: "Use 100 characters or fewer." }),
 );
 
+// Credits for the Script's logo and background, kept beside the other details.
 export const ScriptDetails = Schema.Struct({
   name: ScriptName,
   authorCredit: AuthorCredit,
+  logoCredit: ArtworkCredit,
+  backgroundCredit: ArtworkCredit,
 });
 
 export interface ScriptDetails extends Schema.Schema.Type<typeof ScriptDetails> {}
@@ -26,8 +29,7 @@ export interface ScriptDetails extends Schema.Schema.Type<typeof ScriptDetails> 
 // The Script Owner's view. Ownership is implied by who can read it.
 export const OwnedScript = Schema.Struct({
   id: ScriptId,
-  name: ScriptName,
-  authorCredit: AuthorCredit,
+  ...ScriptDetails.fields,
   // Milliseconds since the epoch of the last saved change.
   updatedAt: Schema.Finite,
 });
@@ -56,6 +58,8 @@ export const PublicScript = Schema.Struct({
   id: ScriptId,
   name: Schema.String,
   authorCredit: Schema.String,
+  logoCredit: Schema.String,
+  backgroundCredit: Schema.String,
   artwork: ScriptArtwork,
   characters: Schema.Array(PublicCharacter),
   nightOrders: NightOrders,

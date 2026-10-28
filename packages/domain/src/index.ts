@@ -19,6 +19,7 @@ export { AuthRejected, AuthUnavailable, DisplayName, User } from "./auth.ts";
 export {
   ReminderTokens,
   CharacterFlavor,
+  ArtworkCredit,
   REMINDER_COUNT_LIMIT,
   REMINDER_LABEL_LIMIT,
   FLAVOR_EXPORT_LIMIT,

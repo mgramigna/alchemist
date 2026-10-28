@@ -25,6 +25,7 @@ const noInstructions = {
   remindersGlobal: [],
   setup: false,
   flavor: "",
+  artworkCredit: "",
   firstNightInstructions: "",
   otherNightInstructions: "",
 };
@@ -37,7 +38,16 @@ const publicView = ({
   team,
   firstNightInstructions,
   otherNightInstructions,
-}: Character) => ({ id, name, ability, team, firstNightInstructions, otherNightInstructions });
+  artworkCredit,
+}: Character) => ({
+  id,
+  name,
+  ability,
+  team,
+  firstNightInstructions,
+  otherNightInstructions,
+  artworkCredit,
+});
 
 const id = ScriptId.make("01k8ac00000000000000000001");
 
@@ -45,6 +55,8 @@ const fixture = {
   id,
   name: "The Midnight Alchemist",
   authorCredit: "Independent credit",
+  logoCredit: "",
+  backgroundCredit: "",
   artwork: NO_SCRIPT_ARTWORK,
   characters: [],
   nightOrders: defaultNightOrders,
@@ -64,6 +76,8 @@ it.effect("anonymous read projects only public data and preserves independent Au
         id,
         name: fixture.name,
         authorCredit: fixture.authorCredit,
+        logoCredit: "",
+        backgroundCredit: "",
         artwork: NO_SCRIPT_ARTWORK,
         characters: [],
         nightOrders: defaultNightOrders,
@@ -143,8 +157,20 @@ it.effect(
         const created = yield* scripts.create().pipe(as(alice));
         assert.match(created.id, /^[0-7][0-9a-hjkmnp-tv-z]{25}$/);
         assert.deepStrictEqual(
-          { name: created.name, authorCredit: created.authorCredit, updatedAt: created.updatedAt },
-          { name: "Untitled Script", authorCredit: "Alice", updatedAt: 1_000 },
+          {
+            name: created.name,
+            authorCredit: created.authorCredit,
+            logoCredit: "",
+            backgroundCredit: "",
+            updatedAt: created.updatedAt,
+          },
+          {
+            name: "Untitled Script",
+            authorCredit: "Alice",
+            logoCredit: "",
+            backgroundCredit: "",
+            updatedAt: 1_000,
+          },
         );
         assert.strictEqual(f.rows.get(created.id)?.ownerId, alice.id);
 
@@ -174,13 +200,20 @@ it.effect(
         yield* TestClock.adjust(1_000);
 
         const updated = yield* scripts
-          .updateDetails(first.id, { name: "Night of Mirrors", authorCredit: "" })
+          .updateDetails(first.id, {
+            name: "Night of Mirrors",
+            authorCredit: "",
+            logoCredit: "",
+            backgroundCredit: "",
+          })
           .pipe(as(alice));
 
         assert.deepStrictEqual(updated, {
           id: first.id,
           name: "Night of Mirrors",
           authorCredit: "",
+          logoCredit: "",
+          backgroundCredit: "",
           updatedAt: 2_000,
         });
         assert.deepStrictEqual(
@@ -192,6 +225,8 @@ it.effect(
           id: first.id,
           name: "Night of Mirrors",
           authorCredit: "",
+          logoCredit: "",
+          backgroundCredit: "",
           artwork: NO_SCRIPT_ARTWORK,
           characters: [],
           nightOrders: defaultNightOrders,
@@ -218,7 +253,12 @@ it.effect(
           );
           assert.deepStrictEqual(
             yield* scripts
-              .updateDetails(id, { name: "Hijacked", authorCredit: "Bob" })
+              .updateDetails(id, {
+                name: "Hijacked",
+                authorCredit: "Bob",
+                logoCredit: "",
+                backgroundCredit: "",
+              })
               .pipe(as(bob), Effect.flip),
             new ScriptNotFound({ id }),
           );
@@ -253,6 +293,7 @@ it.effect(
             remindersGlobal: added.remindersGlobal,
             setup: added.setup,
             flavor: added.flavor,
+            artworkCredit: "",
           },
           { name: "", ability: "", team: "demon", ...noInstructions },
         );
@@ -451,6 +492,7 @@ it.effect(
             remindersGlobal: [],
             setup: false,
             flavor: "",
+            artworkCredit: "",
           })
           .pipe(as(alice));
 
@@ -596,6 +638,7 @@ it.effect("token, setup and flavor drafts survive Team changes and refuse anothe
         remindersGlobal: Array.from({ length: 21 }, () => "x".repeat(26)),
         setup: true,
         flavor: "x".repeat(501),
+        artworkCredit: "",
       };
 
       const saved = yield* scripts

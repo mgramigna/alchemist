@@ -37,13 +37,12 @@ import { Night, NightOrder, NightOrderInvalid, NightOrders } from "./night.ts";
 import { CharacterOrder, CharacterOrderInvalid } from "./order.ts";
 import { AuthRejected, AuthUnavailable, DisplayName, User } from "./auth.ts";
 import {
-  AuthorCredit,
   OwnedScript,
   PublicScript,
   ScriptArtwork,
   ScriptArtworkField,
+  ScriptDetails,
   ScriptId,
-  ScriptName,
   ScriptNotFound,
   ScriptReadUnavailable,
   ScriptWriteUnavailable,
@@ -148,7 +147,7 @@ export const Rpcs = RpcGroup.make(
     error: Schema.Union([ScriptNotFound, ScriptReadUnavailable]),
   }).middleware(Authentication),
   Rpc.make("Script.updateDetails", {
-    payload: { id: ScriptId, name: ScriptName, authorCredit: AuthorCredit },
+    payload: { id: ScriptId, ...ScriptDetails.fields },
     success: OwnedScript,
     error: Schema.Union([ScriptNotFound, ScriptWriteUnavailable]),
   }).middleware(Authentication),

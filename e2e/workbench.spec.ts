@@ -52,6 +52,8 @@ const seedScript = async (page: Page, count: number) => {
       id: script.id,
       name: "Saved Script",
       authorCredit: "Ada",
+      logoCredit: "",
+      backgroundCredit: "",
     },
     OwnedScript,
   );
@@ -80,6 +82,7 @@ const seedScript = async (page: Page, count: number) => {
         remindersGlobal: ["Global"],
         setup: true,
         flavor: "Flavor",
+        artworkCredit: "",
         firstNightInstructions: "First",
         otherNightInstructions: "Other",
       },
@@ -306,6 +309,7 @@ test("an owner adds Characters by Team and finds and fixes what blocks export", 
       remindersGlobal: [],
       setup: false,
       flavor: "",
+      artworkCredit: "",
       firstNightInstructions: "",
       otherNightInstructions: "",
     },
@@ -777,6 +781,7 @@ test("Reminder Tokens, setup and flavor support keyboard edits, duplicate orderi
     remindersGlobal: ["x".repeat(26)],
     setup: true,
     flavor: "x".repeat(501),
+    artworkCredit: "",
     team: "traveller",
   });
   await page.screenshot({ path: test.info().outputPath("reminders-desktop.png"), fullPage: true });

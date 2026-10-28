@@ -18,6 +18,10 @@ _Avoid_: Author (when referring to editing rights)
 The editable attribution on a Script, shown on shared pages and included in exports. It starts with the Script Owner's display name and remains independent of later display name changes.
 _Avoid_: Owner (when referring to attribution)
 
+**Image Credit**:
+Optional attribution for an uploaded Character icon, Script logo or Script background, such as a CC BY icon's creator, source and license. The shared page lists the credits of images it currently shows, and printed sheets link there rather than printing each credit.
+_Avoid_: Author Credit (which credits the Script's author), Attribution (UI copy only)
+
 ### Characters
 
 **Character**:

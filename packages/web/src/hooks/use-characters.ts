@@ -71,6 +71,7 @@ export function useCharacters(
             remindersGlobal: character.remindersGlobal,
             setup: character.setup,
             flavor: character.flavor,
+            artworkCredit: character.artworkCredit,
           },
           reactivityKeys: [ScriptKeys.owned],
         });

@@ -59,6 +59,12 @@ export const ReminderTokens = Schema.Array(Schema.String.check(Schema.isMaxLengt
 
 export const CharacterFlavor = Schema.String.check(Schema.isMaxLength(2000));
 
+// Attribution for an uploaded image, such as a CC BY icon's creator and source.
+// Shown on the shared page only while the image it credits is present.
+export const ArtworkCredit = Schema.String.check(
+  Schema.isMaxLength(300, { message: "Use 300 characters or fewer." }),
+);
+
 export const CharacterDetails = Schema.Struct({
   reminders: ReminderTokens,
   remindersGlobal: ReminderTokens,
@@ -69,6 +75,7 @@ export const CharacterDetails = Schema.Struct({
   team: AuthoredTeam,
   firstNightInstructions: NightInstructions,
   otherNightInstructions: NightInstructions,
+  artworkCredit: ArtworkCredit,
 });
 
 export interface CharacterDetails extends Schema.Schema.Type<typeof CharacterDetails> {}
@@ -164,6 +171,7 @@ export const PublicCharacter = Schema.Struct({
   team: AuthoredTeam,
   firstNightInstructions: Schema.String,
   otherNightInstructions: Schema.String,
+  artworkCredit: Schema.String,
   artwork: Schema.optionalKey(PublishedArtwork),
 });
 

@@ -89,7 +89,14 @@ beforeAll(async () => {
     ScriptStore.use((scripts) =>
       scripts.insertImport(
         "alice",
-        OwnedScript.make({ id: scriptId, name: "Moon", authorCredit: "Alice", updatedAt: 1 }),
+        OwnedScript.make({
+          id: scriptId,
+          name: "Moon",
+          authorCredit: "Alice",
+          logoCredit: "",
+          backgroundCredit: "",
+          updatedAt: 1,
+        }),
         draft,
       ),
     ),

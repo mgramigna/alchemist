@@ -9,7 +9,7 @@ test("a short Script renders Variant B at Letter and A4, top-aligned, with fonts
   await expect(characters).toContainText("Brimstone & Brine");
   await expect(characters).toContainText("Sample Author");
   await expect(characters).toContainText(
-    "Made with Alchemist · Not affiliated with The Pandemonium Institute",
+    "Made with localhost:1338 · Not affiliated with The Pandemonium Institute",
   );
   // Good on the left; Evil on the right.
   const columns = characters.locator('[data-slot="sheet-column"]');

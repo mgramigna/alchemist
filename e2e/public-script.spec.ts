@@ -14,6 +14,8 @@ const publicTest = test.extend<{ scriptPath: string }>({
         id: script.id,
         name: "The Midnight Alchemist",
         authorCredit: "The Clocktower Collective",
+        logoCredit: "",
+        backgroundCredit: "",
       },
       OwnedScript,
     );

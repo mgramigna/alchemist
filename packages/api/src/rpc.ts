@@ -70,8 +70,7 @@ export const Handlers = Rpcs.toLayer(
       "Script.create": () => scripts.create(),
       "Script.listOwned": () => scripts.listOwned(),
       "Script.readOwned": ({ id }) => scripts.readOwned(id),
-      "Script.updateDetails": ({ id, name, authorCredit }) =>
-        scripts.updateDetails(id, { name, authorCredit }),
+      "Script.updateDetails": ({ id, ...details }) => scripts.updateDetails(id, details),
       "Character.list": ({ scriptId }) => scripts.listCharacters(scriptId),
       "Character.create": ({ scriptId, team, nights }) =>
         scripts.createCharacter(scriptId, team, nights),

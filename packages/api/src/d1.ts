@@ -37,9 +37,14 @@ const ScriptRow = Schema.Struct({
   id: ScriptId,
   name: Schema.String,
   author_credit: Schema.String,
+  logo_credit: Schema.String,
+  background_credit: Schema.String,
 });
 
 const OwnedRows = Schema.Array(OwnedScript);
+
+const OWNED_COLUMNS = `id, name, author_credit AS authorCredit, logo_credit AS logoCredit,
+  background_credit AS backgroundCredit, updated_at AS updatedAt`;
 
 const JinxRows = Schema.Array(Jinx);
 
@@ -133,7 +138,8 @@ const decodeCharacters = (rows: ReadonlyArray<object>, artworkRows: ReadonlyArra
 
 const CHARACTER_COLUMNS = `id, name, ability, team,
   first_night_instructions AS firstNightInstructions,
-  other_night_instructions AS otherNightInstructions, reminders, reminders_global AS remindersGlobal, setup, flavor`;
+  other_night_instructions AS otherNightInstructions, reminders, reminders_global AS remindersGlobal, setup, flavor,
+  artwork_credit AS artworkCredit`;
 
 const NightEntryRows = Schema.Array(
   Schema.Struct({
@@ -443,12 +449,13 @@ export const D1ScriptStore = Layer.effect(
       insertImport: Effect.fn("D1ScriptStore.insertImport")(function* (ownerId, script, draft) {
         // One atomic D1 batch, including the final integration/artwork write.
         yield* d1.batch([
-          sql`INSERT INTO scripts (id, owner_id, name, author_credit, created_at, updated_at)
-            VALUES (${script.id}, ${ownerId}, ${script.name}, ${script.authorCredit}, ${script.updatedAt}, ${script.updatedAt})`,
-          sql`INSERT INTO characters (position, id, script_id, name, ability, team, first_night_instructions, other_night_instructions, reminders, reminders_global, setup, flavor)
+          sql`INSERT INTO scripts (id, owner_id, name, author_credit, logo_credit, background_credit, created_at, updated_at)
+            VALUES (${script.id}, ${ownerId}, ${script.name}, ${script.authorCredit}, ${script.logoCredit}, ${script.backgroundCredit}, ${script.updatedAt}, ${script.updatedAt})`,
+          sql`INSERT INTO characters (position, id, script_id, name, ability, team, first_night_instructions, other_night_instructions, reminders, reminders_global, setup, flavor, artwork_credit)
             SELECT key, json_extract(value, '$.id'), ${script.id}, json_extract(value, '$.name'), json_extract(value, '$.ability'), json_extract(value, '$.team'),
               json_extract(value, '$.firstNightInstructions'), json_extract(value, '$.otherNightInstructions'),
-              json_extract(value, '$.reminders'), json_extract(value, '$.remindersGlobal'), json_extract(value, '$.setup'), json_extract(value, '$.flavor')
+              json_extract(value, '$.reminders'), json_extract(value, '$.remindersGlobal'), json_extract(value, '$.setup'), json_extract(value, '$.flavor'),
+              json_extract(value, '$.artworkCredit')
             FROM json_each(${JSON.stringify(draft.characters)})`,
           ...writeNightOrder(ownerId, script.id, "firstNight", draft.nightOrders.firstNight),
           ...writeNightOrder(ownerId, script.id, "otherNight", draft.nightOrders.otherNight),
@@ -471,7 +478,7 @@ export const D1ScriptStore = Layer.effect(
       findExport: Effect.fn("D1ScriptStore.findExport")(function* (id) {
         const [scripts, characters, entries, jinxes, imports, scriptArtwork, artwork] =
           yield* d1.batch([
-            sql`SELECT id, name, author_credit FROM scripts WHERE id = ${id}`,
+            sql`SELECT id, name, author_credit, logo_credit, background_credit FROM scripts WHERE id = ${id}`,
             sql`SELECT ${sql.literal(CHARACTER_COLUMNS)} FROM characters WHERE script_id = ${id} ORDER BY position, id`,
             sql`SELECT night, step, character_id FROM night_order_entries WHERE script_id = ${id} ORDER BY night, position`,
             sql`SELECT first, second, explanation FROM jinxes WHERE script_id = ${id} ORDER BY first, second`,
@@ -501,10 +508,10 @@ export const D1ScriptStore = Layer.effect(
       findPublic: Effect.fn("D1ScriptStore.findPublic")(function* (id) {
         // One batch, so the Script and its Characters come from the same snapshot.
         const [scripts, characters, entries, jinxes, artworkRows, scriptArtwork] = yield* d1.batch([
-          sql`SELECT id, name, author_credit FROM scripts WHERE id = ${id}`,
+          sql`SELECT id, name, author_credit, logo_credit, background_credit FROM scripts WHERE id = ${id}`,
           sql`SELECT id, name, ability, team,
             first_night_instructions AS firstNightInstructions,
-            other_night_instructions AS otherNightInstructions
+            other_night_instructions AS otherNightInstructions, artwork_credit AS artworkCredit
           FROM characters WHERE script_id = ${id} ORDER BY position, id`,
           sql`SELECT night, step, character_id FROM night_order_entries
           WHERE script_id = ${id} ORDER BY night, position`,
@@ -524,6 +531,8 @@ export const D1ScriptStore = Layer.effect(
             id: row.id,
             name: row.name,
             authorCredit: row.author_credit,
+            logoCredit: row.logo_credit,
+            backgroundCredit: row.background_credit,
             // Published paths only: never the private originals.
             artwork: publicScriptArtwork(yield* decodeScriptArtwork(scriptArtwork)),
             // Only the published variants and their Team: never the private original.
@@ -576,22 +585,21 @@ export const D1ScriptStore = Layer.effect(
       }, writeUnavailable),
       insert: Effect.fn("D1ScriptStore.insert")(function* (ownerId, script) {
         yield* d1.batch([
-          sql`INSERT INTO scripts (id, owner_id, name, author_credit, created_at, updated_at)
-          VALUES (${script.id}, ${ownerId}, ${script.name}, ${script.authorCredit}, ${script.updatedAt}, ${script.updatedAt})`,
+          sql`INSERT INTO scripts (id, owner_id, name, author_credit, logo_credit, background_credit, created_at, updated_at)
+          VALUES (${script.id}, ${ownerId}, ${script.name}, ${script.authorCredit}, ${script.logoCredit}, ${script.backgroundCredit}, ${script.updatedAt}, ${script.updatedAt})`,
           ...writeNightOrder(ownerId, script.id, "firstNight", NIGHT_STEPS.firstNight),
           ...writeNightOrder(ownerId, script.id, "otherNight", NIGHT_STEPS.otherNight),
         ]);
       }, writeUnavailable),
       listOwned: Effect.fn("D1ScriptStore.listOwned")(function* (ownerId) {
-        const rows =
-          yield* sql`SELECT id, name, author_credit AS authorCredit, updated_at AS updatedAt
+        const rows = yield* sql`SELECT ${sql.literal(OWNED_COLUMNS)}
         FROM scripts WHERE owner_id = ${ownerId} ORDER BY updated_at DESC, id DESC`;
 
         return yield* Schema.decodeUnknownEffect(OwnedRows)(rows);
       }, readUnavailable),
       findOwned: Effect.fn("D1ScriptStore.findOwned")(function* (ownerId, id) {
         return yield* owned(
-          yield* sql`SELECT id, name, author_credit AS authorCredit, updated_at AS updatedAt
+          yield* sql`SELECT ${sql.literal(OWNED_COLUMNS)}
           FROM scripts WHERE id = ${id} AND owner_id = ${ownerId}`,
         );
       }, readUnavailable),
@@ -602,16 +610,18 @@ export const D1ScriptStore = Layer.effect(
         now,
       ) {
         return yield* owned(
-          yield* sql`UPDATE scripts SET name = ${details.name}, author_credit = ${details.authorCredit}, updated_at = ${now}
+          yield* sql`UPDATE scripts SET name = ${details.name}, author_credit = ${details.authorCredit},
+            logo_credit = ${details.logoCredit}, background_credit = ${details.backgroundCredit}, updated_at = ${now}
             WHERE id = ${id} AND owner_id = ${ownerId}
-            RETURNING id, name, author_credit AS authorCredit, updated_at AS updatedAt`,
+            RETURNING ${sql.literal(OWNED_COLUMNS)}`,
         );
       }, writeUnavailable),
       listCharacters: Effect.fn("D1ScriptStore.listCharacters")(function* (ownerId, scriptId) {
         const [characters, artwork] = yield* d1.batch([
           sql`SELECT c.id, c.name, c.ability, c.team,
             c.first_night_instructions AS firstNightInstructions,
-            c.other_night_instructions AS otherNightInstructions, c.reminders, c.reminders_global AS remindersGlobal, c.setup, c.flavor
+            c.other_night_instructions AS otherNightInstructions, c.reminders, c.reminders_global AS remindersGlobal, c.setup, c.flavor,
+            c.artwork_credit AS artworkCredit
           FROM characters c
           JOIN scripts s ON s.id = c.script_id
           WHERE s.id = ${scriptId} AND s.owner_id = ${ownerId} ORDER BY c.position, c.id`,
@@ -629,9 +639,9 @@ export const D1ScriptStore = Layer.effect(
       ) {
         const results = yield* d1.batch([
           // New Characters join the end of the Character Order.
-          sql`INSERT INTO characters (position, id, script_id, name, ability, team, first_night_instructions, other_night_instructions, reminders, reminders_global, setup, flavor)
+          sql`INSERT INTO characters (position, id, script_id, name, ability, team, first_night_instructions, other_night_instructions, reminders, reminders_global, setup, flavor, artwork_credit)
           SELECT (SELECT COALESCE(MAX(position) + 1, 0) FROM characters WHERE script_id = ${scriptId}), ${character.id}, id, ${character.name}, ${character.ability}, ${character.team},
-            ${character.firstNightInstructions}, ${character.otherNightInstructions}, ${JSON.stringify(character.reminders)}, ${JSON.stringify(character.remindersGlobal)}, ${character.setup ? 1 : 0}, ${character.flavor}
+            ${character.firstNightInstructions}, ${character.otherNightInstructions}, ${JSON.stringify(character.reminders)}, ${JSON.stringify(character.remindersGlobal)}, ${character.setup ? 1 : 0}, ${character.flavor}, ${character.artworkCredit}
           FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId}`,
           sql`UPDATE scripts SET updated_at = ${now}
           WHERE id = ${scriptId} AND owner_id = ${ownerId}`,
@@ -657,7 +667,8 @@ export const D1ScriptStore = Layer.effect(
             first_night_instructions = ${details.firstNightInstructions},
             other_night_instructions = ${details.otherNightInstructions},
             reminders = ${JSON.stringify(details.reminders)}, reminders_global = ${JSON.stringify(details.remindersGlobal)},
-            setup = ${details.setup ? 1 : 0}, flavor = ${details.flavor}
+            setup = ${details.setup ? 1 : 0}, flavor = ${details.flavor},
+            artwork_credit = ${details.artworkCredit}
           WHERE id = ${id} AND script_id IN (SELECT id FROM scripts WHERE id = ${scriptId} AND owner_id = ${ownerId})
           RETURNING ${sql.literal(CHARACTER_COLUMNS)}`,
           selectArtwork(ownerId, scriptId),

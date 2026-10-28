@@ -19,6 +19,7 @@ const noInstructions = {
   remindersGlobal: [],
   setup: false,
   flavor: "",
+  artworkCredit: "",
   firstNightInstructions: "",
   otherNightInstructions: "",
 };
@@ -41,6 +42,8 @@ const script = (id: string, updatedAt: number) =>
     id: ScriptId.make(id),
     name: "Untitled Script",
     authorCredit: "Alice",
+    logoCredit: "",
+    backgroundCredit: "",
     updatedAt,
   });
 
@@ -83,14 +86,24 @@ test("D1 owner queries are scoped by owner, ordered by last change, and updates 
       expect(Option.isNone(yield* scripts.findOwned("bob", older.id))).toBe(true);
       expect(
         Option.isNone(
-          yield* scripts.updateDetails("bob", older.id, { name: "Hijack", authorCredit: "" }, 40),
+          yield* scripts.updateDetails(
+            "bob",
+            older.id,
+            { name: "Hijack", authorCredit: "", logoCredit: "", backgroundCredit: "" },
+            40,
+          ),
         ),
       ).toBe(true);
 
       const saved = yield* scripts.updateDetails(
         "alice",
         older.id,
-        { name: "Renamed", authorCredit: "Credit" },
+        {
+          name: "Renamed",
+          authorCredit: "Credit",
+          logoCredit: "Logo by Ada",
+          backgroundCredit: "Photo by Grace",
+        },
         50,
       );
 
@@ -98,6 +111,8 @@ test("D1 owner queries are scoped by owner, ordered by last change, and updates 
         id: older.id,
         name: "Renamed",
         authorCredit: "Credit",
+        logoCredit: "Logo by Ada",
+        backgroundCredit: "Photo by Grace",
         updatedAt: 50,
       });
       expect((yield* scripts.listOwned("alice")).map((row) => row.id)).toEqual([
@@ -108,6 +123,8 @@ test("D1 owner queries are scoped by owner, ordered by last change, and updates 
         id: older.id,
         name: "Renamed",
         authorCredit: "Credit",
+        logoCredit: "Logo by Ada",
+        backgroundCredit: "Photo by Grace",
         artwork: NO_SCRIPT_ARTWORK,
         characters: [],
         nightOrders: defaultNightOrders,
@@ -199,7 +216,13 @@ test("D1 Character writes are owner-scoped, atomic with the Script change time, 
         "alice",
         mine.id,
         first.id,
-        { name: "Imp", ability: first.ability, team: "demon", ...noInstructions },
+        {
+          name: "Imp",
+          ability: first.ability,
+          team: "demon",
+          ...noInstructions,
+          artworkCredit: "Icon by Lorc, CC BY 3.0",
+        },
         40,
       );
 
@@ -209,11 +232,17 @@ test("D1 Character writes are owner-scoped, atomic with the Script change time, 
         ability: first.ability,
         team: "demon",
         ...noInstructions,
+        artworkCredit: "Icon by Lorc, CC BY 3.0",
       });
       expect(Option.getOrNull(yield* scripts.findOwned("alice", mine.id))?.updatedAt).toBe(40);
       expect(
-        Option.getOrNull(yield* scripts.findPublic(mine.id))?.characters.map((row) => row.name),
-      ).toEqual(["Imp", ""]);
+        Option.getOrNull(yield* scripts.findPublic(mine.id))?.characters.map(
+          ({ name, artworkCredit }) => [name, artworkCredit],
+        ),
+      ).toEqual([
+        ["Imp", "Icon by Lorc, CC BY 3.0"],
+        ["", ""],
+      ]);
 
       expect(yield* scripts.deleteCharacter("bob", mine.id, first.id, 50)).toBe(false);
       expect(yield* scripts.deleteCharacter("alice", mine.id, first.id, 50)).toBe(true);
@@ -300,6 +329,7 @@ test("D1 Night Orders default on creation, replace atomically, refuse other Scri
           remindersGlobal: [],
           setup: false,
           flavor: "",
+          artworkCredit: "",
         });
 
       const chef = character("01k8af10000000000000000001");
@@ -346,6 +376,7 @@ test("D1 Night Orders default on creation, replace atomically, refuse other Scri
           team: "townsfolk",
           firstNightInstructions: "Show the number.",
           otherNightInstructions: "",
+          artworkCredit: "",
         },
       ]);
 
@@ -521,6 +552,7 @@ test("D1 keeps separate ordered duplicate token drafts, setup and flavor across 
         remindersGlobal: Array.from({ length: 21 }, () => "x".repeat(26)),
         setup: true,
         flavor: "x".repeat(501),
+        artworkCredit: "",
       };
 
       expect(
@@ -591,7 +623,10 @@ test("D1 imports reused IDs atomically, keeps integration data across edits, and
       expect(yield* scripts.readImported("alice", first.id)).toEqual(draft.imported);
       const snapshot = Option.getOrThrow(yield* scripts.findExport(first.id));
       expect(snapshot).toEqual({
-        script: { name: first.name, authorCredit: first.authorCredit },
+        script: {
+          name: first.name,
+          authorCredit: first.authorCredit,
+        },
         characters: draft.characters,
         nightOrders: draft.nightOrders,
         jinxes: draft.jinxes,
@@ -734,7 +769,12 @@ test("D1 deletes the complete dependency graph atomically, retains an owner rece
       expect(Option.isNone(yield* scripts.findExport(id))).toBe(true);
       expect(
         Option.isNone(
-          yield* scripts.updateDetails("alice", id, { name: "Late", authorCredit: "" }, 100),
+          yield* scripts.updateDetails(
+            "alice",
+            id,
+            { name: "Late", authorCredit: "", logoCredit: "", backgroundCredit: "" },
+            100,
+          ),
         ),
       ).toBe(true);
       expect(yield* scripts.pendingDeletions("alice")).toContain(id);

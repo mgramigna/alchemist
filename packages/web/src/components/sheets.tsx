@@ -24,13 +24,13 @@ import { showFallbackIcon } from "../lib/capture.ts";
 import { characterTitle, teamPluralLabel } from "../lib/characters.ts";
 import { NIGHT_LABELS, STEP_DESCRIPTIONS, STEP_LABELS } from "../lib/night.ts";
 import {
-  DISCLAIMER,
   FIT_STEPS,
   PAPERS,
   characterSheetColumns,
   fallbackIcon,
   nightRows,
   railOf,
+  sheetFooter,
   type Paper,
   type SheetContent,
   type TeamGroup,
@@ -213,8 +213,19 @@ export function CharacterSheet({ content, paper, selectedId, onSelect, onFit }: 
           <Jinxes content={content} />
         </div>
       </div>
-      <footer data-slot="sheet-footer">{DISCLAIMER}</footer>
+      <SheetFooter content={content} />
     </Page>
+  );
+}
+
+function SheetFooter({ content }: { readonly content: SheetContent }) {
+  const { madeWith, credits } = sheetFooter(window.location.origin, content);
+
+  return (
+    <footer data-slot="sheet-footer">
+      <p>{madeWith}</p>
+      {credits !== undefined && <p>{credits}</p>}
+    </footer>
   );
 }
 
@@ -303,7 +314,7 @@ export function NightSheet({ content, paper, selectedId, onSelect, onFit }: Shee
           onSelect={onSelect}
         />
       </div>
-      <footer data-slot="sheet-footer">{DISCLAIMER}</footer>
+      <SheetFooter content={content} />
     </Page>
   );
 }

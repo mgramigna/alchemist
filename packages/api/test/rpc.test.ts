@@ -28,6 +28,7 @@ const noInstructions = {
   remindersGlobal: [],
   setup: false,
   flavor: "",
+  artworkCredit: "",
   firstNightInstructions: "",
   otherNightInstructions: "",
 };
@@ -40,6 +41,8 @@ const fixture = PublicScript.make({
   id,
   name: "Saved Script",
   authorCredit: "Saved credit",
+  logoCredit: "",
+  backgroundCredit: "",
   artwork: NO_SCRIPT_ARTWORK,
   characters: [],
   nightOrders: defaultNightOrders,
@@ -151,9 +154,13 @@ it.effect(
             client["Script.create"]().pipe(Effect.asVoid),
             client["Script.listOwned"]().pipe(Effect.asVoid),
             client["Script.readOwned"]({ id }).pipe(Effect.asVoid),
-            client["Script.updateDetails"]({ id, name: "Anonymous", authorCredit: "" }).pipe(
-              Effect.asVoid,
-            ),
+            client["Script.updateDetails"]({
+              id,
+              name: "Anonymous",
+              authorCredit: "",
+              logoCredit: "",
+              backgroundCredit: "",
+            }).pipe(Effect.asVoid),
           ];
 
           for (const call of anonymous)
@@ -168,6 +175,8 @@ it.effect(
             id: created.id,
             name: "Saved over RPC",
             authorCredit: "Credit",
+            logoCredit: "",
+            backgroundCredit: "",
           }).pipe(session(alice));
 
           assert.strictEqual(saved.name, "Saved over RPC");
@@ -177,6 +186,8 @@ it.effect(
               id: created.id,
               name: "Bob was here",
               authorCredit: "",
+              logoCredit: "",
+              backgroundCredit: "",
             }).pipe(session(bob), Effect.flip),
             ScriptNotFound,
           );
@@ -225,6 +236,7 @@ it.effect(
             remindersGlobal: Array.from({ length: 21 }, () => "x".repeat(26)),
             setup: true,
             flavor: "x".repeat(501),
+            artworkCredit: "",
           }).pipe(session(alice));
 
           assert.deepStrictEqual(renamed.reminders, ["Poisoned", "Poisoned", " ", "x".repeat(31)]);
