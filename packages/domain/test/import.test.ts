@@ -100,7 +100,12 @@ describe("JSON import preflight", () => {
     expect(draft).not.toBeNull();
 
     if (draft === null) return;
-    expect(draft.script).toEqual({ name: "A Borrowed Moon", authorCredit: "Original Designer" });
+    expect(draft.script).toEqual({
+      name: "A Borrowed Moon",
+      authorCredit: "Original Designer",
+      logoCredit: "",
+      backgroundCredit: "",
+    });
     expect(draft.nightOrders.firstNight).toEqual([
       "dusk",
       "minioninfo",
@@ -182,6 +187,8 @@ describe("JSON import preflight", () => {
     expect(result.draft?.script).toEqual({
       name: "Imported Script",
       authorCredit: "Current Owner",
+      logoCredit: "",
+      backgroundCredit: "",
     });
     expect(result.warnings.join(" ")).toContain("No metadata");
     expect(result.draft?.nightOrders).toEqual({
@@ -289,7 +296,12 @@ describe("JSON import preflight", () => {
     ]);
 
     expect(result.errors).toEqual([]);
-    expect(result.draft?.script).toEqual({ name: "", authorCredit: "" });
+    expect(result.draft?.script).toEqual({
+      name: "",
+      authorCredit: "",
+      logoCredit: "",
+      backgroundCredit: "",
+    });
     expect(result.blockers.some((problem) => problem.field === "ability")).toBe(true);
     expect(result.blockers.some((problem) => problem.field === "reminders")).toBe(true);
     expect(result.blockers.some((problem) => problem.field === "flavor")).toBe(true);

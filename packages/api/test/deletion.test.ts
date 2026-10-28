@@ -64,7 +64,12 @@ it.effect(
         );
         assert.instanceOf(
           yield* scripts
-            .updateDetails(script.id, { name: "Late save", authorCredit: "" })
+            .updateDetails(script.id, {
+              name: "Late save",
+              authorCredit: "",
+              logoCredit: "",
+              backgroundCredit: "",
+            })
             .pipe(as(alice), Effect.flip),
           ScriptNotFound,
         );

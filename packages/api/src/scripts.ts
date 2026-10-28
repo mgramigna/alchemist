@@ -1062,6 +1062,8 @@ export const ScriptsLive = Layer.effect(
           id: ScriptId.make(createId()),
           name: "Untitled Script",
           authorCredit: user.displayName,
+          logoCredit: "",
+          backgroundCredit: "",
           updatedAt: now,
         });
 
@@ -1097,7 +1099,12 @@ export const ScriptsLive = Layer.effect(
         const script = yield* store.updateDetails(
           user.id,
           id,
-          { name: details.name, authorCredit: details.authorCredit },
+          {
+            name: details.name,
+            authorCredit: details.authorCredit,
+            logoCredit: details.logoCredit,
+            backgroundCredit: details.backgroundCredit,
+          },
           yield* Clock.currentTimeMillis,
         );
 
@@ -1129,6 +1136,7 @@ export const ScriptsLive = Layer.effect(
           remindersGlobal: [],
           setup: false,
           flavor: "",
+          artworkCredit: "",
         });
 
         const orders = yield* readForWrite(store.findNightOrders(user.id, scriptId));
@@ -1169,6 +1177,7 @@ export const ScriptsLive = Layer.effect(
             remindersGlobal: details.remindersGlobal,
             setup: details.setup,
             flavor: details.flavor,
+            artworkCredit: details.artworkCredit,
           },
           yield* Clock.currentTimeMillis,
         );

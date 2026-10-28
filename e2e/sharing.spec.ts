@@ -153,7 +153,7 @@ sharing(
         const response = await fetch("/api/rpc", {
           method: "POST",
           headers: { "Content-Type": "application/x-ndjson" },
-          body: `{"_tag":"Request","id":"denied","tag":"Script.updateDetails","payload":${JSON.stringify({ id, name: "Tampered", authorCredit: "" })},"headers":[]}\n`,
+          body: `{"_tag":"Request","id":"denied","tag":"Script.updateDetails","payload":${JSON.stringify({ id, name: "Tampered", authorCredit: "", logoCredit: "", backgroundCredit: "" })},"headers":[]}\n`,
         });
 
         return response.json();
@@ -176,6 +176,8 @@ sharing(
               id: app.id,
               name: "Tampered",
               authorCredit: "",
+              logoCredit: "",
+              backgroundCredit: "",
             },
             OwnedScript,
           ),

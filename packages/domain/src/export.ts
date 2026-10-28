@@ -31,7 +31,8 @@ export class ScriptExportInvalid extends Schema.TaggedError<
 
 export interface ScriptExportSource {
   readonly imported?: ImportedData | undefined;
-  readonly script: ScriptDetails;
+  // Image credits are not part of the official format.
+  readonly script: Pick<ScriptDetails, "name" | "authorCredit">;
   readonly characters: ReadonlyArray<Character>;
   readonly nightOrders: NightOrders;
   readonly jinxes: ReadonlyArray<Jinx>;

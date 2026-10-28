@@ -342,6 +342,7 @@ export const reviewImport = (json: string, authorCredit: string): ImportReview =
       remindersGlobal: character.remindersGlobal ?? [],
       setup: character.setup ?? false,
       flavor: character.flavor ?? "",
+      artworkCredit: "",
     }),
   );
 
@@ -447,6 +448,8 @@ export const reviewImport = (json: string, authorCredit: string): ImportReview =
     script: {
       name: metadata?.name ?? "Imported Script",
       authorCredit: metadata?.author ?? authorCredit,
+      logoCredit: "",
+      backgroundCredit: "",
     },
     // Imported Scripts start in Standard order; the owner can adjust it afterwards.
     characters: sortCharacters(characters, "standard", nightOrders),

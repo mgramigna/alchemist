@@ -46,6 +46,7 @@ export const sameDetails = (a: CharacterDetails, b: CharacterDetails) =>
   a.team === b.team &&
   a.setup === b.setup &&
   a.flavor === b.flavor &&
+  a.artworkCredit === b.artworkCredit &&
   a.reminders.length === b.reminders.length &&
   a.reminders.every((label, i) => label === b.reminders[i]) &&
   a.remindersGlobal.length === b.remindersGlobal.length &&
@@ -84,6 +85,7 @@ export const replaceCharacter = (
           remindersGlobal: details.remindersGlobal,
           setup: details.setup,
           flavor: details.flavor,
+          artworkCredit: details.artworkCredit,
         }
       : character,
   );

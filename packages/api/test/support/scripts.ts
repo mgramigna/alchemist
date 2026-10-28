@@ -112,6 +112,8 @@ export const scriptsFixture = Effect.sync(() => {
     id: row.id,
     name: row.name,
     authorCredit: row.authorCredit,
+    logoCredit: row.logoCredit,
+    backgroundCredit: row.backgroundCredit,
     updatedAt: row.updatedAt,
   });
 
@@ -149,6 +151,8 @@ export const scriptsFixture = Effect.sync(() => {
         id: row.id,
         name: row.name,
         authorCredit: row.authorCredit,
+        logoCredit: row.logoCredit,
+        backgroundCredit: row.backgroundCredit,
         updatedAt: now,
       });
   };
@@ -358,6 +362,8 @@ export const scriptsFixture = Effect.sync(() => {
             id: row.id,
             name: row.name,
             authorCredit: row.authorCredit,
+            logoCredit: row.logoCredit,
+            backgroundCredit: row.backgroundCredit,
             artwork: publicScriptArtwork(slotsOf(id)),
             characters: inScript(id).map((character) => {
               const stored = artwork.get(`${id}:${character.id}`);
@@ -369,6 +375,7 @@ export const scriptsFixture = Effect.sync(() => {
                 team: character.team,
                 firstNightInstructions: character.firstNightInstructions,
                 otherNightInstructions: character.otherNightInstructions,
+                artworkCredit: character.artworkCredit,
                 ...(stored && { artwork: { team: stored.team, variants: stored.variants } }),
               };
             }),
@@ -384,6 +391,8 @@ export const scriptsFixture = Effect.sync(() => {
           id: script.id,
           name: script.name,
           authorCredit: script.authorCredit,
+          logoCredit: script.logoCredit,
+          backgroundCredit: script.backgroundCredit,
           updatedAt: script.updatedAt,
         });
         nightOrders.set(script.id, defaultNightOrders);
@@ -405,6 +414,8 @@ export const scriptsFixture = Effect.sync(() => {
               id: row.id,
               name: details.name,
               authorCredit: details.authorCredit,
+              logoCredit: details.logoCredit,
+              backgroundCredit: details.backgroundCredit,
               updatedAt: now,
             };
 
@@ -454,6 +465,7 @@ export const scriptsFixture = Effect.sync(() => {
           remindersGlobal: details.remindersGlobal,
           setup: details.setup,
           flavor: details.flavor,
+          artworkCredit: details.artworkCredit,
         };
 
         characters.set(`${scriptId}:${id}`, { scriptId, character });

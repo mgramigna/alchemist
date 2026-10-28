@@ -9,7 +9,7 @@ import {
 import { useAtomSet } from "@effect/atom-react";
 import { ImageBrokenIcon, TrashIcon, UploadSimpleIcon } from "@phosphor-icons/react";
 import { Cause, Exit, Predicate, Result } from "effect";
-import { useId, useRef, useState, type DragEvent } from "react";
+import { useId, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { cn } from "cn";
 import { removeScriptArtwork, uploadScriptArtwork } from "../api.ts";
 import { Button } from "./ui/button.tsx";
@@ -64,10 +64,13 @@ export function ScriptArtworkEditor({
   scriptId,
   artwork,
   onArtwork,
+  credit,
 }: {
   readonly scriptId: ScriptId;
   readonly artwork: ScriptArtwork;
   readonly onArtwork: (artwork: ScriptArtwork) => void;
+  // The slot's image credit field, shown while the slot has an image.
+  readonly credit: (field: ScriptArtworkField) => ReactNode;
 }) {
   const titleId = useId();
 
@@ -90,6 +93,7 @@ export function ScriptArtworkEditor({
             field={field}
             path={artwork[field]}
             onArtwork={onArtwork}
+            credit={credit(field)}
           />
         ))}
       </div>
@@ -102,11 +106,13 @@ function ArtworkSlot({
   field,
   path,
   onArtwork,
+  credit,
 }: {
   readonly scriptId: ScriptId;
   readonly field: ScriptArtworkField;
   readonly path: string | null;
   readonly onArtwork: (artwork: ScriptArtwork) => void;
+  readonly credit: ReactNode;
 }) {
   const upload = useAtomSet(uploadScriptArtwork, { mode: "promiseExit" });
   const remove = useAtomSet(removeScriptArtwork, { mode: "promiseExit" });
@@ -250,6 +256,7 @@ function ArtworkSlot({
       <p className="text-xs text-muted-foreground">
         PNG, JPEG, WebP or GIF up to 10 MB. You can also drop an image here.
       </p>
+      {path !== null && credit}
       {job.kind === "working" && (
         <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
           <Spinner aria-hidden="true" role={undefined} />

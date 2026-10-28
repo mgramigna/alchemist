@@ -36,6 +36,7 @@ it.effect(
               remindersGlobal: ["Global"],
               setup: true,
               flavor: "Flavor",
+              artworkCredit: "",
               firstNightInstructions: "First",
               otherNightInstructions: "Other",
             }),
@@ -128,6 +129,7 @@ it.effect(
           reminders: ["😀".repeat(30)],
           remindersGlobal: ["😀".repeat(25)],
           flavor: "😀".repeat(500),
+          artworkCredit: "",
           firstNightInstructions: "😀".repeat(500),
           otherNightInstructions: "😀".repeat(500),
         });
@@ -135,6 +137,8 @@ it.effect(
         yield* scripts.updateDetails(script.id, {
           name: "😀".repeat(50),
           authorCredit: "😀".repeat(50),
+          logoCredit: "",
+          backgroundCredit: "",
         });
         const unicode = yield* scripts.exportJson(script.id, "https://alchemist.example");
         assert.deepStrictEqual(botcSchemaProblems(JSON.parse(unicode.json)), []);
@@ -142,6 +146,8 @@ it.effect(
         yield* scripts.updateDetails(script.id, {
           name: "x".repeat(51),
           authorCredit: "x".repeat(51),
+          logoCredit: "",
+          backgroundCredit: "",
         });
 
         const metaInvalid = yield* Effect.flip(

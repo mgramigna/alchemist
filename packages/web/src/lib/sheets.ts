@@ -10,9 +10,11 @@ import {
   type NightOrders,
   type NightStep,
   type PublicCharacter,
+  type ScriptId,
   scriptFileStem,
 } from "@alchemist/domain";
 import { groupByTeam } from "./characters.ts";
+import { hasCharacterCredits } from "./credits.ts";
 import { INSTRUCTIONS_FIELD } from "./night.ts";
 
 export type Paper = "letter" | "a4";
@@ -76,16 +78,30 @@ export const SHEET_FONTS: ReadonlyArray<{
 /** Text and icon scales tried, in order, until a sheet fits one page. */
 export const FIT_STEPS: ReadonlyArray<number> = [1, 0.95, 0.9, 0.85, 0.8];
 
-export const DISCLAIMER = "Made with Alchemist · Not affiliated with The Pandemonium Institute";
-
 /** Everything both sheets render, whether from the owner's draft or the share link. */
 export interface SheetContent {
+  readonly id: ScriptId;
   readonly name: string;
   readonly authorCredit: string;
   readonly characters: ReadonlyArray<PublicCharacter>;
   readonly nightOrders: NightOrders;
   readonly jinxes: ReadonlyArray<Jinx>;
 }
+
+/**
+ * The footer both sheets print: where they were made and, when a Character
+ * icon carries a credit, the share link whose page lists the credits.
+ */
+export const sheetFooter = (origin: string, content: Pick<SheetContent, "id" | "characters">) => {
+  const host = new URL(origin).host;
+
+  return {
+    madeWith: `Made with ${host} · Not affiliated with The Pandemonium Institute`,
+    credits: hasCharacterCredits(content.characters)
+      ? `Image credits: ${host}/scripts/${content.id}`
+      : undefined,
+  };
+};
 
 /** What a preview tab shows: the Character sheet, or the night sheet turned to one night. */
 export type SheetView = "characters" | Night;

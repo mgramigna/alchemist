@@ -3,6 +3,7 @@ import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import {
   type Jinx,
   scriptExportProblems,
+  ArtworkCredit,
   AuthorCredit,
   NIGHTS,
   ScriptName,
@@ -49,6 +50,7 @@ import { useCharacters } from "../hooks/use-characters.ts";
 import { useNightOrders } from "../hooks/use-night-orders.ts";
 import { downloadBlob } from "../lib/download.ts";
 import { characterTitle } from "../lib/characters.ts";
+import { CREDIT_DESCRIPTION, CREDIT_LABEL } from "../lib/credits.ts";
 import { fieldLabel } from "../lib/fields.ts";
 import { NIGHT_LABELS } from "../lib/night.ts";
 import { scriptJsonUrl, scriptTitle } from "../lib/script.ts";
@@ -85,6 +87,7 @@ const SAVE_DELAY_MS = 800;
 
 const ScriptNameInput = Schema.toStandardSchemaV1(ScriptName);
 const AuthorCreditInput = Schema.toStandardSchemaV1(AuthorCredit);
+const ArtworkCreditInput = Schema.toStandardSchemaV1(ArtworkCredit);
 
 const combinedStatus = (...statuses: ReadonlyArray<SaveStatus>): SaveStatus =>
   statuses.includes("failed") ? "failed" : statuses.includes("pending") ? "pending" : "saved";
@@ -134,7 +137,7 @@ export function Workbench({
       async (details) =>
         Exit.isSuccess(
           await updateRef.current({
-            payload: { id: script.id, name: details.name, authorCredit: details.authorCredit },
+            payload: { id: script.id, ...details },
             reactivityKeys: [ScriptKeys.owned],
           }),
         ),
@@ -181,7 +184,12 @@ export function Workbench({
   const [deleteTarget, setDeleteTarget] = useState<Character | null>(null);
 
   const form = useAppForm({
-    defaultValues: { name: script.name, authorCredit: script.authorCredit },
+    defaultValues: {
+      name: script.name,
+      authorCredit: script.authorCredit,
+      logoCredit: script.logoCredit,
+      backgroundCredit: script.backgroundCredit,
+    },
     listeners: {
       onChange: ({ formApi }) => autosave.schedule(formApi.state.values),
     },
@@ -540,7 +548,26 @@ export function Workbench({
                 blockers={blockers}
                 onSelect={setSelectedId}
               />
-              <ScriptArtworkEditor scriptId={script.id} artwork={artwork} onArtwork={setArtwork} />
+              <ScriptArtworkEditor
+                scriptId={script.id}
+                artwork={artwork}
+                onArtwork={setArtwork}
+                credit={(field) => (
+                  <form.AppField
+                    name={field === "logo" ? "logoCredit" : "backgroundCredit"}
+                    validators={{ onChange: ArtworkCreditInput }}
+                  >
+                    {(credit) => (
+                      <credit.TextField
+                        label={CREDIT_LABEL}
+                        description={CREDIT_DESCRIPTION}
+                        maxLength={300}
+                        autoComplete="off"
+                      />
+                    )}
+                  </form.AppField>
+                )}
+              />
               <ShareLink script={script} />
               <DeleteScriptSection script={script} />
             </form.Form>
@@ -558,13 +585,14 @@ export function Workbench({
                 onDelete={relationships.remove}
               />
             }
-            iconEditor={
+            iconEditor={(credit) => (
               <CharacterArtworkEditor
                 scriptId={script.id}
                 character={selected}
+                credit={credit}
                 onArtwork={(artwork) => roster.setArtwork(selected.id, artwork)}
               />
-            }
+            )}
             character={selected}
             characters={characters}
             nightOrders={nights.orders}
@@ -596,6 +624,7 @@ export function Workbench({
           )}
           <SheetPreview
             content={{
+              id: script.id,
               name: values.name,
               authorCredit: values.authorCredit,
               characters,

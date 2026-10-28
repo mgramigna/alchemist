@@ -44,6 +44,7 @@ export const seedScript = async (page: Page) => {
         remindersGlobal: [],
         setup: false,
         flavor: "",
+        artworkCredit: "",
         firstNightInstructions: "",
         otherNightInstructions: "",
       },

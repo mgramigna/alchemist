@@ -1,4 +1,4 @@
-import { CharacterId, type AuthoredTeam, type PublicCharacter } from "@alchemist/domain";
+import { CharacterId, ScriptId, type AuthoredTeam, type PublicCharacter } from "@alchemist/domain";
 import { expect, test } from "vitest";
 import {
   capturePixels,
@@ -6,6 +6,7 @@ import {
   fallbackIcon,
   nightRows,
   sheetFilename,
+  sheetFooter,
   sheetShowing,
 } from "./sheets.ts";
 
@@ -20,6 +21,7 @@ const character = (
   team,
   firstNightInstructions,
   otherNightInstructions: "",
+  artworkCredit: "",
 });
 
 const chef = character("1", "townsfolk", "  Show a number.  ");
@@ -71,4 +73,22 @@ test("fallback tokens are inlined and colored by the Team's rail", () => {
   expect(good).toContain("#1d5fae");
   expect(decodeURIComponent(fallbackIcon("demon"))).toContain("#a3171d");
   expect(fallbackIcon("traveller")).not.toBe(fallbackIcon("townsfolk"));
+});
+
+test("the footer names the app's host and links to image credits only when an icon has one", () => {
+  const id = ScriptId.make("01k8ac00000000000000000001");
+
+  const credited: PublicCharacter = {
+    ...chef,
+    artworkCredit: "Icon by Lorc",
+    artwork: { team: "townsfolk", variants: [{ variant: "regular", path: "/artwork/x.png" }] },
+  };
+
+  expect(sheetFooter("https://alchemist.town", { id, characters: [chef, imp] })).toEqual({
+    madeWith: "Made with alchemist.town · Not affiliated with The Pandemonium Institute",
+    credits: undefined,
+  });
+  expect(sheetFooter("https://alchemist.town", { id, characters: [credited] }).credits).toBe(
+    `Image credits: alchemist.town/scripts/${id}`,
+  );
 });

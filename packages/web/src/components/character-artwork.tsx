@@ -15,7 +15,7 @@ import {
 import { useAtomSet } from "@effect/atom-react";
 import { ImageIcon, SlidersHorizontalIcon, UploadSimpleIcon } from "@phosphor-icons/react";
 import { Cause, Exit, Predicate, Result } from "effect";
-import { useEffect, useId, useMemo, useRef, useState, type DragEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { cn } from "cn";
 import { readArtworkSource, removeArtwork, restyleArtwork, uploadArtwork } from "../api.ts";
 import { ICON_VARIANT_LABELS, teamLabel } from "../lib/characters.ts";
@@ -115,10 +115,13 @@ const failureMessage = (exit: Exit.Exit<unknown, unknown>, fallback: string) => 
 export function CharacterArtworkEditor({
   scriptId,
   character,
+  credit,
   onArtwork,
 }: {
   readonly scriptId: ScriptId;
   readonly character: Character;
+  // The image credit field, shown while there is artwork to credit.
+  readonly credit: ReactNode;
   readonly onArtwork: (artwork: CharacterArtwork | undefined) => void;
 }) {
   const upload = useAtomSet(uploadArtwork, { mode: "promiseExit" });
@@ -412,6 +415,7 @@ export function CharacterArtworkEditor({
           onChoose={(look) => void publishRestyle(artwork, withLook(artwork.style, look), team)}
         />
       )}
+      {artwork !== undefined && credit}
       {artwork !== undefined && (
         <ArtworkStudio
           open={studio}

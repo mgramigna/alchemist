@@ -90,7 +90,14 @@ beforeAll(async () => {
       const scripts = yield* ScriptStore;
       yield* scripts.insert(
         "alice",
-        OwnedScript.make({ id: scriptId, name: "Art", authorCredit: "Alice", updatedAt: 1 }),
+        OwnedScript.make({
+          id: scriptId,
+          name: "Art",
+          authorCredit: "Alice",
+          logoCredit: "",
+          backgroundCredit: "",
+          updatedAt: 1,
+        }),
       );
       yield* scripts.insertCharacter(
         "alice",
@@ -106,6 +113,7 @@ beforeAll(async () => {
           remindersGlobal: [],
           setup: false,
           flavor: "",
+          artworkCredit: "",
         }),
         defaultNightOrders,
         2,
@@ -315,9 +323,16 @@ test("D1 Script artwork supersedes only the matching imported reference", () =>
 
       yield* scripts.insertImport(
         "alice",
-        OwnedScript.make({ id: importedId, name: "Imported", authorCredit: "A", updatedAt: 1 }),
+        OwnedScript.make({
+          id: importedId,
+          name: "Imported",
+          authorCredit: "A",
+          logoCredit: "",
+          backgroundCredit: "",
+          updatedAt: 1,
+        }),
         {
-          script: { name: "Imported", authorCredit: "A" },
+          script: { name: "Imported", authorCredit: "A", logoCredit: "", backgroundCredit: "" },
           characters: [],
           nightOrders: defaultNightOrders,
           jinxes: [],

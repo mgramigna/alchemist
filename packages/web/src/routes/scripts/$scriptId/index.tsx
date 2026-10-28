@@ -6,6 +6,7 @@ import { AtomRegistry } from "effect/reactivity";
 import { publicScript, publicScriptExport } from "../../../api.ts";
 import { PublicJsonDownload } from "../../../components/public-json-download.tsx";
 import { SheetPreview } from "../../../components/sheet-preview.tsx";
+import { imageCredits, type ImageCredit } from "../../../lib/credits.ts";
 import type { SheetView } from "../../../lib/sheets.ts";
 import { Button, buttonVariants } from "../../../components/ui/button.tsx";
 
@@ -112,6 +113,28 @@ function PublicScript() {
         </section>
       )}
       <PublicJsonDownload key={script.id} script={script} />
+      <ImageCredits credits={imageCredits(script)} />
     </article>
+  );
+}
+
+// Printed sheets link here, so credits stay with the images however they are shared.
+function ImageCredits({ credits }: { readonly credits: ReadonlyArray<ImageCredit> }) {
+  if (credits.length === 0) return null;
+
+  return (
+    <section aria-labelledby="credits-title" className="flex flex-col gap-3">
+      <h2 id="credits-title" className="text-xl font-semibold">
+        Image credits
+      </h2>
+      <dl className="flex flex-col gap-2 text-sm">
+        {credits.map(({ key, subject, credit }) => (
+          <div key={key} className="flex flex-col">
+            <dt className="font-medium">{subject}</dt>
+            <dd className="wrap-anywhere text-muted-foreground">{credit}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }

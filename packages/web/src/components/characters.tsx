@@ -1,4 +1,5 @@
 import {
+  ArtworkCredit,
   FLAVOR_EXPORT_LIMIT,
   flavorBlocker,
   ABILITY_EXPORT_LIMIT,
@@ -17,6 +18,7 @@ import {
   type NightOrders,
 } from "@alchemist/domain";
 import { ArrowRightIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { Schema } from "effect";
 import { useId, type ReactNode } from "react";
 import { cn } from "cn";
 import { ReminderTokenList } from "./reminder-tokens.tsx";
@@ -24,6 +26,7 @@ import { CharacterToken } from "./character-token.tsx";
 import { Counter } from "./counter.tsx";
 import { useAppForm } from "../hooks/form.ts";
 import { characterTitle, groupByTeam, teamLabel, teamPluralLabel } from "../lib/characters.ts";
+import { CREDIT_DESCRIPTION, CREDIT_LABEL } from "../lib/credits.ts";
 import { fieldLabel } from "../lib/fields.ts";
 import { INSTRUCTIONS_FIELD, NIGHT_LABELS, positionSummary } from "../lib/night.ts";
 import { Badge } from "./ui/badge.tsx";
@@ -208,6 +211,8 @@ export function ExportBlockerList({
   );
 }
 
+const ArtworkCreditInput = Schema.toStandardSchemaV1(ArtworkCredit);
+
 const TEAM_OPTIONS = AuthoredTeam.literals.map((team) => ({ value: team, label: teamLabel(team) }));
 
 /**
@@ -227,7 +232,8 @@ export function CharacterForm({
   iconEditor,
 }: {
   readonly jinxEditor: ReactNode;
-  readonly iconEditor: ReactNode;
+  // Renders the icon section around the image credit field, shown while artwork exists.
+  readonly iconEditor: (credit: ReactNode) => ReactNode;
   readonly character: Character;
   readonly characters: ReadonlyArray<Character>;
   readonly nightOrders: NightOrders;
@@ -250,6 +256,7 @@ export function CharacterForm({
       team: character.team,
       firstNightInstructions: character.firstNightInstructions,
       otherNightInstructions: character.otherNightInstructions,
+      artworkCredit: character.artworkCredit,
     },
     listeners: {
       onChange: ({ formApi }) => onChange(formApi.state.values),
@@ -348,7 +355,18 @@ export function CharacterForm({
             />
           )}
         </form.AppField>
-        {iconEditor}
+        {iconEditor(
+          <form.AppField name="artworkCredit" validators={{ onChange: ArtworkCreditInput }}>
+            {(field) => (
+              <field.TextField
+                label={CREDIT_LABEL}
+                description={CREDIT_DESCRIPTION}
+                maxLength={300}
+                autoComplete="off"
+              />
+            )}
+          </form.AppField>,
+        )}
         <section aria-labelledby="nights-title" className="flex flex-col gap-5 border-t pt-5">
           <div className="flex flex-col gap-1">
             <h3 id="nights-title" className="font-medium">
