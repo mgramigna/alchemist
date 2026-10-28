@@ -8,6 +8,7 @@ import { Exit } from "effect";
 import { AsyncResult } from "effect/reactivity";
 import { createScript, currentAccount, ownedScripts, ScriptKeys } from "../api.ts";
 import { SignInWithGoogle } from "../components/account.tsx";
+import { GitHubLink } from "../components/github-link.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { Spinner } from "../components/ui/spinner.tsx";
 import { scriptTitle } from "../lib/script.ts";
@@ -61,7 +62,11 @@ function Welcome() {
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <SignInWithGoogle size="lg" />
+          <GitHubLink />
         </div>
+        <p className="text-sm text-muted-foreground">
+          Alchemist is open source. Explore the code, report issues, or contribute on GitHub.
+        </p>
         <p className="text-sm text-muted-foreground">
           Have a shared Script link? Open it to see its Characters and Author Credit, no sign-in
           needed.
