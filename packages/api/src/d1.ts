@@ -545,7 +545,7 @@ export const D1ScriptStore = Layer.effect(
                   : { ...character, artwork: { team: stored.team, variants: stored.variants } };
               },
             ),
-            nightOrders: nightOrders(yield* Schema.decodeUnknownEffect(NightEntryRows)(entries)),
+            nightOrders: nightOrders(yield* Schema.decodeEffect(NightEntryRows)(entries)),
             jinxes: yield* Schema.decodeEffect(JinxRows)(jinxes),
           }),
         );
@@ -752,7 +752,7 @@ export const D1ScriptStore = Layer.effect(
         if (results[0].length === 0) return Option.none();
 
         return Option.some(
-          (yield* Schema.decodeUnknownEffect(Schema.Array(Schema.Struct({ id: CharacterId })))(
+          (yield* Schema.decodeEffect(Schema.Array(Schema.Struct({ id: CharacterId })))(
             results[2],
           )).map(({ id }) => id),
         );

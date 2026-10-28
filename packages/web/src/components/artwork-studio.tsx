@@ -27,7 +27,6 @@ import {
   CUTOUT_LABELS,
   StylizeFailed,
   cutOut,
-  lookColor,
   previewVariants,
   resolveFinish,
   type Cutout,
