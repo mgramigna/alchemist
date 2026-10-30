@@ -1,4 +1,3 @@
-import { useTheme } from "next-themes";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 import {
   CheckCircleIcon,
@@ -7,9 +6,10 @@ import {
   XCircleIcon,
   SpinnerIcon,
 } from "@phosphor-icons/react";
+import { useTheme } from "../../hooks/use-theme.ts";
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme();
+  const theme = useTheme();
 
   const toasterStyle: React.CSSProperties & {
     "--normal-bg": string;
@@ -25,7 +25,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
 
   return (
     <Sonner
-      theme={theme === "light" || theme === "dark" ? theme : "system"}
+      theme={theme}
       // oxlint-disable-next-line shadcn/no-unknown-classes
       className="toaster group"
       icons={{

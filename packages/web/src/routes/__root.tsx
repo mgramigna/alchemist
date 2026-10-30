@@ -10,6 +10,7 @@ import { cn } from "cn";
 
 import { AccountMenu } from "../components/account.tsx";
 import { GitHubLink } from "../components/github-link.tsx";
+import { ThemeToggle } from "../components/theme-toggle.tsx";
 import { Button, buttonVariants } from "../components/ui/button.tsx";
 import { Toaster } from "../components/ui/sonner.tsx";
 import type { RouterContext } from "../router.tsx";
@@ -49,7 +50,7 @@ function RootLayout() {
             ALCHEMIST
           </Link>
           <div className="flex items-center gap-2">
-            <GitHubLink iconOnly />
+            <ThemeToggle />
             <AccountMenu />
           </div>
         </div>
@@ -66,11 +67,12 @@ function RootLayout() {
       <footer className="border-t border-border">
         <div
           className={cn(
-            "mx-auto w-full max-w-6xl px-6 py-6 text-sm text-muted-foreground md:px-12",
+            "mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-6 py-6 text-sm text-muted-foreground md:px-12",
             wide && "max-w-screen-2xl",
           )}
         >
-          Alchemist is not affiliated with The Pandemonium Institute.
+          <p>Alchemist is not affiliated with The Pandemonium Institute.</p>
+          <GitHubLink />
         </div>
       </footer>
       <Toaster position="bottom-center" />

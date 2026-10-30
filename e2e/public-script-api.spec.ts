@@ -59,9 +59,11 @@ test("public RPC reads persisted data, exposes only public fields, and reports t
   expect(Object.keys(message.exit.value).sort()).toEqual([
     "artwork",
     "authorCredit",
+    "backgroundCredit",
     "characters",
     "id",
     "jinxes",
+    "logoCredit",
     "name",
     "nightOrders",
   ]);
