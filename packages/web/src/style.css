@@ -140,6 +140,27 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Strong curves: UI enters fast and settles; drawers follow iOS's sheet curve. */
+@theme {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Reduced motion keeps the fades and drops the movement. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    --tw-enter-translate-x: 0 !important;
+    --tw-enter-translate-y: 0 !important;
+    --tw-enter-scale: 1 !important;
+    --tw-exit-translate-x: 0 !important;
+    --tw-exit-translate-y: 0 !important;
+    --tw-exit-scale: 1 !important;
+  }
+  [data-slot="sheet-content"] {
+    translate: none !important;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
