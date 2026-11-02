@@ -31,6 +31,7 @@ import {
   nightRows,
   railOf,
   sheetFooter,
+  sheetJinxes,
   type Paper,
   type SheetContent,
   type TeamGroup,
@@ -135,7 +136,7 @@ function Page({
  * styled for the current Team, otherwise the generic icon. One that fails to load
  * shows a plain Team token instead, here and in the captured PNG.
  */
-const SheetIcon = ({ character }: { readonly character: PublicCharacter }) => (
+export const SheetIcon = ({ character }: { readonly character: PublicCharacter }) => (
   <img
     src={characterIcons(character)[0]?.path}
     alt=""
@@ -250,14 +251,7 @@ function TeamSection({
 
 function Jinxes({ content }: { readonly content: SheetContent }) {
   const id = useId();
-  const byId = new Map(content.characters.map((character) => [character.id, character]));
-
-  const jinxes = content.jinxes.flatMap((jinx) => {
-    const first = byId.get(jinx.first);
-    const second = byId.get(jinx.second);
-
-    return first && second ? [{ jinx, first, second }] : [];
-  });
+  const jinxes = sheetJinxes(content);
 
   if (jinxes.length === 0) return null;
 

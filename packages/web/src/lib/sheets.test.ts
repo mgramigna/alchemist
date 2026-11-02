@@ -7,6 +7,7 @@ import {
   nightRows,
   sheetFilename,
   sheetFooter,
+  sheetJinxes,
   sheetShowing,
 } from "./sheets.ts";
 
@@ -91,4 +92,13 @@ test("the footer names the app's host and links to image credits only when an ic
   expect(sheetFooter("https://alchemist.town", { id, characters: [credited] }).credits).toBe(
     `Image credits: alchemist.town/scripts/${id}`,
   );
+});
+
+test("sheetJinxes resolves both Characters and drops a Jinx missing either", () => {
+  const known = { first: chef.id, second: imp.id, explanation: "Known." };
+  const orphan = { first: chef.id, second: thief.id, explanation: "Orphan." };
+
+  expect(sheetJinxes({ characters: [chef, imp], jinxes: [known, orphan] })).toEqual([
+    { jinx: known, first: chef, second: imp },
+  ]);
 });
