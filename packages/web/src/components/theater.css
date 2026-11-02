@@ -200,14 +200,19 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: calc(78 * var(--unit));
+  width: min-content;
+  min-width: calc(78 * var(--unit));
+  max-width: calc(120 * var(--unit));
   font-size: calc(13 * var(--unit));
   line-height: 1.1;
   text-align: center;
+  /* Unlike the poster's "anywhere", this leaves min-content at the longest word. */
+  overflow-wrap: break-word;
 }
 
 [data-slot="poster-ribbon"] li span {
   display: -webkit-box;
+  max-width: 100%;
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -216,6 +221,7 @@
 [data-slot="poster-ribbon"] li[data-step] {
   align-self: center;
   width: calc(62 * var(--unit));
+  min-width: 0;
   padding: calc(6 * var(--unit)) calc(2 * var(--unit));
   border-radius: calc(4 * var(--unit));
   background: rgb(244 234 210 / 0.14);

@@ -329,6 +329,59 @@ test("the logo replaces the name, falls back if it fails, and its credit link sh
   await expect(title.locator('[data-slot="poster-name"]')).toHaveText("Moonlit");
 });
 
+test("ribbon names wrap between words, and only break a word too long for any tile", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+
+  const names = ["Cartographer", "Poisoner's Apprentice", "Supercalifragilisticexpialidocious"];
+  const characters = [...names, "Imp"].map((name) => character("townsfolk", name));
+
+  await serve(
+    page,
+    sheetScript(characters, {
+      firstNight: ["dusk", "minioninfo", "demoninfo", ...characters.map(({ id }) => id), "dawn"],
+      otherNight: ["dusk", "dawn"],
+    }),
+  );
+  await entry(page).click();
+  await page.getByRole("button", { name: "Night order" }).click();
+
+  const lines = (name: string) =>
+    page
+      .getByRole("list", { name: "First Night order" })
+      .getByText(name, { exact: true })
+      .evaluate((node) => {
+        const range = document.createRange();
+
+        range.selectNodeContents(node);
+
+        return new Set([...range.getClientRects()].map(({ top }) => Math.round(top))).size;
+      });
+
+  await page.evaluate(() => document.fonts.ready);
+  // One word, one line: no "Cartographe / r".
+  await expect.poll(() => lines("Cartographer")).toBe(1);
+  // Two words may share a line or take one each, and never more.
+  expect(await lines("Poisoner's Apprentice")).toBeLessThanOrEqual(2);
+
+  // A word wider than any tile still breaks, inside its tile, rather than spilling out.
+  const contained = await page
+    .getByRole("list", { name: "First Night order" })
+    .getByText(names[2] ?? "", { exact: true })
+    .evaluate((node) => {
+      const tile = node.closest("li");
+
+      return (
+        tile !== null &&
+        node.getBoundingClientRect().right <= tile.getBoundingClientRect().right + 1
+      );
+    });
+
+  expect(contained).toBe(true);
+  expect(await nothingClipped(page)).toBe(true);
+});
+
 test("a Script with no Characters offers no Theater Mode, even from a link", async ({
   page,
   context,
