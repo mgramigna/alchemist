@@ -139,6 +139,18 @@ export const characterSheetColumns = (characters: ReadonlyArray<PublicCharacter>
   };
 };
 
+/** Jinxes with both Characters on the Script; any others have nothing to explain. */
+export const sheetJinxes = (content: Pick<SheetContent, "characters" | "jinxes">) => {
+  const byId = new Map(content.characters.map((character) => [character.id, character]));
+
+  return content.jinxes.flatMap((jinx) => {
+    const first = byId.get(jinx.first);
+    const second = byId.get(jinx.second);
+
+    return first && second ? [{ jinx, first, second }] : [];
+  });
+};
+
 export type NightRow =
   | { readonly kind: "step"; readonly step: NightStep }
   | {

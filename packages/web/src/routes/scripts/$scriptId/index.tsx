@@ -1,16 +1,21 @@
 import { ScriptId } from "@alchemist/domain";
-import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound, useCanGoBack, useRouter } from "@tanstack/react-router";
 import { Effect, Option, Schema } from "effect";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AtomRegistry } from "effect/reactivity";
 import { publicScript, publicScriptExport } from "../../../api.ts";
 import { PublicJsonDownload } from "../../../components/public-json-download.tsx";
 import { SheetPreview } from "../../../components/sheet-preview.tsx";
+import { TheaterEntry, TheaterMode } from "../../../components/theater.tsx";
 import { imageCredits, type ImageCredit } from "../../../lib/credits.ts";
 import type { SheetView } from "../../../lib/sheets.ts";
+import { parseTheaterSearch } from "../../../lib/theater.ts";
 import { Button, buttonVariants } from "../../../components/ui/button.tsx";
 
 export const Route = createFileRoute("/scripts/$scriptId/")({
+  validateSearch: parseTheaterSearch,
+  // Theater Mode only changes the search, which is no reason to refetch the Script.
+  shouldReload: ({ cause }) => cause !== "stay",
   loader: ({ params, context, abortController }) => {
     const id = Schema.decodeOption(ScriptId)(params.scriptId);
 
@@ -77,6 +82,31 @@ function ScriptError() {
 function PublicScript() {
   const script = Route.useLoaderData();
   const [view, setView] = useState<SheetView>("characters");
+  const { theater, night } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const router = useRouter();
+  const canGoBack = useCanGoBack();
+  const leaving = useRef(false);
+
+  // Entering pushes a history entry, so Back (Android's especially) closes it.
+  const enterTheater = () => void navigate({ search: { theater: true } });
+
+  // Undoes that entry. A shared link has none to undo, so it stays on the Script instead.
+  const exitTheater = () => {
+    if (leaving.current) return;
+
+    leaving.current = true;
+
+    if (canGoBack) router.history.back();
+    else void navigate({ search: {}, replace: true });
+  };
+
+  // Going back takes a moment; a second click in that gap must not leave the Script too.
+  useEffect(() => {
+    leaving.current = false;
+  }, [theater]);
+
+  const hasCharacters = script.characters.length > 0;
 
   return (
     <article className="mx-auto flex w-full max-w-4xl flex-col gap-8">
@@ -95,7 +125,7 @@ function PublicScript() {
       <p className="text-sm text-muted-foreground">
         This link shows the latest saved Script. Reload to see new changes from the Script Owner.
       </p>
-      {script.characters.length === 0 ? (
+      {!hasCharacters ? (
         <section
           aria-label="Sheets"
           className="flex flex-col gap-3 rounded border border-border px-5 py-12 text-center"
@@ -106,14 +136,31 @@ function PublicScript() {
         </section>
       ) : (
         <section aria-labelledby="sheets-title" className="flex flex-col gap-3">
-          <h2 id="sheets-title" className="text-xl font-semibold">
-            Sheets
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="sheets-title" className="text-xl font-semibold">
+              Sheets
+            </h2>
+            <TheaterEntry onEnter={enterTheater} />
+          </div>
           <SheetPreview content={script} view={view} onViewChange={setView} />
         </section>
       )}
       <PublicJsonDownload key={script.id} script={script} />
       <ImageCredits credits={imageCredits(script)} />
+      {hasCharacters && (
+        <TheaterMode
+          script={script}
+          open={theater === true}
+          night={night === true}
+          onNightChange={(next) =>
+            void navigate({
+              search: (previous) => ({ ...previous, night: next ? true : undefined }),
+              replace: true,
+            })
+          }
+          onExit={exitTheater}
+        />
+      )}
     </article>
   );
 }

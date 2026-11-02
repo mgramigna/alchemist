@@ -22,6 +22,10 @@ _Avoid_: Owner (when referring to attribution)
 Optional attribution for an uploaded Character icon, Script logo or Script background, such as a CC BY icon's creator, source and license. The shared page lists the credits of images it currently shows, and printed sheets link there rather than printing each credit.
 _Avoid_: Author Credit (which credits the Script's author), Attribution (UI copy only)
 
+**Theater Mode**:
+A full-screen view of a Script's shared page, reflowed to fit the screen for casting to a TV that all the players can read. It can show who wakes when on each night, but never the Night Instructions.
+_Avoid_: Presentation mode, Fullscreen (which is only how a browser displays it)
+
 ### Characters
 
 **Character**:

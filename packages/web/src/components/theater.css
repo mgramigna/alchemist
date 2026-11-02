@@ -1,0 +1,239 @@
+/*
+ * Theater Mode's poster. Fixed colors, independent of the app theme: a dark screen
+ * in a dim room. Every size is a share of the screen via --unit, so the same layout
+ * fills a phone or a TV; --fit then scales the Characters to the largest that fits.
+ */
+[data-slot="theater"] {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  container-type: size;
+  background: #121017;
+  color: #f4ead2;
+  outline: none;
+  text-size-adjust: none;
+}
+
+[data-slot="theater-stage"] {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+[data-slot="theater-stage"][data-idle] {
+  cursor: none;
+}
+
+[data-slot="theater-controls"] {
+  transition: opacity 300ms;
+}
+
+[data-slot="theater-stage"][data-idle] [data-slot="theater-controls"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+[data-slot="poster"] {
+  --fit: 1;
+  --unit: calc(100cqw / 1920);
+  --c: calc(var(--unit) * var(--fit));
+  --team-columns: 4;
+
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: "Libre Franklin Variable", sans-serif;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+@container (orientation: portrait) {
+  [data-slot="poster"] {
+    --unit: calc(100cqw / 1080);
+    --team-columns: 2;
+  }
+}
+
+[data-slot="poster-title"] {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 0 calc(24 * var(--unit));
+  align-items: center;
+  justify-content: center;
+  padding: calc(18 * var(--unit)) calc(40 * var(--unit)) calc(10 * var(--unit));
+}
+
+[data-slot="poster-title"] img {
+  max-width: 60%;
+  max-height: calc(96 * var(--unit));
+  object-fit: contain;
+}
+
+[data-slot="poster-name"] {
+  font:
+    700 calc(44 * var(--unit)) / 1.1 "Cinzel Variable",
+    serif;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+[data-slot="poster-author"] {
+  font:
+    italic calc(24 * var(--unit)) "Sorts Mill Goudy",
+    serif;
+  opacity: 0.75;
+}
+
+[data-slot="poster-teams"] {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 calc(32 * var(--unit));
+  column-count: var(--team-columns);
+  column-fill: auto;
+  column-gap: calc(32 * var(--unit));
+}
+
+[data-slot="poster-teams"][data-overflowing] {
+  overflow-x: auto;
+}
+
+/* The rail runs through every column, so a Team split across two stays identified. */
+[data-slot="poster-teams"] section {
+  --rail: #4a4458;
+
+  margin-bottom: calc(8 * var(--c));
+  padding-left: calc(12 * var(--c));
+  border-left: calc(6 * var(--c)) solid var(--rail);
+}
+
+[data-slot="poster-teams"] [data-rail="good"] {
+  --rail: #1d5fae;
+}
+
+[data-slot="poster-teams"] [data-rail="evil"] {
+  --rail: #a3171d;
+}
+
+[data-slot="poster-teams"] [data-rail="traveller"] {
+  --rail: #5b4a7a;
+}
+
+[data-slot="poster-teams"] h3 {
+  margin-bottom: calc(6 * var(--c));
+  color: #fff8e6;
+  font:
+    700 calc(15 * var(--c)) "Cinzel Variable",
+    serif;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  break-after: avoid;
+}
+
+[data-slot="poster-teams"] li {
+  display: flex;
+  gap: calc(10 * var(--c));
+  align-items: flex-start;
+  margin-bottom: calc(7 * var(--c));
+  color: #cfc8b8;
+  font-size: calc(15 * var(--c));
+  line-height: 1.24;
+  break-inside: avoid;
+}
+
+[data-slot="poster-teams"] img {
+  flex-shrink: 0;
+  width: calc(46 * var(--c));
+  height: calc(46 * var(--c));
+  object-fit: contain;
+}
+
+[data-slot="poster-teams"] b {
+  display: block;
+  color: #fff8e6;
+  font-size: calc(17 * var(--c));
+}
+
+/* Capped so a long Night Order can scroll, never squeeze the Characters away. */
+[data-slot="poster-ribbon"] {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: calc(6 * var(--unit));
+  max-height: 40%;
+  overflow-y: auto;
+  padding: calc(8 * var(--unit)) calc(32 * var(--unit)) 0;
+  border-top: 1px solid rgb(244 234 210 / 0.2);
+}
+
+[data-slot="poster-ribbon"] > div {
+  display: flex;
+  gap: calc(16 * var(--unit));
+  align-items: center;
+}
+
+[data-slot="poster-ribbon"] p {
+  flex-shrink: 0;
+  width: calc(90 * var(--unit));
+  font:
+    700 calc(16 * var(--unit)) / 1.1 "Cinzel Variable",
+    serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  overflow-wrap: normal;
+}
+
+[data-slot="poster-ribbon"] ol {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: calc(4 * var(--unit));
+  align-items: flex-start;
+  min-width: 0;
+}
+
+[data-slot="poster-ribbon"] li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: calc(78 * var(--unit));
+  font-size: calc(13 * var(--unit));
+  line-height: 1.1;
+  text-align: center;
+}
+
+[data-slot="poster-ribbon"] li span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+[data-slot="poster-ribbon"] li[data-step] {
+  align-self: center;
+  width: calc(62 * var(--unit));
+  padding: calc(6 * var(--unit)) calc(2 * var(--unit));
+  border-radius: calc(4 * var(--unit));
+  background: rgb(244 234 210 / 0.14);
+  font:
+    700 calc(11 * var(--unit)) "Cinzel Variable",
+    serif;
+}
+
+[data-slot="poster-ribbon"] img {
+  width: calc(46 * var(--unit));
+  height: calc(46 * var(--unit));
+  object-fit: contain;
+}
+
+[data-slot="poster-footer"] {
+  flex-shrink: 0;
+  padding: calc(6 * var(--unit)) calc(32 * var(--unit)) calc(8 * var(--unit));
+  color: #8a8478;
+  font-size: calc(12 * var(--unit));
+  text-align: center;
+}
