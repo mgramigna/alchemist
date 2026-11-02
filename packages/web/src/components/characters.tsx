@@ -87,7 +87,7 @@ export function CharacterNavigator({
           id={`team-${team}`}
           className="text-xs font-medium tracking-wide text-muted-foreground uppercase"
         >
-          {teamPluralLabel(team)}
+          {teamPluralLabel(team)} <span className="tabular-nums">({members.length})</span>
         </h2>
         <DropdownMenu>
           <DropdownMenuTrigger
