@@ -14,10 +14,11 @@ import {
 } from "@alchemist/domain";
 import { useAtomSet } from "@effect/atom-react";
 import { ImageIcon, SlidersHorizontalIcon, UploadSimpleIcon } from "@phosphor-icons/react";
-import { Cause, Exit, Predicate, Result } from "effect";
+import { Exit } from "effect";
 import { useEffect, useId, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { cn } from "cn";
 import { readArtworkSource, removeArtwork, restyleArtwork, uploadArtwork } from "../api.ts";
+import { artworkFailureMessage } from "../lib/artwork.ts";
 import { ICON_VARIANT_LABELS, teamLabel } from "../lib/characters.ts";
 import {
   CUTOUT_LABELS,
@@ -89,24 +90,6 @@ type Job =
   | { readonly kind: "failed"; readonly message: string; readonly retry: () => void };
 
 const IDLE: Job = { kind: "idle" };
-
-const failureMessage = (exit: Exit.Exit<unknown, unknown>, fallback: string) => {
-  if (Exit.isSuccess(exit)) return fallback;
-  const error = Cause.findError(exit.cause);
-
-  if (Result.isFailure(error)) return fallback;
-
-  if (
-    Predicate.isTagged(error.success, "ArtworkInvalid") &&
-    Predicate.hasProperty(error.success, "message")
-  )
-    return String(error.success.message);
-
-  if (Predicate.isTagged(error.success, "ArtworkConflict"))
-    return "This artwork changed in another tab. Reload to see the latest version.";
-
-  return fallback;
-};
 
 /**
  * Upload, automatic styling and the Look picker for one Character. The
@@ -204,7 +187,10 @@ export function CharacterArtworkEditor({
 
       if (Exit.isFailure(exit))
         return fail(
-          failureMessage(exit, "Couldn’t save the artwork. Your previous icons are unchanged."),
+          artworkFailureMessage(
+            exit,
+            "Couldn’t save the artwork. Your previous icons are unchanged.",
+          ),
           () => void publishFile(file, style, transparent),
         );
 
@@ -238,7 +224,7 @@ export function CharacterArtworkEditor({
       });
 
       if (Exit.isFailure(exit))
-        return failureMessage(
+        return artworkFailureMessage(
           exit,
           "Couldn’t save the restyled icons. Your previous icons are kept.",
         );

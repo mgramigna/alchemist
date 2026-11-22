@@ -81,6 +81,10 @@ export const useGenericArtwork = Client.mutation("Script.useGenericArtwork");
 export const retryImportedArtwork = Client.mutation("Script.retryImportedArtwork");
 
 export const uploadArtwork = Client.mutation("Artwork.upload");
+
+// Bulk upload has its own mutation state, so an upload in the Character editor never overlaps it.
+export const bulkUploadArtwork = Client.mutation("Artwork.upload");
+
 export const restyleArtwork = Client.mutation("Artwork.restyle");
 export const readArtworkSource = Client.mutation("Artwork.readSource");
 export const removeArtwork = Client.mutation("Artwork.remove");

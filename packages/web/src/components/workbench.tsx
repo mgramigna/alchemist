@@ -46,6 +46,7 @@ import {
 import { useAppForm } from "../hooks/form.ts";
 import { useJinxes } from "../hooks/use-jinxes.ts";
 import { JinxEditor } from "./jinxes.tsx";
+import { useBulkIcons } from "../hooks/use-bulk-icons.ts";
 import { useCharacters } from "../hooks/use-characters.ts";
 import { useNightOrders } from "../hooks/use-night-orders.ts";
 import { downloadBlob } from "../lib/download.ts";
@@ -65,6 +66,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./ui/alert-dialog.tsx";
+import { BulkIconUpload } from "./bulk-icons.tsx";
 import { CharacterArtworkEditor } from "./character-artwork.tsx";
 import { ScriptArtworkEditor } from "./script-artwork.tsx";
 import { CharacterForm, CharacterNavigator, ExportBlockerList } from "./characters.tsx";
@@ -97,6 +99,7 @@ type Page =
   | { readonly kind: "script" }
   | { readonly kind: "character"; readonly id: CharacterId }
   | { readonly kind: "order" }
+  | { readonly kind: "icons" }
   | { readonly kind: "night"; readonly night: Night };
 
 /** The owner's editor: navigator, focused form and live preview. */
@@ -150,8 +153,12 @@ export function Workbench({
   const nights = useNightOrders(script.id, initialNightOrders, SAVE_DELAY_MS);
   const relationships = useJinxes(script.id, initialJinxes, SAVE_DELAY_MS);
   const status = combinedStatus(detailsStatus, roster.status, nights.status, relationships.status);
+  const bulk = useBulkIcons(script.id, roster.characters, roster.setArtwork);
+  const bulkPublishing = useRef(false);
+  bulkPublishing.current = bulk.publishing;
 
   const unsaved = () =>
+    bulkPublishing.current ||
     [autosave, roster.autosave, nights.autosave, relationships.autosave].some(
       (saver) => saver.status() !== "saved",
     );
@@ -386,6 +393,24 @@ export function Workbench({
             Character Order
             <span className="text-xs text-muted-foreground">Sort &amp; arrange</span>
           </button>
+          <button
+            type="button"
+            aria-current={page.kind === "icons" ? "true" : undefined}
+            onClick={() => setPage({ kind: "icons" })}
+            className={cn(
+              "flex w-full items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-left hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+              page.kind === "icons" && "bg-muted font-medium",
+            )}
+          >
+            Upload icons
+            <span className="text-xs text-muted-foreground">
+              {bulk.publishing
+                ? "Publishing…"
+                : bulk.images.length > 0
+                  ? `${bulk.images.length} chosen`
+                  : "Several at once"}
+            </span>
+          </button>
           <section aria-labelledby="nights-nav" className="flex flex-col gap-0.5">
             <h2
               id="nights-nav"
@@ -469,6 +494,8 @@ export function Workbench({
             onChange={roster.reorder}
             onSelect={setSelectedId}
           />
+        ) : page.kind === "icons" ? (
+          <BulkIconUpload bulk={bulk} characters={characters} onOpen={setSelectedId} />
         ) : page.kind === "night" ? (
           <NightOrderEditor
             key={page.night}
@@ -655,7 +682,9 @@ export function Workbench({
             <AlertDialogDescription>
               {status === "failed"
                 ? "Your latest changes couldn’t be saved. If you leave now, they’ll be lost."
-                : "Your latest changes are still saving. If you leave now, they may be lost."}
+                : bulk.publishing
+                  ? "Icons are still publishing. If you leave now, the rest won’t be published."
+                  : "Your latest changes are still saving. If you leave now, they may be lost."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
